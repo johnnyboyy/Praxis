@@ -88,12 +88,19 @@ def _blocked(root: Path, unit: Unit, failed_deps: list[str]) -> dict:
 
 
 def run_dag(plan: Plan, provider, executor, root: Path, verifier=None,
-            concurrency: int = 4, max_retries: int = 2,
-            routing_situation: Situation | None = None) -> dict:
+            concurrency: int | None = None, max_retries: int | None = None,
+            routing_situation: Situation | None = None, policy=None) -> dict:
     """Run a plan honoring `depends_on`, one ready wave at a time, each wave in parallel up to
     `concurrency`. Returns per-unit results (in plan order) + the fold's deliver-vs-stall summary +
     the reflexive-routing result. A unit is `done` only when it delivered AND passed verification;
-    a dependency that stalled/blocked blocks its dependents (cascading)."""
+    a dependency that stalled/blocked blocks its dependents (cascading). `concurrency` and
+    `max_retries` default to the root's editable conductor policy (`policy.load_policy`)."""
+    import policy as policy_mod
+    pol = policy or policy_mod.load_policy(root)
+    if concurrency is None:
+        concurrency = pol.concurrency
+    if max_retries is None:
+        max_retries = pol.max_retries
     if concurrency < 1:
         raise ValueError("concurrency must be >= 1")
     units = {u.id: u for u in plan.units}

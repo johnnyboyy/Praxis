@@ -273,13 +273,18 @@ def run_unit(root: Path, unit: Unit, provider, executor: Executor,
 
 
 def run(plan: Plan, provider, executor: Executor, root: Path,
-        verifier: Verifier | None = None, max_retries: int = 2) -> dict:
+        verifier: Verifier | None = None, max_retries: int | None = None,
+        policy=None) -> dict:
     """Run a linear plan to completion, returning per-unit results plus the fold's deliver-vs-stall
     summary and the cost rollup. The loop keeps no state of its own — everything it knows is what it
     wrote to the journal, so a re-fold of the log reproduces this run exactly. Pass a `verifier` to
-    enforce the verification gate on every unit."""
+    enforce the verification gate on every unit. `max_retries` defaults to the root's editable
+    conductor policy (`policy.load_policy`)."""
     import views
-    results = [run_unit(root, unit, provider, executor, verifier, max_retries)
+    import policy as policy_mod
+    pol = policy or policy_mod.load_policy(root)
+    retries = pol.max_retries if max_retries is None else max_retries
+    results = [run_unit(root, unit, provider, executor, verifier, retries)
                for unit in plan.units]
     return {"results": results, "summary": journal.fold(root)["summary"],
             "cost": views.cost(root)}

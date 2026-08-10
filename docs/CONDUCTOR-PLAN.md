@@ -18,7 +18,7 @@ progress ledger are authoritative — do not re-derive them.
   `corpora/`). Keep all green.
 - **Working rule:** nothing old is removed before its replacement passes tests (see Migration). Small
   phases; checkpoint after each; update the progress ledger at the bottom.
-- **State now:** P1–P8 done. P1 = `conductor/journal.py` (the event-log source of truth + gap
+- **State now:** P1–P9 done — the roadmap is complete. P1 = `conductor/journal.py` (the event-log source of truth + gap
   substrate). P2 = the edit gate now reads the journal fold (`journal.open_unit`) via
   `praxis/scripts/gate.py`, begin_work/close_work bridge `unit.framed`/`unit.closed` into the
   journal, and the tmp session-stamp files + freshness windows are retired on both surfaces. P3 =
@@ -38,8 +38,10 @@ progress ledger are authoritative — do not re-derive them.
   `SubprocessExecutor` captures the child run's cost. P8 = corpora decoupling: corpora exposes a
   `manifest` capability (each domain's subject / applies-when / universal), and
   `providers.select_by_features` maps a situation's features (subject + project_shape predicates) →
-  domains natively — no unit-of-work string. Contracts settled through the gap-harvest refinement.
-  **Next: P9 (final: guardrails as policy + de-cruft).**
+  domains natively — no unit-of-work string. P9 = guardrails as editable policy (`conductor/policy.py`,
+  read from `.praxis/conductor.json`) feeding `run`/`run_dag`, and the engine-plugin hop collapsed to
+  a direct corpora binding (`conductor/adapters.py` calling `corpus.py`). Contracts settled through
+  the gap-harvest refinement. **The spine and all refinements (P1–P9) are done.**
 - **Prioritize** the spine P1–P5 (event log → gate → provider seam → conductor → verification gate);
   P6–P9 are refinements as budget allows.
 - **Style:** execute-and-verify with minimal discussion.
@@ -352,3 +354,33 @@ until a phase subsumes them, then are retired. Nothing is removed before its rep
     (its 167 tests rely on it), so domains keep both fields for now. Re-authoring domains to drop
     `units-of-work` and making corpora's native selection feature-only is a larger corpora-side
     migration; P8 delivers the decoupled path the conductor composes through.
+- **P9 — DONE.** Guardrails as editable policy + the engine-plugin hop collapsed. 14 new conductor
+  tests (108 total, green). **This closes the roadmap.**
+  - **`conductor/policy.py`.** The concurrency cap, retry bound, and a `verify_required` guard are a
+    `Policy` the operator edits at `<root>/.praxis/conductor.json`, not loop constants; `run` and
+    `run_dag` read their defaults from `load_policy(root)` (a missing/corrupt file degrades to the
+    historical defaults, so nothing changes until the operator edits it). An explicit argument always
+    overrides the policy.
+  - **`conductor/adapters.py` — the direct provider binding.** `corpora_provider(root)` builds a
+    `CorporaProvider` by calling `corpus.py`'s read verbs (`manifest`/`select`/`emit-spawn-parts`)
+    DIRECTLY — no praxis engine-plugin manifest resolution, no generic argv builder, no
+    `engine.call_json` indirection. One subprocess straight to the engine, the hop collapsed. It is
+    the wiring layer (it knows corpora's CLI); the core modules still import neither praxis nor
+    corpora. A broken binding degrades to empty domains rather than raising.
+  - **Proven live.** `DirectBindingComposeTest` composes real corpora through the direct adapter
+    (feature mode: prose-craft + framework-agnostic coding domains, framework-gated ones excluded);
+    the policy tests pin `run_dag`'s concurrency to 1 via a `conductor.json` and confirm the retry
+    bound comes from policy with an explicit arg overriding.
+  - **Left as noted:** the vestigial `clear_session_stamps` in praxis's `close_frame_marker` is
+    harmless and kept (removing it touches praxis close-side tests for little gain); the engine-plugin
+    path itself stays for a project that registers a *different* engine — only the conductor's own
+    corpora access is now direct.
+
+## Status: roadmap complete
+All nine phases are done and every suite is green (conductor 108, praxis 224, corpora 167). The
+conductor is a working judgment-agnostic core — event-log source of truth, journal-first edit gate,
+provider seam with gap surfacing, linear + DAG execution with a recorded verification gate, views
+over the log, feature-based corpora selection, and editable policy — with corpora wrapped as one
+provider behind a direct binding. Remaining work is not roadmap phases but the surface/migration
+notes recorded inline above (praxis handoff/chunk-ledger consuming the P7 views; the larger
+corpora units-of-work retirement; the promotion loop for accumulated gaps).
