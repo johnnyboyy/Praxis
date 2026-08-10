@@ -68,6 +68,13 @@ def main(argv: list[str] | None = None) -> int:
     p_trace = sub.add_parser("trace")
     add_common(p_trace, needs_unit=False, targeted=False)
 
+    p_outcome = sub.add_parser("record-outcome")
+    p_outcome.add_argument("--outcome", required=True, choices=["result", "stall"])
+    p_outcome.add_argument("--status", default="complete")
+    p_outcome.add_argument("--surfaced", default=None, help="comma-separated items to surface")
+    p_outcome.add_argument("--tool-calls", type=int, default=0)
+    p_outcome.add_argument("--search-base", default=None)
+
     args = parser.parse_args(argv)
 
     if args.command == "begin-work":
@@ -85,6 +92,11 @@ def main(argv: list[str] | None = None) -> int:
         result = core.preframe(args.target, args.files, args.search_base)
     elif args.command == "trace":
         result = core.trace(args.search_base)
+    elif args.command == "record-outcome":
+        surfaced = [s.strip() for s in args.surfaced.split(",") if s.strip()] \
+            if args.surfaced else None
+        result = core.record_outcome(args.outcome, args.status, surfaced,
+                                     tool_calls=args.tool_calls, search_base=args.search_base)
     else:  # pragma: no cover — argparse required=True guards this
         parser.error(f"unknown command {args.command}")
         return 2

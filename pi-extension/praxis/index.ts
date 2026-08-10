@@ -335,15 +335,10 @@ function logRuntimeAudit(root: string, entry: Record<string, unknown>): void {
 	}
 }
 
-// ── Workflow trace: task → unit-of-work → result/stall, one legible timeline per root ────────
-function logTrace(root: string, entry: Record<string, unknown>): void {
-	try {
-		const p = path.join(praxisDirOf(root), "trace.jsonl");
-		fs.appendFileSync(p, `${JSON.stringify({ ts: Math.floor(Date.now() / 1000), ...entry })}\n`);
-	} catch {
-		/* trace is best-effort */
-	}
-}
+// ── Workflow trace ─────────────────────────────────────────────────────────────────────────────
+// No longer a standalone trace.jsonl: the workflow trace is a view over the conductor journal. The
+// frame is recorded by begin-work's bridge (unit.framed); the spawn outcome by record-outcome
+// (unit.receipt on the open unit); close-work by unit.closed. `runCli("trace")` reads them back.
 
 const STATUS_ENUM = ["complete", "blocked", "questions-pending", "tradeoffs-pending"] as const;
 
@@ -386,8 +381,9 @@ function formatTraceSummary(t: any): string {
 		lines.push("by workflow:");
 		for (const [k, v] of byWf) lines.push(`  ${k}: ${fmt(v)}`);
 	}
+	// The journal fold's recent_stalls key the unit by `phase` (its label / unit-of-work).
 	for (const st of sum.recent_stalls ?? [])
-		lines.push(`stall · ${st.unit_of_work}[${st.status}] ${st.surfaced ?? ""}`);
+		lines.push(`stall · ${st.phase}[${st.status}] ${st.surfaced ?? ""}`);
 	return lines.join("\n");
 }
 
@@ -658,20 +654,9 @@ export default function praxisFrontDoor(pi: ExtensionAPI) {
 			});
 			const parsed = JSON.parse(out);
 			// The journal now holds the frame: begin-work (front_door_core's bridge) wrote a
-			// unit.framed event that conductor/journal.open_unit reads — no per-session stamp file.
+			// unit.framed event that conductor/journal.open_unit reads — no per-session stamp file,
+			// and no separate trace.jsonl (the workflow trace is a view over that journal).
 			const sid = sessionIdOf(ctx);
-			if (parsed.root) {
-				logTrace(parsed.root, {
-					event: "frame",
-					session: sid?.slice(0, 8) ?? null,
-					unit_of_work: params.unit_of_work,
-					workstream: params.workstream ?? null,
-					workflow: params.workflow ?? null,
-					phase_index: parsed.workflow?.phase_index ?? null,
-					runtime: parsed.runtime ? { stance: parsed.runtime.stance, thinking: parsed.runtime.thinking } : null,
-					size_floor: parsed.frame?.size_floor ?? null,
-				});
-			}
 			// #1 Inline delivery: inject the composed judgment straight into context. The payload
 			// file remains the brain's artifact; we read it and inline its body so the parent works
 			// under the judgment by construction. Injecting IS the read, so we record it on the open
@@ -848,21 +833,21 @@ export default function praxisFrontDoor(pi: ExtensionAPI) {
 					reason: runtime.reason,
 				});
 			const outcome = parseSpawnOutcome(result.text || "");
-			logTrace(root, {
-				event: "spawn",
-				session: sessionIdOf(ctx)?.slice(0, 8) ?? null,
-				unit_of_work: params.unit_of_work,
-				workflow: params.workflow ?? null,
-				phase_index: composed.workflow?.phase_index ?? null,
-				runtime: composed.runtime ? { stance: composed.runtime.stance, thinking: composed.runtime.thinking } : null,
-				thinking: thinking ?? null,
-				outcome: outcome.outcome,
-				status: outcome.status,
-				status_source: outcome.source,
-				surfaced: outcome.surfaced,
-				tool_calls: result.toolCalls.length,
-				exit_code: result.exitCode,
-			});
+			// Record the spawn's outcome on the journal's open unit (the one begin_work framed), so
+			// the workflow trace — now a view over the conductor journal, not a standalone
+			// trace.jsonl — carries the deliver-vs-stall data. Best-effort: a failed bridge must not
+			// fail the spawn.
+			try {
+				runCli("record-outcome", {
+					outcome: outcome.outcome,
+					status: outcome.status,
+					surfaced: outcome.surfaced ?? undefined,
+					"tool-calls": String(result.toolCalls.length),
+					"search-base": root,
+				});
+			} catch {
+				/* trace is best-effort */
+			}
 			const nextPhase = composed.workflow?.next_phase;
 			const outcomeLine =
 				outcome.outcome === "stall"
@@ -910,13 +895,8 @@ export default function praxisFrontDoor(pi: ExtensionAPI) {
 			const parsed = JSON.parse(out);
 			const sid = sessionIdOf(ctx);
 			// close-work (front_door_core's bridge) wrote a unit.closed event; the journal fold now
-			// shows no open unit for this root, so the gate closes — no stamp file to clear.
-			if (parsed.root)
-				logTrace(parsed.root, {
-					event: "close",
-					session: sid?.slice(0, 8) ?? null,
-					unit_of_work: parsed.prior_unit_of_work ?? null,
-				});
+			// shows no open unit for this root, so the gate closes and the trace records the close —
+			// no stamp file to clear, no separate trace.jsonl to append.
 			// #7 The unit is closing — its injected judgment is now evictable from context.
 			if (sid) {
 				const s = judgmentState(sid);

@@ -95,5 +95,18 @@ def work_status(search_base: str | None = None) -> str:
     return json.dumps(core.work_status(search_base), indent=2)
 
 
+@mcp.tool()
+def record_outcome(outcome: str, status: str = "complete",
+                   surfaced: list[str] | None = None, tool_calls: int = 0,
+                   search_base: str | None = None) -> str:
+    """Record a spawn's outcome (`result` or `stall`) on the open unit of work, before close_work —
+    so the workflow trace, a view over the conductor journal, carries the deliver-vs-stall data.
+    Targets the unit begin_work framed (the journal's open unit); no unit id is threaded through the
+    spawn. `status` is complete|blocked|questions-pending|tradeoffs-pending; `surfaced` relays any
+    questions/tradeoffs the spawn raised."""
+    return json.dumps(core.record_outcome(outcome, status, surfaced, tool_calls=tool_calls,
+                                          search_base=search_base), indent=2)
+
+
 if __name__ == "__main__":
     mcp.run()

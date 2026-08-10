@@ -42,52 +42,13 @@ import workflow as wf  # noqa: E402
 # journal-first gate check (praxis/scripts/gate.py) consults.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "conductor"))
 import journal  # noqa: E402
+import views  # noqa: E402
 
-TRACE_NAME = "trace.jsonl"
-
-
-def _trace_entries(root: Path) -> list[dict]:
-    path = root_tree.praxis_dir(root) / TRACE_NAME
-    if not path.is_file():
-        return []
-    out: list[dict] = []
-    try:
-        for line in path.read_text().splitlines():
-            line = line.strip()
-            if line:
-                out.append(json.loads(line))
-    except (OSError, json.JSONDecodeError):
-        pass
-    return out
-
-
-def _trace_summary(entries: list[dict]) -> dict:
-    """Which phases (and whole workflows) tend to deliver vs stall — the A/B surface the trace
-    exists for. Counts outcome events (the spawn path carries result/stall); frame/close events are
-    timeline only."""
-    def bucket() -> dict:
-        return {"runs": 0, "result": 0, "stall": 0}
-    by_phase: dict[str, dict] = {}
-    by_workflow: dict[str, dict] = {}
-    stalls: list[dict] = []
-    for e in entries:
-        outcome = e.get("outcome")
-        if outcome not in ("result", "stall"):
-            continue
-        phase = e.get("unit_of_work") or "(none)"
-        bp = by_phase.setdefault(phase, bucket())
-        bp["runs"] += 1
-        bp[outcome] += 1
-        flow = e.get("workflow")
-        if flow:
-            bw = by_workflow.setdefault(flow, bucket())
-            bw["runs"] += 1
-            bw[outcome] += 1
-        if outcome == "stall":
-            stalls.append({"ts": e.get("ts"), "unit_of_work": phase,
-                           "workflow": flow, "status": e.get("status"),
-                           "surfaced": e.get("surfaced")})
-    return {"by_phase": by_phase, "by_workflow": by_workflow, "recent_stalls": stalls[-5:]}
+# The workflow trace is no longer a standalone `trace.jsonl`: it is a VIEW over the conductor
+# journal. `journal.fold(root)["summary"]` is the deliver-vs-stall surface (by phase / by workflow /
+# recent stalls) this used to recompute, and `views.ledger(root)` is the per-unit timeline. The
+# outcome data lands in the journal via `record_outcome` (the spawn-completion bridge) alongside the
+# `unit.framed`/`unit.closed` the begin/close bridge already writes.
 
 
 def _config_text(root: Path) -> str | None:
@@ -508,6 +469,27 @@ def close_work(search_base: str | None = None) -> dict:
             "note": "next edit in this root requires a fresh begin_work"}
 
 
+def record_outcome(outcome: str, status: str = "complete", surfaced=None,
+                   cost: dict | None = None, tool_calls: int = 0,
+                   search_base: str | None = None) -> dict:
+    """Record a spawn's outcome on the open unit as a `unit.receipt` event, so the workflow trace
+    (which is a view over the conductor journal) carries the deliver-vs-stall data. Called at spawn
+    completion, before close_work; it targets `journal.open_unit` (the unit begin_work framed), so no
+    unit id needs threading through the spawn. A no-op error when nothing is open."""
+    if outcome not in ("result", "stall"):
+        return {"error": "outcome must be 'result' or 'stall'"}
+    base = Path(search_base).resolve() if search_base else Path.cwd()
+    root = root_tree.governing_root_above(base)
+    if root is None:
+        return {"error": f"no praxis root at or above {base}"}
+    open_unit = journal.open_unit(root)
+    if open_unit is None:
+        return {"error": "no open unit to record an outcome for — call begin_work first"}
+    journal.append(root, "unit.receipt", unit=open_unit["unit"], outcome=outcome, status=status,
+                   surfaced=surfaced or [], cost=cost, tool_calls=int(tool_calls or 0))
+    return {"root": str(root), "unit": open_unit["unit"], "outcome": outcome, "status": status}
+
+
 def work_status(search_base: str | None = None) -> dict:
     """Read-only introspection: the governing root, the frame marker's contents and age, and which
     sessions currently hold a stamp for it."""
@@ -535,20 +517,19 @@ def work_status(search_base: str | None = None) -> dict:
     out["session_stamps"] = sorted(
         p.parent.name for p in stamp_base.glob(f"*/{root_hash}")) if stamp_base.is_dir() else []
     out["runtime_audit"] = _runtime_audit_tail(root)
-    entries = _trace_entries(root)
-    out["trace"] = {"recent": entries[-8:], "summary": _trace_summary(entries)}
+    out["trace"] = {"recent": views.ledger(root)[-8:], "summary": journal.fold(root)["summary"]}
     return out
 
 
 def trace(search_base: str | None = None) -> dict:
-    """The workflow trace for the governing root: recent entries + the deliver-vs-stall summary."""
+    """The workflow trace for the governing root: the per-unit ledger + the deliver-vs-stall summary,
+    both views over the conductor journal (no standalone trace.jsonl)."""
     base = Path(search_base).resolve() if search_base else Path.cwd()
     root = root_tree.governing_root_above(base)
     if root is None:
         return {"error": f"no praxis root at or above {base}"}
-    entries = _trace_entries(root)
-    return {"root": str(root), "recent": entries[-15:], "summary": _trace_summary(entries),
-            "workflows": wf.load(root)}
+    return {"root": str(root), "recent": views.ledger(root)[-15:],
+            "summary": journal.fold(root)["summary"], "workflows": wf.load(root)}
 
 
 def preframe(target: str | None = None, files: list[str] | str | None = None,

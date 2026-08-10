@@ -379,5 +379,53 @@ class JournalBridge(unittest.TestCase):
         self.assertIsNone(journal.open_unit(self.root))
 
 
+@unittest.skipUnless(server is not None, "praxis-front-door server.py or its mcp dependency unavailable")
+class TraceIsAJournalView(unittest.TestCase):
+    """The workflow trace is now a view over the conductor journal, not a standalone trace.jsonl:
+    record_outcome feeds the deliver-vs-stall summary and the per-unit ledger, and no trace.jsonl is
+    written by the Python front door."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.root = self.tmp / "app"
+        (self.root / ".praxis").mkdir(parents=True)
+        (self.root / ".praxis" / "config.md").write_text("## project-shape\nname: app\n")
+        (self.root / "src").mkdir()
+        (self.root / "src" / "x.ts").write_text("// x\n")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _frame(self, uow="implement-feature"):
+        server.begin_work(uow, target="src/x.ts", execution="inline", search_base=str(self.root))
+
+    def test_result_outcome_feeds_the_trace_summary(self):
+        self._frame()
+        out = json.loads(server.record_outcome("result", "complete", search_base=str(self.root)))
+        self.assertEqual(out["outcome"], "result")
+        t = server.core.trace(search_base=str(self.root))
+        self.assertEqual(t["summary"]["by_phase"]["implement-feature"]["result"], 1)
+        self.assertTrue(any(r["unit_of_work"] == "implement-feature" for r in t["recent"]))
+        # No standalone trace.jsonl was written — the trace is purely a journal view.
+        self.assertFalse((self.root / ".praxis" / "trace.jsonl").exists())
+
+    def test_stall_outcome_shows_in_summary_and_stalls(self):
+        self._frame("scan-architecture")
+        server.record_outcome("stall", "blocked", surfaced=["which db?"], search_base=str(self.root))
+        t = server.core.trace(search_base=str(self.root))
+        self.assertEqual(t["summary"]["by_phase"]["scan-architecture"]["stall"], 1)
+        self.assertEqual(len(t["summary"]["recent_stalls"]), 1)
+
+    def test_outcome_without_open_unit_errors(self):
+        out = json.loads(server.record_outcome("result", search_base=str(self.root)))
+        self.assertIn("error", out)
+
+    def test_work_status_trace_is_a_journal_view(self):
+        self._frame()
+        server.record_outcome("result", search_base=str(self.root))
+        st = json.loads(server.work_status(search_base=str(self.root)))
+        self.assertEqual(st["trace"]["summary"]["by_phase"]["implement-feature"]["result"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
