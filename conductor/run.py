@@ -66,12 +66,15 @@ class Receipt:
 
 @dataclass
 class Unit:
-    """One unit of work in a plan: an id, the situation the provider composes against, and the
-    unit-of-work noun (defaults to the situation's bridge label, then its seed task_kind)."""
+    """One unit of work in a plan: an id, the situation the provider composes against, the
+    unit-of-work noun (defaults to the situation's bridge label, then its seed task_kind), and the
+    ids of the units it `depends_on` (empty for a leaf; the DAG scheduler in schedule.py reads
+    these)."""
 
     id: str
     situation: Situation
     unit_of_work: str | None = None
+    depends_on: list = field(default_factory=list)
 
     def __post_init__(self):
         if self.unit_of_work is None:

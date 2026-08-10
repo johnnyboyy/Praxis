@@ -18,7 +18,7 @@ progress ledger are authoritative — do not re-derive them.
   `corpora/`). Keep all green.
 - **Working rule:** nothing old is removed before its replacement passes tests (see Migration). Small
   phases; checkpoint after each; update the progress ledger at the bottom.
-- **State now:** P1–P5 done. P1 = `conductor/journal.py` (the event-log source of truth + gap
+- **State now:** P1–P6 done. P1 = `conductor/journal.py` (the event-log source of truth + gap
   substrate). P2 = the edit gate now reads the journal fold (`journal.open_unit`) via
   `praxis/scripts/gate.py`, begin_work/close_work bridge `unit.framed`/`unit.closed` into the
   journal, and the tmp session-stamp files + freshness windows are retired on both surfaces. P3 =
@@ -30,7 +30,11 @@ progress ledger are authoritative — do not re-derive them.
   and dispatching through an `Executor` (inline / subprocess), every transition a journal event.
   P5 = the recorded verification gate in the same loop: a `Verifier` gates each receipt
   (`unit.verified` on pass), defects loop back with feedback up to `max_retries`, then the unit is
-  surfaced as a blocked stall. Contracts settled through the gap-harvest refinement. **Next: P6.**
+  surfaced as a blocked stall. P6 = `conductor/schedule.py` (`run_dag`): `depends_on` waves run in
+  parallel up to a concurrency cap, a stalled dependency blocks its dependents (cascading), cycles
+  are rejected up front, and `reflexive_route` consults the provider about the conductor's OWN
+  routing move (same hook, same gap detector). Contracts settled through the gap-harvest refinement.
+  **Next: P7.**
 - **Prioritize** the spine P1–P5 (event log → gate → provider seam → conductor → verification gate);
   P6–P9 are refinements as budget allows.
 - **Style:** execute-and-verify with minimal discussion.
@@ -285,3 +289,27 @@ until a phase subsumes them, then are retired. Nothing is removed before its rep
     only *delivered* work is gated, and a stall is a first-class outcome, not a failed attempt.
   - **Backward compatible.** `verifier=None` keeps the exact P4 path (receipt accepted as-is, same
     event sequence), so all P4 tests pass unchanged; the gate is opt-in per `run`/`run_unit` call.
+- **P6 — DONE.** DAG scheduling, the concurrency cap, and reflexive routing — `conductor/schedule.py`.
+  13 new conductor tests (77 total, green).
+  - **`Unit.depends_on` + `run_dag`.** Units declare dependency edges; `run_dag` runs them in
+    dependency-ordered waves, each wave in parallel up to `concurrency` (a `ThreadPoolExecutor`),
+    every unit still passing the P5 verification gate. Results come back in plan order; state is read
+    back from the journal (the `unit.depends_on` edges + each unit's terminal state), so the schedule
+    is reproducible from the log.
+  - **Blocked-dependency cascade.** A unit whose dependency did not reach `done` (it stalled, failed
+    verification, or was itself blocked) is not dispatched — it is recorded as a blocked stall
+    surfacing which dep failed, and that block cascades to its own dependents. Unknown deps, duplicate
+    ids, and cycles are rejected up front (Kahn's algorithm) as scheduling bugs, distinct from a
+    runtime stall.
+  - **Thread-safe journal.** `journal.append` now serializes its seq-assign→write under a lock, so
+    the parallel workers share the one log with monotonic, non-duplicated seqs (exercised by a
+    20-unit / concurrency-8 test). In-process only — a subprocess executor's child never writes the
+    journal; the parent records its receipt.
+  - **Reflexive routing.** Before scheduling, `reflexive_route` consults the provider about the
+    conductor's OWN routing move via the *same* `providers.consult` hook, recording a
+    `conductor.route` event — and the gap detector fires on the conductor's vocabulary too: a
+    poor-fit routing situation (`fit==none`) surfaces a `conductor.gap` exactly as a unit's would.
+    This is the "one hook applied even to the conductor's own moves" seam.
+  - **Proven, not asserted.** Parallelism is shown with a `threading.Barrier` (N workers must arrive
+    together or it times out), the cap with a peak-active counter, DAG order with a recorded run
+    order, and the cascade by tracking which units actually executed.

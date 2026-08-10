@@ -18,10 +18,17 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from pathlib import Path
 
 JOURNAL_NAME = "journal.jsonl"
+
+# Serializes the read-seq → write critical section of `append`. The conductor's DAG scheduler (P6)
+# runs units on parallel threads that all append to the one log, and seq must stay monotonic without
+# two threads reading the same next value. In-process only, which is all that is needed: the child
+# of a subprocess executor never writes the journal — it returns a receipt the PARENT records.
+_APPEND_LOCK = threading.Lock()
 
 # State-advancing events → the lifecycle state they move a unit into. Everything else (edges,
 # annotations, runtime notes) attaches to the unit without changing its state.
@@ -62,13 +69,15 @@ def append(root: Path, event: str, unit: str | None = None, **payload) -> dict:
     """
     path = journal_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    seq = _next_seq(path)
-    record = {"ts": payload.pop("ts", None) or time.time(), "seq": seq, "event": event}
+    record = {"ts": payload.pop("ts", None) or time.time(), "event": event}
     if unit is not None:
         record["unit"] = unit
     record.update(payload)
-    with path.open("a") as fh:
-        fh.write(json.dumps(record) + "\n")
+    # Assign seq and write under the lock so concurrent appends stay monotonic and atomic per line.
+    with _APPEND_LOCK:
+        record["seq"] = _next_seq(path)
+        with path.open("a") as fh:
+            fh.write(json.dumps(record) + "\n")
     return record
 
 
