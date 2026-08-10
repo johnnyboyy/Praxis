@@ -1,0 +1,10 @@
+interface:
+  display_name: "Corpora"
+  short_description: "Route work through accumulated project judgment"
+  icon_small: "./assets/corpora-mark.svg"
+  icon_large: "./assets/corpora-mark.svg"
+  brand_color: "#6574D9"
+  default_prompt: "Use $corpora to route this task through the appropriate project role and its accumulated domain judgment."
+
+policy:
+  allow_implicit_invocation: true

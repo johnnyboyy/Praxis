@@ -1,0 +1,19 @@
+{
+  "plugin": "praxis-base",
+  "doc": "The handoff is a praxis primitive: one unit-of-work produces exactly one handoff. Praxis owns the envelope and this base schema; judgment engines register plugins that extend it (see handoff/plugins/). A handoff-generation/validation script enforces that every registered plugin's required fields come out the other side.",
+  "frontmatter": [
+    {"field": "unit-of-work", "required": true, "shape": "scalar", "desc": "the single unit of work this handoff is for -- the praxis invariant"},
+    {"field": "workstream", "required": true, "shape": "scalar", "desc": "stable id across checkpoints, replacements, resumptions"},
+    {"field": "stance", "required": true, "shape": "enum", "values": ["convergent", "divergent", "none"], "desc": "how this unit generated"},
+    {"field": "agent-continuity", "required": true, "shape": "enum", "values": ["new", "continued", "replacement"], "desc": "context continuity of the agent that produced it"},
+    {"field": "status", "required": true, "shape": "enum", "values": ["complete", "blocked", "questions-pending", "tradeoffs-pending"], "desc": "terminal state of this unit"},
+    {"field": "token-usage", "required": false, "shape": "scalar", "desc": "self-reported cost (runtime gives no per-op breakdown)"},
+    {"field": "delegated-workers", "required": false, "shape": "list", "desc": "worker scopes, if this unit delegated execution"},
+    {"field": "addressed-to", "required": false, "shape": "scalar", "desc": "interop: the root this handoff crosses to next (a root name); the delivery mechanism routes it into that root's praxis/inbox/. Present only on a cross-root (interop) handoff"},
+    {"field": "return-to", "required": false, "shape": "scalar", "desc": "interop: the root the eventual result should be addressed back to -- the reply address the receiving root reads to address its own completion handoff. Carried forward across the round-trip"}
+  ],
+  "sections": [
+    {"name": "Artifact", "required": true, "desc": "the deliverable, freeform in the unit's own form"},
+    {"name": "Surfaced", "required": true, "desc": "the escape valve -- present even when empty; a missing section is a schema violation, an empty one is a statement"}
+  ]
+}

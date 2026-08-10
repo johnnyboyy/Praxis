@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Corpora</title>
+  <desc id="desc">Three layered documents routed into a shared decision point.</desc>
+  <defs>
+    <linearGradient id="field" x1="16" y1="12" x2="112" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#252A57"/>
+      <stop offset="1" stop-color="#12162F"/>
+    </linearGradient>
+    <linearGradient id="route" x1="42" y1="32" x2="94" y2="101" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9EA9FF"/>
+      <stop offset="1" stop-color="#63D6C1"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#field)"/>
+  <path d="M33 28h42a8 8 0 0 1 8 8v52a8 8 0 0 1-8 8H33a8 8 0 0 1-8-8V36a8 8 0 0 1 8-8Z" fill="none" stroke="#5E679C" stroke-width="6"/>
+  <path d="M45 20h42a8 8 0 0 1 8 8v52a8 8 0 0 1-8 8H45a8 8 0 0 1-8-8V28a8 8 0 0 1 8-8Z" fill="#252A57" stroke="#7C86C4" stroke-width="6"/>
+  <path d="M56 34h32M56 49h24M56 64h16" fill="none" stroke="#DCE0FF" stroke-width="6" stroke-linecap="round"/>
+  <path d="M55 79 72 96l29-32" fill="none" stroke="url(#route)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
