@@ -18,7 +18,7 @@ progress ledger are authoritative — do not re-derive them.
   `corpora/`). Keep all green.
 - **Working rule:** nothing old is removed before its replacement passes tests (see Migration). Small
   phases; checkpoint after each; update the progress ledger at the bottom.
-- **State now:** P1–P4 done. P1 = `conductor/journal.py` (the event-log source of truth + gap
+- **State now:** P1–P5 done. P1 = `conductor/journal.py` (the event-log source of truth + gap
   substrate). P2 = the edit gate now reads the journal fold (`journal.open_unit`) via
   `praxis/scripts/gate.py`, begin_work/close_work bridge `unit.framed`/`unit.closed` into the
   journal, and the tmp session-stamp files + freshness windows are retired on both surfaces. P3 =
@@ -28,7 +28,9 @@ progress ledger are authoritative — do not re-derive them.
   engine call. P4 = the linear conductor core `conductor/run.py`: a plan of units iterated through
   proposed→framed→dispatched→running→receipt→done/stalled, consulting the provider before executing
   and dispatching through an `Executor` (inline / subprocess), every transition a journal event.
-  Contracts settled through the gap-harvest refinement. **Next: P5.**
+  P5 = the recorded verification gate in the same loop: a `Verifier` gates each receipt
+  (`unit.verified` on pass), defects loop back with feedback up to `max_retries`, then the unit is
+  surfaced as a blocked stall. Contracts settled through the gap-harvest refinement. **Next: P6.**
 - **Prioritize** the spine P1–P5 (event log → gate → provider seam → conductor → verification gate);
   P6–P9 are refinements as budget allows.
 - **Style:** execute-and-verify with minimal discussion.
@@ -263,7 +265,23 @@ until a phase subsumes them, then are retired. Nothing is removed before its rep
     real corpora domains and ends `done`; unit b's forced (`fit==none`) match routes to
     `unclassified` and surfaces a `provision-infra` gap that lands in `gap_candidates`. Skips if
     corpora isn't loadable.
-  - **Left for the next phases (as planned):** the recorded verification gate (receipt →
-    verified / defect loop-back, bounded retries) is P5 and slots between the receipt and the
-    terminal state — for now a receipt is accepted as-is; DAG scheduling + concurrency cap +
-    reflexive routing are P6; cost/tokens captured from the child run is P7.
+  - **Left for the next phases (as planned):** DAG scheduling + concurrency cap + reflexive routing
+    are P6; cost/tokens captured from the child run is P7.
+- **P5 — DONE.** The recorded verification gate, folded into the same `run_unit` loop. 13 new
+  conductor tests (64 total, green).
+  - **`Verdict`** (verified / defects / evidence, with `from_dict`) and the **`Verifier`** protocol —
+    the 'is the delivered work actually right' seam the conductor never sees through, mirroring the
+    executor seam. Concrete: `CallableVerifier` (in-process handler) and `CommandVerifier` (runs a
+    command — e.g. the scaffold tests — exit 0 ⇒ verified with stdout evidence, nonzero / launch
+    failure ⇒ a defect carrying the detail for the feedback loop).
+  - **The gate, as a recorded transition.** After `unit.receipt` (verifying), the verifier runs:
+    PASS ⇒ `unit.verified` (carrying evidence) → `unit.done`; DEFECT ⇒ a `unit.note kind=defect`
+    event, then loop back to dispatch with the defects handed to the executor as `composed.feedback`,
+    up to `max_retries` times; exhausted ⇒ `unit.stalled` (blocked) surfacing the outstanding
+    defects. So "was this verified, and how many defect loops did it take?" is a fold over the log,
+    not prose — the fix for the unenforced-verification hole.
+  - **A receipt that stalls is not a defect.** When the executor itself returns a `stall` (the unit
+    blocking on questions/tradeoffs), it is surfaced immediately and the verifier is never consulted —
+    only *delivered* work is gated, and a stall is a first-class outcome, not a failed attempt.
+  - **Backward compatible.** `verifier=None` keeps the exact P4 path (receipt accepted as-is, same
+    event sequence), so all P4 tests pass unchanged; the gate is opt-in per `run`/`run_unit` call.
