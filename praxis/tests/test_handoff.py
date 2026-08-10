@@ -1,138 +1,120 @@
-"""Tests for handoff. Run with: python3 -m unittest discover -s praxis/tests -v"""
-
-import json
-import shutil
+#!/usr/bin/env python3
+"""Tests for the forward handoff (handoff.py): on-demand assembly, next-ready selection over the
+journal, the progress fold, and the gate-backed pull that records payload_read so a self-advancing
+agent may edit only after it has pulled."""
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
-sys.path.insert(0, str(SCRIPTS))
+# the cannibalized scripts dir first so `gate` is importable, then conductor's dir at index 0 so its
+# `handoff` (not any same-named module) wins.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import handoff as ho  # noqa: E402
-
-BASE = Path(__file__).resolve().parent.parent / "handoff" / "base.json"
-
-
-def write_plugin(d: Path, name: str, frontmatter: list[dict], sections: list[dict] | None = None):
-    (d / f"{name}.json").write_text(json.dumps(
-        {"plugin": name, "frontmatter": frontmatter, "sections": sections or []}))
-
-
-class HandoffTests(unittest.TestCase):
-    def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp())
-        self.plugins = self.tmp / "plugins"
-        self.plugins.mkdir()
-
-    def tearDown(self):
-        shutil.rmtree(self.tmp, ignore_errors=True)
-
-    def test_schema_composes_base_plus_plugins(self):
-        write_plugin(self.plugins, "acme",
-                     [{"field": "acme-thing", "required": True, "shape": "scalar"}])
-        schema = ho.compose(ho.load_manifests(BASE, self.plugins))
-        fields = {f["field"]: f["plugin"] for f in schema["frontmatter"]}
-        self.assertEqual(fields["unit-of-work"], "praxis-base")  # base still there
-        self.assertEqual(fields["acme-thing"], "acme")            # plugin extended it
-
-    def test_validate_flags_missing_required_from_any_plugin(self):
-        write_plugin(self.plugins, "acme",
-                     [{"field": "acme-thing", "required": True, "shape": "scalar"}])
-        schema = ho.compose(ho.load_manifests(BASE, self.plugins))
-        doc = ("---\nunit-of-work: x\nworkstream: w\nstance: none\nagent-continuity: new\n"
-               "status: complete\n---\n\n## Artifact\na\n\n## Surfaced\nnone\n")  # no acme-thing
-        missing = ho.validate(doc, schema)
-        self.assertTrue(any("acme-thing" in m and "acme" in m for m in missing))
-
-    def test_complete_handoff_validates(self):
-        schema = ho.compose(ho.load_manifests(BASE, self.plugins))  # no extra plugins here
-        doc = ("---\nunit-of-work: x\nworkstream: w\nstance: none\nagent-continuity: new\n"
-               "status: complete\ndomains-loaded: [a, b]\n---\n\n## Artifact\na\n\n## Surfaced\nnone\n")
-        self.assertEqual(ho.validate(doc, schema), [])
-
-    def test_template_round_trips_valid(self):
-        # A generated template must itself pass validation (all required fields/sections present).
-        schema = ho.compose(ho.load_manifests(BASE, self.plugins))
-        tmpl = ho.render_template(schema, {"unit-of-work": "u", "workstream": "w", "stance": "none"})
-        self.assertEqual(ho.validate(tmpl, schema), [])
-
-    def test_plugin_cannot_override_a_base_field(self):
-        # A plugin redeclaring a base field is refused (base wins) and the conflict is recorded, so a
-        # plugin can't silently downgrade a required base field to optional.
-        write_plugin(self.plugins, "sneaky",
-                     [{"field": "status", "required": False, "shape": "scalar"}])
-        schema = ho.compose(ho.load_manifests(BASE, self.plugins))
-        status = next(f for f in schema["frontmatter"] if f["field"] == "status")
-        self.assertEqual(status["plugin"], "praxis-base")
-        self.assertTrue(status["required"])
-        self.assertTrue(any("status" in c for c in schema["conflicts"]))
-
-    def test_missing_section_is_a_violation(self):
-        schema = ho.compose(ho.load_manifests(BASE, self.plugins))
-        doc = ("---\nunit-of-work: x\nworkstream: w\nstance: none\nagent-continuity: new\n"
-               "status: complete\ndomains-loaded: []\n---\n\n## Artifact\na\n")  # no ## Surfaced
-        missing = ho.validate(doc, schema)
-        self.assertTrue(any("Surfaced" in m for m in missing))
+import handoff as handoff_mod  # noqa: E402
+import journal  # noqa: E402
+from plan import build_units, TaskSpec  # noqa: E402
+from providers import NullProvider  # noqa: E402
+from situation import Situation  # noqa: E402
 
 
-class HandoffCloseTests(unittest.TestCase):
-    """close is the third lifecycle op (create/validate/close), fully praxis-native: delete by
-    default, archive under <handoffs-dir>/archive/ when the governing root's config sets debug: yes,
-    guarded so it only ever acts on a file sitting directly inside the handoffs dir."""
+class TempRoot:
+    def __enter__(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        (self.root / ".praxis").mkdir()
+        return self.root
 
-    def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp())
-        self.root = self.tmp / "proj"
-        self.handoffs = self.root / "praxis" / "handoffs"
-        self.handoffs.mkdir(parents=True)
+    def __exit__(self, *a):
+        self._tmp.cleanup()
 
-    def tearDown(self):
-        shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def _config(self, text: str):
-        (self.root / "praxis" / "config.md").write_text(text)
+def _units():
+    return build_units([TaskSpec(intent="schema", id="s"),
+                        TaskSpec(intent="api", id="api", depends_on=["s"])])
 
-    def _handoff(self) -> Path:
-        h = self.handoffs / "h.md"
-        h.write_text("---\nworkstream: w\n---\n")
-        return h
 
-    def test_debug_off_deletes(self):
-        h = self._handoff()  # no config → debug off
-        rc, msg = ho.close(str(h), self.handoffs, ho.project_debug(self.root))
-        self.assertEqual(rc, 0)
-        self.assertFalse(h.exists())
-        self.assertFalse((self.handoffs / "archive").exists())
+class AssembleTest(unittest.TestCase):
+    def test_assembles_judgment_and_brief(self):
+        composed = {"artifacts": [{"body": "principle A"}, {"body": "principle B"}],
+                    "domains": ["d1"]}
+        ho = handoff_mod.assemble("do the thing", composed)
+        self.assertIn("principle A", ho["judgment"])
+        self.assertIn("principle B", ho["judgment"])
+        self.assertIn("do the thing", ho["brief"])
+        self.assertEqual(ho["domains"], ["d1"])
 
-    def test_debug_on_archives(self):
-        self._config("## project-shape\nname: proj\ndebug: yes\n")
-        h = self._handoff()
-        self.assertTrue(ho.project_debug(self.root))
-        rc, msg = ho.close(str(h), self.handoffs, ho.project_debug(self.root))
-        self.assertEqual(rc, 0)
-        self.assertFalse(h.exists())
-        self.assertTrue((self.handoffs / "archive" / "h.md").is_file())
+    def test_feedback_is_appended_to_brief(self):
+        ho = handoff_mod.assemble("x", {"artifacts": []}, feedback=["missing test"])
+        self.assertIn("did not pass verification", ho["brief"])
+        self.assertIn("missing test", ho["brief"])
 
-    def test_guard_refuses_file_not_directly_in_handoffs_dir(self):
-        outside = self.root / "praxis" / "elsewhere.md"
-        outside.write_text("x")
-        rc, msg = ho.close(str(outside), self.handoffs, False)
-        self.assertEqual(rc, 1)
-        self.assertIn("not directly inside", msg)
-        self.assertTrue(outside.exists())  # untouched
 
-    def test_missing_file_is_reported(self):
-        rc, msg = ho.close(str(self.handoffs / "nope.md"), self.handoffs, False)
-        self.assertEqual(rc, 1)
-        self.assertIn("no such file", msg)
+class NextReadyTest(unittest.TestCase):
+    def test_leaf_is_ready_dependent_is_not(self):
+        with TempRoot() as root:
+            units = _units()
+            nxt = handoff_mod.next_ready(root, units)
+            self.assertEqual(nxt.id, "s")             # api waits on s
 
-    def test_cli_close_deletes(self):
-        h = self._handoff()
-        rc = ho.main(["close", str(h), "--handoffs-dir", str(self.handoffs)])
-        self.assertEqual(rc, 0)
-        self.assertFalse(h.exists())
+    def test_dependent_ready_once_dep_done(self):
+        with TempRoot() as root:
+            units = _units()
+            journal.append(root, "unit.done", unit="s", outcome="result", status="complete")
+            nxt = handoff_mod.next_ready(root, units)
+            self.assertEqual(nxt.id, "api")
+
+    def test_none_when_dep_stalled(self):
+        with TempRoot() as root:
+            units = _units()
+            journal.append(root, "unit.stalled", unit="s", outcome="stall", status="blocked")
+            self.assertIsNone(handoff_mod.next_ready(root, units))
+
+
+class StatusTest(unittest.TestCase):
+    def test_progress_buckets(self):
+        with TempRoot() as root:
+            units = _units()
+            journal.append(root, "unit.done", unit="s", outcome="result", status="complete")
+            st = handoff_mod.status(root, units)
+            self.assertEqual(st["done"], ["s"])
+            self.assertEqual(st["waiting"], ["api"])
+            self.assertFalse(st["complete"])
+
+
+class PullTest(unittest.TestCase):
+    def test_pull_delivers_handoff_and_records_read_so_gate_opens(self):
+        import gate  # praxis-side edit gate, journal-first
+        with TempRoot() as root:
+            units = _units()
+            out = handoff_mod.pull(root, units, NullProvider())
+            self.assertEqual(out["status"], "ready")
+            self.assertEqual(out["unit"], "s")
+            self.assertIn("schema", out["brief"])
+            # the unit is now the open unit, and payload_read was recorded → the gate allows an edit
+            self.assertEqual(journal.open_unit(root)["unit"], "s")
+            verdict, _ = gate.gate_decision(root, str(root / "schema.py"))
+            self.assertEqual(verdict, "allow")
+
+    def test_gate_denies_before_pull(self):
+        import gate
+        with TempRoot() as root:
+            units = _units()
+            # frame a spawn-delivery unit WITHOUT a pull/read → gate must deny the edit
+            journal.append(root, "unit.proposed", unit="s", unit_of_work="s")
+            journal.append(root, "unit.framed", unit="s", unit_of_work="s", delivery="spawn")
+            verdict, reason = gate.gate_decision(root, str(root / "schema.py"))
+            self.assertEqual(verdict, "deny")
+            self.assertIn("payload", reason.lower())
+
+    def test_pull_reports_complete_when_all_done(self):
+        with TempRoot() as root:
+            units = _units()
+            for uid in ("s", "api"):
+                journal.append(root, "unit.done", unit=uid, outcome="result", status="complete")
+            out = handoff_mod.pull(root, units, NullProvider())
+            self.assertEqual(out["status"], "complete")
 
 
 if __name__ == "__main__":
