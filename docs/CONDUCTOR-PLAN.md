@@ -391,10 +391,35 @@ until a phase subsumes them, then are retired. Nothing is removed before its rep
     conductor accretes process vocabulary, both through a ratify gate.
 
 ## Status: roadmap complete
-All nine phases plus the PG promotion loop are done and every suite is green (conductor 121,
-praxis 224, corpora 167). The conductor is a working judgment-agnostic core — event-log source of
+All nine phases plus the PG promotion loop are done and every suite is green (conductor 123,
+praxis 228, corpora 167). The conductor is a working judgment-agnostic core — event-log source of
 truth, journal-first edit gate, provider seam with the full gap mechanism (surface → recur → mint),
 linear + DAG execution with a recorded verification gate, views over the log, feature-based corpora
-selection, and editable policy — with corpora wrapped as one provider behind a direct binding.
-Remaining work is not roadmap phases but the surface/migration notes recorded inline above (praxis
-handoff/chunk-ledger consuming the P7 views; the larger corpora units-of-work retirement).
+selection, and editable policy — with corpora wrapped as one provider behind a direct binding. A
+capstone `test_end_to_end.py` exercises the whole vertical composed.
+
+### Post-roadmap surface/migration items — all resolved
+- **Workflow trace → journal view: DONE.** It was the one genuine view-duplicate (it recomputed the
+  fold's deliver-vs-stall summary). `record_outcome` bridges spawn outcomes into the journal;
+  `trace()`/`work_status` are now views over `journal.fold` + `views.ledger`; `trace.jsonl` retired
+  on both surfaces.
+- **chunk-ledger + handoff → views: EVALUATED, left as-is.** Both are genuine write-lifecycle
+  machinery, not view-duplicates. The chunk-ledger exists for its write-time reconciliation gates
+  (workstream match; the handoff's self-reported `domains-loaded` vs a live `compose()`; the ordering
+  gate) and the `next` pointer / drift-verify — none are folds. The handoff is create/validate/close
+  over an *authored, plugin-schema'd file*; `views.handoff` is a different artifact (a derived
+  receipt-summary, not authored input). Migrating either would relocate storage while keeping every
+  gate — churn for no semantic gain. Only additive idea for later: emit a `chunk.closed` event +
+  enrich `record_outcome` with uow/workstream so receipts are joinable — a feature, not a retirement.
+- **corpora units-of-work retirement: NOT pursued — decoupling accepted as done.** units-of-work is
+  corpora's `unit`/`phase` selectivity axis, orthogonal to `applies-when` (project shape) and richer
+  than the situation's `task_kind` seeds (8 of 12 values — `ratify`, `retrospect`, `verify-scaffold`,
+  `design-*`… — don't reduce to create/change/explore). The genuine decoupling already shipped in P8:
+  the conductor composes through `select_by_features`, which never touches units-of-work. corpora's
+  own `select` keeping units-of-work is its legitimate internal vocabulary, not a coupling to fix;
+  deleting it would lose selectivity (e.g. `ratify-gate` would load for every process task), and a
+  faithful "promote it to a `unit` feature predicate" refactor is behaviorally identical to today
+  while churning ~25 test fixtures. **Operator steer:** the original worry — a task/phase overstuffed
+  with domains, or one phase spanning many domains — is itself the *signal that the phase/task is
+  drawn too broadly*, which the gap mechanism already surfaces; so let the selection vocabulary grow
+  organically through use rather than force a schema migration now.
