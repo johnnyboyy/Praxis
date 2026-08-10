@@ -114,11 +114,17 @@ class SubprocessExecutor:
     command; a JSON receipt on stdout is parsed, a clean exit with no structured receipt is taken as
     a bare result, and a nonzero exit / launch failure / timeout becomes a blocked stall carrying
     the reason — so an executor failure is a recorded stall, never an exception that aborts the run.
+
+    `cost_extractor(stdout, stderr) -> {tokens, usd} | None` (P7) captures the child run's cost when
+    the child does not fold it into the receipt itself — e.g. pulling the token usage out of a `pi`
+    spawn's event stream. An explicit `cost` in the receipt JSON always wins; the extractor only
+    fills a gap.
     """
 
-    def __init__(self, argv_builder, timeout: int = 300):
+    def __init__(self, argv_builder, timeout: int = 300, cost_extractor=None):
         self._argv_builder = argv_builder
         self._timeout = timeout
+        self._cost_extractor = cost_extractor
 
     def run(self, unit: Unit, composed: dict) -> Receipt:
         import json
@@ -132,10 +138,13 @@ class SubprocessExecutor:
             reason = p.stderr.strip()[:500] or f"exit {p.returncode}"
             return Receipt(outcome="stall", status="blocked", surfaced=[reason])
         try:
-            return Receipt.from_dict(json.loads(p.stdout))
+            receipt = Receipt.from_dict(json.loads(p.stdout))
         except (json.JSONDecodeError, ValueError):
             # A clean exit with no receipt JSON: the unit ran and did not declare a stall.
-            return Receipt(outcome="result", status="complete")
+            receipt = Receipt(outcome="result", status="complete")
+        if receipt.cost is None and self._cost_extractor is not None:
+            receipt.cost = self._cost_extractor(p.stdout, p.stderr)
+        return receipt
 
 
 @dataclass
@@ -266,9 +275,11 @@ def run_unit(root: Path, unit: Unit, provider, executor: Executor,
 def run(plan: Plan, provider, executor: Executor, root: Path,
         verifier: Verifier | None = None, max_retries: int = 2) -> dict:
     """Run a linear plan to completion, returning per-unit results plus the fold's deliver-vs-stall
-    summary. The loop keeps no state of its own — everything it knows is what it wrote to the
-    journal, so a re-fold of the log reproduces this run exactly. Pass a `verifier` to enforce the
-    verification gate on every unit."""
+    summary and the cost rollup. The loop keeps no state of its own — everything it knows is what it
+    wrote to the journal, so a re-fold of the log reproduces this run exactly. Pass a `verifier` to
+    enforce the verification gate on every unit."""
+    import views
     results = [run_unit(root, unit, provider, executor, verifier, max_retries)
                for unit in plan.units]
-    return {"results": results, "summary": journal.fold(root)["summary"]}
+    return {"results": results, "summary": journal.fold(root)["summary"],
+            "cost": views.cost(root)}

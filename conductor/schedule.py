@@ -137,5 +137,7 @@ def run_dag(plan: Plan, provider, executor, root: Path, verifier=None,
             for u in wave:
                 pending.remove(u)
 
+    import views
     return {"results": [results[u.id] for u in plan.units],
-            "summary": journal.fold(root)["summary"], "routing": routing}
+            "summary": journal.fold(root)["summary"], "routing": routing,
+            "cost": views.cost(root)}

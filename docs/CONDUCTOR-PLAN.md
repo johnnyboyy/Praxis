@@ -18,7 +18,7 @@ progress ledger are authoritative — do not re-derive them.
   `corpora/`). Keep all green.
 - **Working rule:** nothing old is removed before its replacement passes tests (see Migration). Small
   phases; checkpoint after each; update the progress ledger at the bottom.
-- **State now:** P1–P6 done. P1 = `conductor/journal.py` (the event-log source of truth + gap
+- **State now:** P1–P7 done. P1 = `conductor/journal.py` (the event-log source of truth + gap
   substrate). P2 = the edit gate now reads the journal fold (`journal.open_unit`) via
   `praxis/scripts/gate.py`, begin_work/close_work bridge `unit.framed`/`unit.closed` into the
   journal, and the tmp session-stamp files + freshness windows are retired on both surfaces. P3 =
@@ -33,8 +33,10 @@ progress ledger are authoritative — do not re-derive them.
   surfaced as a blocked stall. P6 = `conductor/schedule.py` (`run_dag`): `depends_on` waves run in
   parallel up to a concurrency cap, a stalled dependency blocks its dependents (cascading), cycles
   are rejected up front, and `reflexive_route` consults the provider about the conductor's OWN
-  routing move (same hook, same gap detector). Contracts settled through the gap-harvest refinement.
-  **Next: P7.**
+  routing move (same hook, same gap detector). P7 = `conductor/views.py`: handoff, chunk-ledger, and
+  cost as pure folds over the journal (the separate primitives become views), and
+  `SubprocessExecutor` captures the child run's cost. Contracts settled through the gap-harvest
+  refinement. **Next: P8.**
 - **Prioritize** the spine P1–P5 (event log → gate → provider seam → conductor → verification gate);
   P6–P9 are refinements as budget allows.
 - **Style:** execute-and-verify with minimal discussion.
@@ -313,3 +315,19 @@ until a phase subsumes them, then are retired. Nothing is removed before its rep
   - **Proven, not asserted.** Parallelism is shown with a `threading.Barrier` (N workers must arrive
     together or it times out), the cap with a peak-active counter, DAG order with a recorded run
     order, and the cascade by tracking which units actually executed.
+- **P7 — DONE.** Handoff, chunk-ledger, and cost folded into views over the journal; cost captured
+  from the child run. 8 new conductor tests (85 total, green).
+  - **`conductor/views.py` — three pure folds.** `handoff(root, unit)` (the terminal artifact a
+    downstream consumer like corpora reads: outcome, verification evidence, domains composed,
+    surfaced items, defects, attempts, cost — folded from the unit's events, not a written file);
+    `ledger(root)` (the chunk-ledger, one row per unit in first-seen order); `cost(root)` (the cost
+    rollup across every receipt — tokens/usd/tool_calls, total and per-unit, with retries summing).
+    Because they are folds, the separate handoff/chunk-ledger/cost files a process layer kept are
+    redundant — re-derived from the log rather than maintained alongside it.
+  - **Cost captured from the child run.** `SubprocessExecutor` gains a `cost_extractor(stdout,
+    stderr)` that pulls token/usd usage out of a child's output (e.g. a `pi` spawn's stream) when
+    the child doesn't fold cost into its receipt; an explicit `cost` in the receipt JSON always
+    wins. `run`/`run_dag` now return the cost rollup alongside the deliver-vs-stall summary.
+  - **Surface-side retirement deferred (as noted):** wiring praxis's file-based handoff + chunk
+    ledger to consume these views (deleting the standalone files) is the surface integration; the
+    core proves the artifacts are recoverable from the journal.
