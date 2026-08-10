@@ -57,32 +57,83 @@ class NullProvider:
         return []
 
 
-# Callable shapes CorporaProvider is fed — corpora's two read capabilities, as plain functions.
+# Callable shapes CorporaProvider is fed — corpora's read capabilities, as plain functions.
 SelectFn = Callable[[str, str], dict]          # (root, unit_of_work) -> {"domains", "warnings"}
 PartsFn = Callable[[str, list], dict]          # (root, domains)      -> {"parts", "problems"}
+ManifestFn = Callable[[str], list]             # (root)              -> [{name, subject, universal, applies_when}…]
+
+
+def _norm(v) -> str:
+    return str(v).strip().lower()
+
+
+def _applies_when_matches(applies_when: list, project_shape: dict) -> bool:
+    """Whether a domain's applies-when predicates hold for a project shape — the conductor-side
+    evaluation of corpora's shape predicates (mirrors corpus.applies_when_matches). `applies_when`
+    is corpora's manifest shape: a list of single-key dicts `{key: value | [values] | "not-none"}`."""
+    for pred in applies_when or []:
+        for key, val in pred.items():
+            actual = _norm(project_shape.get(key, ""))
+            if val == "not-none":
+                if actual in ("", "none"):
+                    return False
+                continue
+            options = val if isinstance(val, list) else [val]
+            if actual not in {_norm(o) for o in options}:
+                return False
+    return True
+
+
+def select_by_features(manifest: list, situation: Situation) -> list[str]:
+    """Map a situation's FEATURES → domain names natively (docs/CONDUCTOR-PLAN.md P8), with no
+    unit-of-work string. Universal domains always apply; a `fit==none` situation composes universals
+    only (the derived `unclassified`); otherwise a non-universal domain is selected when its
+    `subject` matches the situation's subject AND its applies-when predicates match the situation's
+    `project_shape`. This is the decoupling: corpora declares each domain's features (the manifest),
+    the provider maps the situation onto them."""
+    selected = []
+    for d in manifest or []:
+        if d.get("universal"):
+            selected.append(d["name"])
+            continue
+        if not situation.classified:
+            continue  # unclassified ⇒ universals only, never a forced feature match
+        if d.get("subject") != situation.subject:
+            continue
+        if not _applies_when_matches(d.get("applies_when", []), situation.project_shape or {}):
+            continue
+        selected.append(d["name"])
+    return sorted(selected)
 
 
 class CorporaProvider:
-    """Wraps corpora as a provider behind `compose`. Given a situation it keys corpora's `select` on
-    the bridge noun (`label`, or the seed `task_kind` when unlabeled) — except when the model rated
-    the fit `none`, where it routes to `unclassified` (composing corpora's universal domains only)
-    instead of composing the junk drawer for a forced match. When a `parts_fn` is supplied it also
-    fetches the domain bodies and returns them as `artifacts`; without one it returns the domain
-    names alone.
+    """Wraps corpora as a provider behind `compose`, in one of two selection modes:
 
-    `capabilities` is the declared capability list of the wrapped engine (so the conductor can see
-    corpora offers `ratify`/`retrospect` without this module naming them); `ratify`/`retrospect`
-    degrade unless their callables are supplied — this phase wraps `compose`."""
+    - FEATURE mode (`manifest_fn` supplied) — the P8 decoupling: the provider fetches corpora's
+      domain manifest and maps the situation's FEATURES (subject + project_shape predicates) onto it
+      via `select_by_features`, with no unit-of-work string. This is the orchestrator-agnostic path.
+    - UNIT-OF-WORK mode (`select_fn` only) — the legacy bridge: keys corpora's `select` on the
+      situation's `label` noun (or the seed `task_kind` when unlabeled). Kept for backward compat.
 
-    def __init__(self, select_fn: SelectFn, parts_fn: PartsFn | None = None,
+    Either way a `fit==none` situation routes to `unclassified` (universals only) instead of
+    composing the junk drawer for a forced match, and a `parts_fn` (when supplied) turns the selected
+    domains into body `artifacts`. `capabilities` is the wrapped engine's declared capability list;
+    `ratify`/`retrospect` degrade unless their callables are supplied."""
+
+    def __init__(self, select_fn: SelectFn | None = None, parts_fn: PartsFn | None = None,
                  capabilities: list[str] | None = None,
                  ratify_fn: Callable[[dict], dict] | None = None,
-                 retrospect_fn: Callable[[dict], dict] | None = None):
+                 retrospect_fn: Callable[[dict], dict] | None = None,
+                 manifest_fn: ManifestFn | None = None):
+        if select_fn is None and manifest_fn is None:
+            raise ValueError("CorporaProvider needs a select_fn (unit-of-work mode) or a "
+                             "manifest_fn (feature mode)")
         self._select = select_fn
         self._parts = parts_fn
         self._capabilities = list(capabilities or [])
         self._ratify = ratify_fn
         self._retrospect = retrospect_fn
+        self._manifest = manifest_fn
 
     def _compose_key(self, situation: Situation) -> str:
         # fit == none ⇒ route to unclassified (universals only), never the forced verb's full set.
@@ -92,14 +143,17 @@ class CorporaProvider:
 
     def compose(self, situation: Situation) -> dict:
         root = situation.root or ""
-        key = self._compose_key(situation)
-        sel = self._select(root, key) or {}
-        domains = sel.get("domains", []) or []
-        notes = list(sel.get("warnings", []) or [])
+        if self._manifest is not None:
+            domains = select_by_features(self._manifest(root) or [], situation)
+            notes: list = []
+        else:
+            sel = self._select(root, self._compose_key(situation)) or {}
+            domains = sel.get("domains", []) or []
+            notes = list(sel.get("warnings", []) or [])
         artifacts: list[dict] = []
         if self._parts and domains:
             parts = self._parts(root, domains) or {}
-            notes.extend(parts.get("problems", []) or [])
+            notes = notes + list(parts.get("problems", []) or [])
             for p in parts.get("parts", []) or []:
                 artifacts.append({"slot": p.get("slot"), "body": p.get("body"),
                                   "provenance": "corpora"})

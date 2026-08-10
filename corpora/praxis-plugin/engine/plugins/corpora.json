@@ -51,6 +51,17 @@
       ]
     },
     {
+      "capability": "manifest",
+      "verb": "manifest",
+      "desc": "emit the machine-readable domain index (each domain's subject, universal flag, applies-when predicates, and units-of-work) as JSON on stdout, so a process layer can select domains by FEATURE PREDICATE against a situation rather than by a unit-of-work string — the decoupling the conductor's provider maps against natively (docs/CONDUCTOR-PLAN.md P8)",
+      "read_only": true,
+      "args": [
+        {"param": "root", "flag": "--root", "global": true, "required": false},
+        {"param": "domains_dir", "flag": "--domains-dir", "required": false},
+        {"param": "json", "flag": "--json", "boolean": true, "required": false}
+      ]
+    },
+    {
       "capability": "principle-add",
       "verb": "add-principle",
       "desc": "write a freshly-authored or mined ratified principle into a domain",

@@ -18,7 +18,7 @@ progress ledger are authoritative — do not re-derive them.
   `corpora/`). Keep all green.
 - **Working rule:** nothing old is removed before its replacement passes tests (see Migration). Small
   phases; checkpoint after each; update the progress ledger at the bottom.
-- **State now:** P1–P7 done. P1 = `conductor/journal.py` (the event-log source of truth + gap
+- **State now:** P1–P8 done. P1 = `conductor/journal.py` (the event-log source of truth + gap
   substrate). P2 = the edit gate now reads the journal fold (`journal.open_unit`) via
   `praxis/scripts/gate.py`, begin_work/close_work bridge `unit.framed`/`unit.closed` into the
   journal, and the tmp session-stamp files + freshness windows are retired on both surfaces. P3 =
@@ -35,8 +35,11 @@ progress ledger are authoritative — do not re-derive them.
   are rejected up front, and `reflexive_route` consults the provider about the conductor's OWN
   routing move (same hook, same gap detector). P7 = `conductor/views.py`: handoff, chunk-ledger, and
   cost as pure folds over the journal (the separate primitives become views), and
-  `SubprocessExecutor` captures the child run's cost. Contracts settled through the gap-harvest
-  refinement. **Next: P8.**
+  `SubprocessExecutor` captures the child run's cost. P8 = corpora decoupling: corpora exposes a
+  `manifest` capability (each domain's subject / applies-when / universal), and
+  `providers.select_by_features` maps a situation's features (subject + project_shape predicates) →
+  domains natively — no unit-of-work string. Contracts settled through the gap-harvest refinement.
+  **Next: P9 (final: guardrails as policy + de-cruft).**
 - **Prioritize** the spine P1–P5 (event log → gate → provider seam → conductor → verification gate);
   P6–P9 are refinements as budget allows.
 - **Style:** execute-and-verify with minimal discussion.
@@ -331,3 +334,21 @@ until a phase subsumes them, then are retired. Nothing is removed before its rep
   - **Surface-side retirement deferred (as noted):** wiring praxis's file-based handoff + chunk
     ledger to consume these views (deleting the standalone files) is the surface integration; the
     core proves the artifacts are recoverable from the journal.
+- **P8 — DONE.** Corpora decoupling — selection by situation features, not a unit-of-work string.
+  9 new conductor tests (94 total, green); corpora's 167 tests untouched (the change is additive).
+  - **corpora exposes a `manifest` capability** (the existing `manifest` verb, newly registered in
+    `corpora.json`): each domain's `subject`, `applies-when` predicates, and `universal` flag as
+    JSON — the machine-readable feature index a process layer selects against.
+  - **`providers.select_by_features(manifest, situation)`** maps a situation's features onto that
+    index natively: universal domains always; otherwise a non-universal domain matches when its
+    `subject` equals the situation's subject AND its applies-when predicates hold for the situation's
+    `project_shape` (predicate evaluation mirrored conductor-side). A `fit==none` situation composes
+    universals only. No unit-of-work string anywhere on this path — the decoupling.
+  - **`CorporaProvider` gains a feature mode** (`manifest_fn`) alongside the legacy unit-of-work
+    mode (`select_fn`); it raises if given neither. `RealFeatureSelectionTest` proves it against the
+    real corpora manifest: subject=coding on the self-host shape composes prose-craft + the
+    framework-agnostic coding domains, and excludes design domains and framework-gated ones.
+  - **Deferred (bigger corpora migration):** corpora's OWN `select` verb still uses `units-of-work`
+    (its 167 tests rely on it), so domains keep both fields for now. Re-authoring domains to drop
+    `units-of-work` and making corpora's native selection feature-only is a larger corpora-side
+    migration; P8 delivers the decoupled path the conductor composes through.
