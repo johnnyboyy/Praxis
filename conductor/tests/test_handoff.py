@@ -7,9 +7,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-# praxis/scripts first so `gate` is importable, then conductor's dir at index 0 so its `handoff`
-# (not praxis/scripts' same-named module) wins.
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "praxis" / "scripts"))
+# the cannibalized scripts dir first so `gate` is importable, then conductor's dir at index 0 so its
+# `handoff` (not any same-named module) wins.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import handoff as handoff_mod  # noqa: E402

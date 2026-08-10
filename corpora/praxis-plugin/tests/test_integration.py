@@ -24,9 +24,16 @@ CORPUS_PY = PLUGIN.parents[0] / "scripts" / "corpus.py"   # skills/corpora/scrip
 CORPORA_MANIFEST = PLUGIN / "engine" / "plugins" / "corpora.json"
 PRAXIS_SCRIPTS = PLUGIN.parents[1] / "praxis" / "scripts"
 
+# The legacy engine-slot integration: corpora registering into praxis-core's plugin slots. The
+# conductor retired this coupling (it binds corpora directly via adapters.corpora_provider), so
+# praxis-core's engine/frame may no longer be present — skip this bridge test when it isn't.
 sys.path.insert(0, str(PRAXIS_SCRIPTS))
-import engine  # noqa: E402  praxis-core generic resolver
-import frame  # noqa: E402  praxis-core framing
+try:
+    import engine  # noqa: E402  praxis-core generic resolver
+    import frame  # noqa: E402  praxis-core framing
+    _HAVE_PRAXIS_CORE = True
+except ImportError:  # pragma: no cover
+    _HAVE_PRAXIS_CORE = False
 
 
 def make_project(base: Path) -> Path:
@@ -54,6 +61,8 @@ def move_corpora_into_slot(slot: Path) -> None:
     (slot / "corpora.json").write_text(json.dumps(data))
 
 
+@unittest.skipUnless(_HAVE_PRAXIS_CORE,
+                     "praxis-core (engine/frame) retired — legacy engine-slot bridge no longer wired")
 class CorporaPluggedIn(unittest.TestCase):
     def setUp(self):
         if not CORPUS_PY.is_file():

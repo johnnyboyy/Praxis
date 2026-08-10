@@ -18,7 +18,7 @@ Tools:
   conductor_mint   — promote a recurring suggestion into real vocabulary (the operator's ratify).
 
 Register (user scope):
-  claude mcp add conductor -s user -- python3 <this file>
+  claude mcp add praxis -s user -- python3 <this file>
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ import journal  # noqa: E402
 import views  # noqa: E402
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
-mcp = FastMCP("conductor")
+mcp = FastMCP("praxis")
 
 
 def _root(search_base: str | None) -> Path:
