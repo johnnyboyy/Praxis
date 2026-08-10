@@ -6,9 +6,11 @@ running progress ledger. Steer by editing the "Target contracts" or reordering p
 
 ## Start here (cold-boot briefing for a fresh session)
 
-You are continuing an in-progress reshape of this repo (`~/jdev/skills-pi`, the Pi-dedicated fork of
-a praxis+corpora system) toward the ideal below. Read this whole file first; the contracts and the
-progress ledger are authoritative — do not re-derive them.
+**This reshape is COMPLETE.** Every phase (P1–P9) plus the PG promotion loop is done, committed, and
+green; the post-roadmap questions are resolved (see the ledger). `~/jdev/skills-pi` (the Pi-dedicated
+fork of a praxis+corpora system) is the live, git-tracked Claude Code surface. Read this whole file
+for context; the contracts and the progress ledger are authoritative — do not re-derive them, and
+don't re-open a settled phase or resolved question without a new steer.
 
 - **Layout:** `conductor/` (the new judgment-agnostic core being built — start here), `corpora/` (the
   judgment engine, becomes a provider), `praxis/` (legacy process scripts, retired phase by phase),
@@ -154,32 +156,39 @@ capabilities()      -> [<name>…]
   surfaced:[<proposal>…], evidence:<verification…|null>, cost:{tokens,usd}|null, tool_calls:int }
 ```
 
-## Phases (small, testable; each enables the next)
+## Phases (small, testable; each enables the next) — ALL DONE ✓
 
-- **P1 — Event log as source of truth.** `conductor/journal.py`: append + fold-to-state + summary +
+- [x] **P1 — Event log as source of truth.** `conductor/journal.py`: append + fold-to-state + summary +
   `open_unit`. The keystone; everything reads state from here. *(tests)*
-- **P2 — Gate reads the log.** Rewrite the edit gate to consult the journal fold; retire the
+- [x] **P2 — Gate reads the log.** Rewrite the edit gate to consult the journal fold; retire the
   tmp session-stamp files + freshness windows (vestigial in the Pi fork). *(tests + live)*
-- **P3 — Provider seam + situation schema.** `conductor/situation.py` + `conductor/providers.py`;
+- [x] **P3 — Provider seam + situation schema.** `conductor/situation.py` + `conductor/providers.py`;
   wrap corpora as a provider behind `compose`. The conductor consults the hook, not a hardcoded
   engine call. Degrades with a null provider. *(tests)*
-- **P4 — Conductor core (linear).** `conductor/run.py`: iterate a plan's units, consult the provider,
+- [x] **P4 — Conductor core (linear).** `conductor/run.py`: iterate a plan's units, consult the provider,
   dispatch via an **executor** (inline / spawn), write receipts as events. *(tests + live)*
-- **P5 — Verification gate.** Recorded verify transition; defect → feedback loop-back, bounded
+- [x] **P5 — Verification gate.** Recorded verify transition; defect → feedback loop-back, bounded
   retries, then surface. Fixes the unenforced-verification hole; hardens `test-scaffold`'s loop-back.
-- **P6 — DAG + concurrency + reflexive routing.** `depends_on` scheduling, concurrency cap
+- [x] **P6 — DAG + concurrency + reflexive routing.** `depends_on` scheduling, concurrency cap
   (parallel-then-verify enforced); the conductor consults judgment about its *own* routing.
-- **P7 — Fold in receipts/handoff/cost; retire redundant primitives.** Handoff/chunk-ledger become
-  views over the journal; cost/tokens captured from the child run.
-- **P8 — Corpora decoupling.** Migrate corpora selection from `units-of-work` strings to feature
-  predicates; the provider maps situation features → domains natively.
-- **PG — Gap-surfacing & vocabulary accretion (cross-cutting; the conductor's ratify gate).** The
+- [x] **P7 — Fold in receipts/handoff/cost; retire redundant primitives.** Handoff/chunk-ledger become
+  views over the journal; cost/tokens captured from the child run. *(views built; the trace was the
+  one genuine duplicate and was migrated — chunk-ledger/handoff are lifecycle machinery, left as-is,
+  see the ledger.)*
+- [x] **P8 — Corpora decoupling.** Migrate corpora selection from `units-of-work` strings to feature
+  predicates; the provider maps situation features → domains natively. *(the conductor composes
+  feature-first via `select_by_features`; corpora keeping its own `units-of-work` was accepted, see
+  the ledger.)*
+- [x] **PG — Gap-surfacing & vocabulary accretion (cross-cutting; the conductor's ratify gate).** The
   *surfacing hook* lands early in **P3** (the provider reports `fit`; a forced/weak match emits
   `conductor.gap` and routes to `unclassified` instead of composing the junk drawer). The *promotion
   loop* — operator reviews surfaced gaps and mints a new verb/phase/workflow — is its own step, built
   once real gaps have accumulated (first-attempt-is-first-draft, applied to the vocabulary itself).
-- **P9 — Guardrails as policy + final de-cruft.** Operator guards become editable policy; collapse
+- [x] **P9 — Guardrails as policy + final de-cruft.** Operator guards become editable policy; collapse
   the engine-plugin hop to a direct provider call.
+
+Also done beyond the numbered phases: a capstone end-to-end test of the whole vertical, the workflow
+trace migrated onto the journal, skills-pi git-initialized and made the live Claude Code surface.
 
 ## Migration approach
 The Pi extension (`pi-extension/praxis/`) is the stable outer shell; its guts swap from the legacy
@@ -423,3 +432,11 @@ capstone `test_end_to_end.py` exercises the whole vertical composed.
   with domains, or one phase spanning many domains — is itself the *signal that the phase/task is
   drawn too broadly*, which the gap mechanism already surfaces; so let the selection vocabulary grow
   organically through use rather than force a schema migration now.
+
+### Live surface — verified post-restart
+The MCP server was restarted and the whole live flow was exercised end-to-end through it on an
+isolated root: `begin_work` → `record_outcome` → `work_status` (its trace is now the journal view:
+`views.ledger` + `journal.fold` summary) → `close_work`. The journal recorded `unit.framed →
+unit.receipt → unit.closed`, no `trace.jsonl` was written, and skills-pi's own journal was untouched.
+The standing "MCP needs a restart to pick up `record_outcome` + the journal-view `trace()`" caveat is
+closed. Nothing outstanding.
