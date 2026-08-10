@@ -190,6 +190,57 @@ capabilities()      -> [<name>…]
 Also done beyond the numbered phases: a capstone end-to-end test of the whole vertical, the workflow
 trace migrated onto the journal, skills-pi git-initialized and made the live Claude Code surface.
 
+## The interactive head — tasklist → plan → cascade (DONE, core + surface)
+The execution vertical (P1–P9) had no *head*: `run_dag` was reachable only from tests, and the MCP
+surface drove one unit per call. That head now exists — the "give me a tasklist and it cascades"
+flow the operator asked for — built in the same seam grammar (Inline/Subprocess/Null-degrade),
+core-only, every suite green (conductor 149).
+- **`conductor/plan.py` — tasklist intake + the planner seam.** `TaskSpec` (one task, carrying the
+  gap signal + `depends_on`), deterministic assembly (`build_units`/`spec_to_unit`, tested: id
+  assignment, dup/dangling-dep rejection), and the **`Planner` seam**: `PassthroughPlanner` (the
+  judgment-free degrade — schedule as declared), `CallablePlanner` (INLINE — decomposes and can
+  PAUSE to interview the operator via a `questions` outcome), `SubprocessPlanner` (SPAWNED — consults
+  docs/caches; a failure pauses rather than crashes). `plan_tasks` records the plan (or the interview
+  pause) to the journal (so planning is a fold); `plan_and_run` runs the head-to-tail move — plan,
+  then if the planner didn't pause, set the DAG cascading through `run_dag`. `reconstruct_units`
+  rebuilds a plan from the journal so a stateless surface can find the next ready unit.
+- **`conductor/handoff.py` — the forward handoff (push + pull), one assembly.** `assemble` builds a
+  unit's judgment block + brief on demand (shared by the push executor and the pull tool, so they
+  can't drift — `conduct.py`'s private assemblers were retired onto it). `next_ready`/`status` fold
+  the journal for the next runnable unit and the progress buckets. **`pull` is the reliability fix**
+  for the pull model: it frames the next ready unit, composes its judgment, and records
+  `payload_read` — and the existing edit gate (`praxis/scripts/gate.py`) denies edits for a
+  spawn/file-delivery unit UNTIL that read is on the journal. So a self-advancing agent is free to
+  skip the pull, but cannot edit until it has pulled: the read is the fence in front of the work,
+  giving push's guarantee without the conductor micro-managing the chain. Cross-spawn cascade pulls
+  in CODE (`run_unit` already consults per unit); in-context chaining pulls via the tool, gated.
+- **Surface (`conduct.py` + `mcp_server.py`).** `run_tasklist` (plan a JSON tasklist → cascade
+  through `run_dag` under corpora + the isolated-claude executor + a `test_cmd` gate; `dry_run`
+  previews the plan + per-unit routing/gap without spending) and `next_handoff` (reconstruct the
+  plan, `pull` the next unit). MCP gains `plan` and `next_handoff` tools — the interactive caller is
+  the planner (it interviews the operator, decomposes, passes structured tasks with `depends_on`),
+  and the live `conductor` server points at this file, so they go live on the next MCP reconnect.
+
+## The final cutover (praxis front-door → conductor) — STAGED, not yet executed
+Retiring the legacy front door and renaming `conductor/ → praxis/` is genuinely destructive to the
+LIVE environment and must be done deliberately, not blind: `~/.claude/hooks/praxis-*.sh` and
+`~/.claude/mcp-servers/praxis-front-door/server.py` all **symlink into `skills-pi/praxis/`**, so a
+rename breaks the operator's edit gate on the next edit and deletes 228 passing praxis tests. Already
+true and de-risking it: the gate reads the SHARED journal and conductor's `plan`/`pull` write
+`unit.framed` there, so **the existing gate already authorizes conductor-framed units without the
+front door** — conductor can govern edits today. The staged, reversible cutover (each step green,
+nothing removed before its replacement works):
+  1. Reconnect MCP so `plan`/`next_handoff` are live; drive a real tasklist through them.
+  2. Repoint the live edit-gate hook + retire the `praxis-*` stamp hooks (the journal is the sole
+     source; the frame-marker fallback goes).
+  3. Cannibalize praxis's deterministic scripts (`root_tree`, `chunk_ledger`, `units`, `churn`,
+     `handoff`) INTO the conductor as tested modules — done as part of the rename so imports move
+     once, not twice.
+  4. Unregister `praxis-front-door`; delete `praxis/front-door/` + `praxis/hooks/`.
+  5. Rename `conductor/ → praxis/` and repoint the (now conductor-owned) gate symlink.
+Steps 1–2 are safe to do now on the operator's go; 3–5 are the irreversible surface cutover, to run
+deliberately with the operator watching.
+
 ## Migration approach
 The Pi extension (`pi-extension/praxis/`) is the stable outer shell; its guts swap from the legacy
 praxis CLI to `conductor/` one phase at a time, tests green at each step. Legacy praxis scripts stay
@@ -433,7 +484,26 @@ capstone `test_end_to_end.py` exercises the whole vertical composed.
   drawn too broadly*, which the gap mechanism already surfaces; so let the selection vocabulary grow
   organically through use rather than force a schema migration now.
 
-### Live surface — verified post-restart
+### Adoption — the conductor is now drivable from Claude Code (DONE)
+The conductor is wired to a real surface, closing open-item #2:
+- **`conductor/conduct.py`** (wiring tier) — `run_task` binds the pure loop to the real world: corpora
+  via `adapters.corpora_provider`, a `ClaudeExecutor` (isolated `claude -p` with the composed
+  judgment as `--append-system-prompt`, `--permission-mode bypassPermissions` when `allow_edits`,
+  cost parsed from `--output-format json`), and a `CommandVerifier` from the project test command.
+  A `dry_run` previews composition + routing + the child command without spawning or writing a unit.
+  Also a standalone CLI (`python3 conduct.py --intent … --dry-run`).
+- **`conductor/mcp_server.py`** — four MCP tools: `conduct` (elicits the gap signal via its own
+  `suggested_kind` + `fit` arguments — closing open-item #1, the elicitation crux), `conductor_status`
+  (journal fold), `conductor_gaps` (promotable mint candidates), `conductor_mint` (operator ratify).
+- **Registered with Claude Code** (`claude mcp add conductor -s user`) — ✔ Connected.
+- **Verified (dry-run, no spend):** a clean-fit task composes real corpora judgment (71KB) + builds
+  the claude argv; a `fit==none` misfit routes to `unclassified` = universals-only (NOT the junk
+  drawer) and surfaces a `conductor.gap`; 3 recurrences make `provision-infra` promotable. The gap
+  mechanism fires end-to-end through the live tool.
+- **Not yet exercised live:** an `allow_edits=true` run that actually spawns claude to change files +
+  gates on a test command (costs a nested claude call) — the operator's to run when ready.
+
+### Live surface (legacy praxis MCP) — verified post-restart
 The MCP server was restarted and the whole live flow was exercised end-to-end through it on an
 isolated root: `begin_work` → `record_outcome` → `work_status` (its trace is now the journal view:
 `views.ledger` + `journal.fold` summary) → `close_work`. The journal recorded `unit.framed →
