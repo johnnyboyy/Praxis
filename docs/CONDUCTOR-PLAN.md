@@ -18,7 +18,7 @@ progress ledger are authoritative — do not re-derive them.
   `corpora/`). Keep all green.
 - **Working rule:** nothing old is removed before its replacement passes tests (see Migration). Small
   phases; checkpoint after each; update the progress ledger at the bottom.
-- **State now:** P1–P9 done — the roadmap is complete. P1 = `conductor/journal.py` (the event-log source of truth + gap
+- **State now:** P1–P9 + PG done — the roadmap is complete. P1 = `conductor/journal.py` (the event-log source of truth + gap
   substrate). P2 = the edit gate now reads the journal fold (`journal.open_unit`) via
   `praxis/scripts/gate.py`, begin_work/close_work bridge `unit.framed`/`unit.closed` into the
   journal, and the tmp session-stamp files + freshness windows are retired on both surfaces. P3 =
@@ -376,11 +376,25 @@ until a phase subsumes them, then are retired. Nothing is removed before its rep
     path itself stays for a project that registers a *different* engine — only the conductor's own
     corpora access is now direct.
 
+- **PG (promotion loop) — DONE.** The vocabulary-accretion half of the gap mechanism — the
+  conductor's ratify gate. `conductor/accretion.py`. 13 new conductor tests (121 total, green).
+  - **`promotable(root, min_count)`** — the mint signal: `journal.gap_candidates` suggestions that
+    have recurred ≥ `min_count` times and aren't already known vocabulary. Real gaps, accumulated,
+    ready for the operator to judge.
+  - **`mint(root, vocabulary, term)`** — promote a suggestion into real vocabulary by recording a
+    `conductor.mint` event (idempotent; a seed or already-minted term is a no-op; unknown vocabulary
+    rejected). The accreted vocabulary is a fold, not a registry: **`vocabulary(root)`** replays the
+    mints on top of the built-in seeds, and **`is_known`** / **`minted`** / **`review`** read it.
+  - **Closed loop, proven.** A recurring `fit==none` suggestion surfaces as `promotable`; minting it
+    makes it `is_known` and drops it from `promotable` (resolved), while the base seeds are retained
+    — the surfacing half (P3) and the promotion half now meet. Where corpora accretes judgment, the
+    conductor accretes process vocabulary, both through a ratify gate.
+
 ## Status: roadmap complete
-All nine phases are done and every suite is green (conductor 108, praxis 224, corpora 167). The
-conductor is a working judgment-agnostic core — event-log source of truth, journal-first edit gate,
-provider seam with gap surfacing, linear + DAG execution with a recorded verification gate, views
-over the log, feature-based corpora selection, and editable policy — with corpora wrapped as one
-provider behind a direct binding. Remaining work is not roadmap phases but the surface/migration
-notes recorded inline above (praxis handoff/chunk-ledger consuming the P7 views; the larger
-corpora units-of-work retirement; the promotion loop for accumulated gaps).
+All nine phases plus the PG promotion loop are done and every suite is green (conductor 121,
+praxis 224, corpora 167). The conductor is a working judgment-agnostic core — event-log source of
+truth, journal-first edit gate, provider seam with the full gap mechanism (surface → recur → mint),
+linear + DAG execution with a recorded verification gate, views over the log, feature-based corpora
+selection, and editable policy — with corpora wrapped as one provider behind a direct binding.
+Remaining work is not roadmap phases but the surface/migration notes recorded inline above (praxis
+handoff/chunk-ledger consuming the P7 views; the larger corpora units-of-work retirement).
