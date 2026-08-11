@@ -3,12 +3,14 @@
 client).
 
 Tools:
-  plan             — hand the conductor a TASKLIST (1..N tasks); it plans them into a DAG and sets
-                     the cascade in motion through run_dag, each unit composing its own judgment and
-                     gating on a test command. The interactive caller is the planner: it interviews
-                     the operator, decomposes, and passes structured tasks (with depends_on edges).
+  plan             — hand the conductor a TASKLIST (1..N tasks) and CASCADE it: plan into a DAG and
+                     run each ready wave through run_dag as ISOLATED children, gating on a test
+                     command. For handing work to fresh isolated contexts.
+  register_plan    — record a tasklist's DAG WITHOUT running it (no spawns), so you can implement the
+                     units INLINE via next_handoff. Use this when you mean to do the work yourself.
   next_handoff     — the PULL: hand the next ready unit's brief + judgment to a self-advancing agent
-                     (records the read that opens the edit gate). For in-context chaining.
+                     (records the read that opens the edit gate). For in-context chaining after
+                     register_plan (or after a plan cascade, to resume a stalled unit).
   conduct          — run ONE unit of work through the conductor (compose judgment → isolated claude
                      executor → verification gate → journal). Elicits the gap signal via its own
                      arguments: the caller states `suggested_kind` (what it would freely call this)
@@ -29,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import accretion  # noqa: E402
-import conduct  # noqa: E402
+import conduct as conduct_engine  # noqa: E402  (aliased: the `conduct` MCP tool below shadows the bare name)
 import journal  # noqa: E402
 import views  # noqa: E402
 from mcp.server.fastmcp import FastMCP  # noqa: E402
@@ -66,7 +68,7 @@ def conduct(intent: str, brief: str | None = None, task_kind: str = "change",
     must be true for the child to actually change files; `dry_run` (default TRUE) previews the
     composed judgment, the routing, and the child command WITHOUT spawning or writing a unit — call
     it once to check, then re-call with dry_run=false, allow_edits=true to execute."""
-    out = conduct.run_task(
+    out = conduct_engine.run_task(
         _root(search_base), intent=intent, brief=brief, task_kind=task_kind, subject=subject,
         suggested_kind=suggested_kind, fit=fit, phase=phase,
         targets=[t.strip() for t in (targets or "").split(",") if t.strip()],
@@ -100,9 +102,29 @@ def plan(tasks: str, test_cmd: str | None = None, model: str | None = None,
         return json.dumps({"error": f"tasks must be a JSON array of task objects: {e}"}, indent=2)
     if not isinstance(parsed, list) or not parsed:
         return json.dumps({"error": "tasks must be a non-empty JSON array"}, indent=2)
-    out = conduct.run_tasklist(_root(search_base), parsed, test_cmd=test_cmd, model=model,
+    out = conduct_engine.run_tasklist(_root(search_base), parsed, test_cmd=test_cmd, model=model,
                                concurrency=concurrency, allow_edits=allow_edits, dry_run=dry_run)
     return json.dumps(out, indent=2)
+
+
+@mcp.tool()
+def register_plan(tasks: str, search_base: str | None = None) -> str:
+    """Record a tasklist's DAG to the journal WITHOUT running it — the entry for implementing units
+    INLINE (yourself), not cascading them to isolated children. `tasks` is the same JSON array of
+    task objects the `plan` tool takes (intent / id / task_kind / subject / suggested_kind / fit /
+    depends_on). This writes one plan event (deterministic, no spawn, no provider consult); then call
+    `next_handoff` to pull the next ready unit into THIS context — it frames the unit and opens the
+    edit gate, and you do the work here. Repeat next_handoff until it reports `complete`.
+
+    Use `plan` (not this) when you want the conductor to hand each unit to a fresh isolated child;
+    use `register_plan` + `next_handoff` when you want to implement inline with the design in hand."""
+    try:
+        parsed = json.loads(tasks)
+    except json.JSONDecodeError as e:
+        return json.dumps({"error": f"tasks must be a JSON array of task objects: {e}"}, indent=2)
+    if not isinstance(parsed, list) or not parsed:
+        return json.dumps({"error": "tasks must be a non-empty JSON array"}, indent=2)
+    return json.dumps(conduct_engine.register_plan(_root(search_base), parsed), indent=2)
 
 
 @mcp.tool()
@@ -111,7 +133,7 @@ def next_handoff(brief: str | None = None, search_base: str | None = None) -> st
     self-advancing agent that chains units in one context. Recording the pull opens the edit gate for
     that unit — you cannot edit for it until you have pulled it. Returns a `waiting`/`complete`
     status when nothing is ready, or `no-plan` when no tasklist has been planned for this root."""
-    return json.dumps(conduct.next_handoff(_root(search_base), brief=brief), indent=2)
+    return json.dumps(conduct_engine.next_handoff(_root(search_base), brief=brief), indent=2)
 
 
 @mcp.tool()
@@ -121,7 +143,7 @@ def conductor_status(search_base: str | None = None) -> str:
     root = _root(search_base)
     f = journal.fold(root)
     return json.dumps({"root": str(root), "open_unit": journal.open_unit(root),
-                       "summary": f["summary"], "cost": views.cost(root)["total"]}, indent=2)
+                       "summary": f["summary"], "cost": views.cost(root)}, indent=2)
 
 
 @mcp.tool()

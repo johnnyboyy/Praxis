@@ -176,7 +176,7 @@ def run_task(root: str | Path, *, intent: str, brief: str | None = None,
         verifier = CommandVerifier(lambda u, r, c, _argv=argv: _argv)
     unit = Unit(id=_gen_id(task_kind), situation=situation)
     result = run_unit(root, unit, provider, executor, verifier, retries)
-    result["cost"] = views.cost(root)["total"]
+    result["cost"] = views.cost(root)
     return result
 
 
@@ -197,12 +197,7 @@ def run_tasklist(root: str | Path, tasks: list[dict], *, test_cmd: str | None = 
     import plan as plan_mod
     root = Path(root).resolve()
     provider = adapters.corpora_provider(root)
-    shape = project_shape_for(root)
-    specs = []
-    for t in tasks:
-        d = dict(t)
-        d.setdefault("project_shape", shape)
-        specs.append(plan_mod.TaskSpec.from_dict(d))
+    specs = _specs_for(root, tasks)
 
     if dry_run:
         units = plan_mod.build_units(specs, root)
@@ -224,6 +219,40 @@ def run_tasklist(root: str | Path, tasks: list[dict], *, test_cmd: str | None = 
         verifier = CommandVerifier(lambda u, r, c, _argv=argv: _argv)
     return plan_mod.plan_and_run(root, specs, provider, executor, verifier=verifier,
                                  concurrency=concurrency, max_retries=max_retries)
+
+
+def _specs_for(root: Path, tasks: list[dict]) -> list:
+    """Build TaskSpecs from a raw tasklist, defaulting each task's project_shape to the root's shape
+    (the features non-universal domains gate on)."""
+    import plan as plan_mod
+    shape = project_shape_for(root)
+    specs = []
+    for t in tasks:
+        d = dict(t)
+        d.setdefault("project_shape", shape)
+        specs.append(plan_mod.TaskSpec.from_dict(d))
+    return specs
+
+
+def register_plan(root: str | Path, tasks: list[dict]) -> dict:
+    """Record a tasklist's DAG to the journal WITHOUT running it — the entry the pull workflow needs.
+    Registering is judgment-free (the deterministic PassthroughPlanner): it assigns ids, validates
+    the edges, and writes one `conductor.plan` event carrying the resolved specs, so `next_handoff`
+    can reconstruct the plan and hand units into the caller's OWN context one at a time. No provider
+    consult, no spawn, no cascade — the opposite of `run_tasklist` (which records AND cascades
+    isolated children). Use this when you mean to implement the units inline, pulling each handoff."""
+    import plan as plan_mod
+    root = Path(root).resolve()
+    specs = _specs_for(root, tasks)
+    outcome = plan_mod.plan_tasks(root, specs)  # PassthroughPlanner: records the DAG, runs nothing
+    if outcome.status == "questions":
+        return {"status": "questions", "questions": outcome.questions, "note": outcome.note}
+    units = outcome.units
+    return {"status": "registered",
+            "plan": {"units": [u.id for u in units],
+                     "edges": [[d, u.id] for u in units for d in u.depends_on]},
+            "next": "call next_handoff to pull the next ready unit into this context (it frames the "
+                    "unit and opens the edit gate); repeat until status is complete"}
 
 
 def next_handoff(root: str | Path, brief: str | None = None) -> dict:
