@@ -28,8 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import contributors as contributors_mod  # noqa: E402
 import journal  # noqa: E402
-from run import Plan, verifier_from_test_cmd  # noqa: E402
-from schedule import run_dag  # noqa: E402
+import orchestrate  # noqa: E402
 
 
 def _state_dir(root: Path) -> Path:
@@ -85,10 +84,15 @@ def run_cascade(root: str | Path, *, executor, contributors=None, test_cmd: str 
     if units is None:
         return {"status": "no-plan"}
     contribs = contributors if contributors is not None else contributors_mod.contributors_for(root)
-    verifier = verifier_from_test_cmd(test_cmd)
-    result = run_dag(Plan(units=units), contribs, executor, root, verifier=verifier,
-                     concurrency=concurrency, max_retries=max_retries, resume=True)
-    return {"status": "complete", **result}
+    barrier = orchestrate.barrier_from_test_cmd(test_cmd)
+    orch = orchestrate.run_orchestrated(root, units, contribs, executor, barrier=barrier,
+                                        max_loops=(max_retries if max_retries is not None else 3),
+                                        resume=True, concurrency=concurrency,
+                                        max_retries=max_retries)
+    fanout = orch.get("fanout") or {}
+    status = "complete" if orch["status"] == "complete" else orch["status"]
+    return {"status": status, **fanout,
+            "orchestration": {k: v for k, v in orch.items() if k != "fanout"}}
 
 
 def launch_detached(root: str | Path, tasks: list[dict], *, test_cmd: str | None = None,

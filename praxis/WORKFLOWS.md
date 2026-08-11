@@ -159,3 +159,14 @@ Surfaced by *building* the runner (the model discovering its own gaps — the th
   passing units); re-plan is the expensive re-extraction reserved for structural failure.
   Process note: this unit was built by SPAWN + verify (the model's default), correcting two prior
   units done inline — inline is now a *declared* carry-edge exception, not a silent convenience.
+
+- 2026-08-10 (drive surface wired): the detached cascade (`plan` tool, dry_run=false) now flows
+  through `run_orchestrated` — a driven plan gets barrier-verify + fix-units + escalation, not just
+  fan-out (`barrier_from_test_cmd` builds the barrier; no `test_cmd` → trivial pass = prior behavior).
+  Added `close_unit` (`conduct` + MCP tool): records `unit.done` for the open/named inline unit, so
+  multi-unit inline DAGs advance past dependencies and the gate closes when a unit finishes — closing
+  the inline-completion gap. **Two entry points now exist:** the ORCHESTRATOR (`plan` → detached
+  spawn-per-unit; drop out, poll `plan_status`) and INLINE (`register_plan` → `next_handoff` →
+  `close_unit`; stay in-context — questions, small carry-edge work). New MCP tools are live only after
+  an MCP-server restart. Open: `max_loops` is derived from `max_retries` (overloaded — a dedicated
+  fix-loop budget later); `close_unit` only closes as `result` (no stalled/abandoned close yet).

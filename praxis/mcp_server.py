@@ -133,6 +133,15 @@ def next_handoff(brief: str | None = None, search_base: str | None = None) -> st
 
 
 @mcp.tool()
+def close_unit(unit_id: str | None = None, note: str | None = None,
+               search_base: str | None = None) -> str:
+    """Mark the current inline unit done so its dependents unlock and the edit gate closes; call it
+    when you finish an inline unit pulled via next_handoff."""
+    return json.dumps(conduct_engine.close_unit(_root(search_base), unit_id=unit_id, note=note),
+                      indent=2)
+
+
+@mcp.tool()
 def conductor_status(search_base: str | None = None) -> str:
     """The journal fold for the governing root: the open unit (if any), the deliver-vs-stall summary
     by phase and workflow, and the cost rollup."""

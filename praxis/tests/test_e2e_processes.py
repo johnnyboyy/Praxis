@@ -107,6 +107,35 @@ class CascadeProcessTest(unittest.TestCase):
             self.assertIn("cost", st)
 
 
+class CloseUnitTest(unittest.TestCase):
+    """The inline unit-close: after pulling a unit and doing the work in-context, close_unit marks it
+    done so dependents unlock and the edit gate closes until the next handoff."""
+
+    def test_close_unlocks_dependent_and_closes_gate(self):
+        with TempRoot() as root:
+            conduct_engine.register_plan(root, [
+                {"intent": "u1", "id": "u1", "targets": ["u1.py"]},
+                {"intent": "u2", "id": "u2", "depends_on": ["u1"], "targets": ["u2.py"]}])
+
+            h1 = conduct_engine.next_handoff(root)
+            self.assertEqual(h1["unit"], "u1")
+            self.assertEqual(gate.gate_decision(root, str(root / "u1.py"))[0], "allow")
+
+            closed = conduct_engine.close_unit(root)
+            self.assertEqual(closed, {"status": "closed", "unit": "u1"})
+            self.assertEqual(journal.state_of(root, "u1"), "done")
+            self.assertEqual(gate.gate_decision(root, str(root / "u1.py"))[0], "no_unit")
+
+            h2 = conduct_engine.next_handoff(root)
+            self.assertEqual(h2["unit"], "u2")
+            self.assertEqual(conduct_engine.close_unit(root, unit_id="u2", note="done")["unit"], "u2")
+            self.assertEqual(conduct_engine.plan_status(root)["status"], "complete")
+
+    def test_no_open_unit(self):
+        with TempRoot() as root:
+            self.assertEqual(conduct_engine.close_unit(root), {"status": "no-open-unit"})
+
+
 class DetachedWorkerProcessTest(unittest.TestCase):
     """The durable 'hand off and come back later' process: a real detached worker PROCESS runs the
     plan, survives independently, and the run is observed by reattaching through plan_status. The

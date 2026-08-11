@@ -6,7 +6,7 @@ from typing import Callable
 
 import journal
 import schedule
-from run import Plan, Unit, Verdict, run_unit
+from run import Plan, Unit, Verdict, run_unit, verifier_from_test_cmd
 from situation import Situation
 
 
@@ -14,10 +14,20 @@ def _default_owner(defect: str) -> dict:
     return {"intent": f"fix: {defect}", "targets": []}
 
 
+def barrier_from_test_cmd(test_cmd: str | None) -> Callable[[], Verdict]:
+    verifier = verifier_from_test_cmd(test_cmd)
+    if verifier is None:
+        return lambda: Verdict(verified=True)
+    return lambda: verifier.verify(None, None, None)
+
+
 def run_orchestrated(root: Path, units, contributors, executor,
                      barrier: Callable[[], Verdict], *, max_loops: int = 3,
-                     defect_owner: Callable[[str], dict] | None = None) -> dict:
-    result = schedule.run_dag(Plan(units), contributors, executor, root, verifier=None)
+                     defect_owner: Callable[[str], dict] | None = None,
+                     resume: bool = False, concurrency: int | None = None,
+                     max_retries: int | None = None) -> dict:
+    result = schedule.run_dag(Plan(units), contributors, executor, root, verifier=None,
+                              resume=resume, concurrency=concurrency, max_retries=max_retries)
     stalled = [r["unit"] for r in result["results"] if r["outcome"] == "stall"]
     if stalled:
         journal.append(root, "orchestration.escalated", reason="unit-stalled", units=stalled)

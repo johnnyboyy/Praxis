@@ -86,6 +86,51 @@ class RunCascadeCoreTest(unittest.TestCase):
             self.assertEqual(out["status"], "no-plan")
 
 
+class CascadeBarrierTest(unittest.TestCase):
+    """run_cascade routes fan-out through the orchestrator: a test_cmd becomes the barrier that must
+    pass (with a fix round) before the cascade closes; a barrier that never passes escalates."""
+
+    def _counting_barrier_cmd(self, root, *, pass_at):
+        script = root / "barrier.py"
+        counter = root / "barrier.count"
+        script.write_text(
+            "import pathlib, sys\n"
+            f"c = pathlib.Path({str(counter)!r})\n"
+            "n = (int(c.read_text()) if c.exists() else 0) + 1\n"
+            "c.write_text(str(n))\n"
+            f"sys.exit(0 if n >= {pass_at} else 1)\n")
+        return f"{sys.executable} {script}"
+
+    def test_no_test_cmd_completes_like_before(self):
+        with TempRoot() as root:
+            plan_tasks(root, [TaskSpec(intent="a", id="a"),
+                              TaskSpec(intent="b", id="b", depends_on=["a"])])
+            ex = InlineExecutor(lambda u, c: Receipt(outcome="result"))
+            out = cascade.run_cascade(root, executor=ex, contributors=[], concurrency=1)
+            self.assertEqual(out["status"], "complete")
+            self.assertIn("results", out)
+            self.assertEqual(out["orchestration"]["attempts"], 1)
+
+    def test_failing_then_passing_barrier_drives_a_fix_round(self):
+        with TempRoot() as root:
+            plan_tasks(root, [TaskSpec(intent="a", id="a")])
+            ex = InlineExecutor(lambda u, c: Receipt(outcome="result"))
+            out = cascade.run_cascade(root, executor=ex, contributors=[], concurrency=1,
+                                      test_cmd=self._counting_barrier_cmd(root, pass_at=2))
+            self.assertEqual(out["status"], "complete")
+            self.assertEqual(out["orchestration"]["attempts"], 2)
+
+    def test_barrier_that_never_passes_escalates(self):
+        with TempRoot() as root:
+            plan_tasks(root, [TaskSpec(intent="a", id="a")])
+            ex = InlineExecutor(lambda u, c: Receipt(outcome="result"))
+            out = cascade.run_cascade(root, executor=ex, contributors=[], concurrency=1,
+                                      max_retries=1,
+                                      test_cmd=self._counting_barrier_cmd(root, pass_at=99))
+            self.assertEqual(out["status"], "escalated")
+            self.assertEqual(out["orchestration"]["reason"], "loop-exhausted")
+
+
 class LivenessGuardTest(unittest.TestCase):
     def test_live_pidfile_reads_running_stale_is_cleaned(self):
         with TempRoot() as root:

@@ -232,6 +232,18 @@ def next_handoff(root: str | Path, brief: str | None = None) -> dict:
     return handoff_mod.pull(root, units, contributors_mod.contributors_for(root), brief=brief)
 
 
+def close_unit(root: str | Path, unit_id: str | None = None, note: str | None = None) -> dict:
+    root = Path(root).resolve()
+    target = unit_id
+    if target is None:
+        open_u = journal.open_unit(root)
+        if open_u is None:
+            return {"status": "no-open-unit"}
+        target = open_u["unit"]
+    journal.append(root, "unit.done", unit=target, outcome="result", status="complete", note=note)
+    return {"status": "closed", "unit": target}
+
+
 def _stub_unit(situation: Situation) -> Unit:
     return Unit(id="preview", situation=situation)
 
