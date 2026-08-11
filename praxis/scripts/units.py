@@ -44,12 +44,6 @@ def units_path(root: Path) -> Path:
 
 
 def parse_units(text: str) -> dict[str, dict]:
-    """`## <unit>` sections → {unit: {"edit_surface": [globs] | None, "output": str | None,
-    "execution": str | None}}. A section with no `edit-surface:` line yields surface None
-    (unrestricted) — a declared output alone must not accidentally lock the unit down.
-    `execution: spawn` is a root-authored policy: begin_work refuses execution=inline for that
-    unit — the operator's own crisp answer to 'is this unit ever trivial enough for inline,'
-    declared once per root instead of judged per call."""
     out: dict[str, dict] = {}
     current: str | None = None
     for line in text.splitlines():
@@ -81,16 +75,12 @@ def load_units(root: Path) -> dict[str, dict]:
 
 
 def lease_for(root: Path, unit_of_work: str | None) -> dict | None:
-    """The lease for a unit, or None when nothing restricts it (no file / unit undeclared /
-    no unit named)."""
     if not unit_of_work:
         return None
     return load_units(root).get(unit_of_work)
 
 
 def surface_allows(surface: list[str] | None, rel_path: str) -> bool:
-    """Whether a root-relative path is inside an edit surface. None = unrestricted. The praxis
-    dir itself is always allowed — the gate must never block praxis's own bookkeeping."""
     if surface is None:
         return True
     if rel_path.startswith((".praxis/", "praxis/")):

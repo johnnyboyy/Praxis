@@ -1,22 +1,4 @@
 #!/usr/bin/env python3
-"""views — handoff, ledger, and cost as folds over the journal (P7 of docs/CONDUCTOR-PLAN.md).
-
-The event log is the single source of truth, so the artifacts a system used to keep as separate
-primitives are just *views* over it:
-
-  - `handoff(root, unit)` — the terminal handoff for one unit (what a downstream consumer, e.g.
-    corpora at its ratify gate, reads: outcome, verification evidence, surfaced items, the domains
-    it composed under, the defects it took). Folded from the unit's events, not written as a file.
-  - `ledger(root)` — the chunk-ledger: one row per unit in first-seen order (uow, state, outcome,
-    attempts, verified, gap). The per-unit history, as a fold.
-  - `cost(root)` — the cost rollup across every receipt (tokens / usd / tool_calls, total and
-    per-unit). Retries sum, since each attempt costs.
-
-Because these are pure folds, the separate handoff/chunk-ledger/cost files a process layer kept
-become redundant: re-derive them from the log instead of maintaining them alongside it. (Wiring
-praxis's file-based handoff + chunk ledger to consume these views is the surface-side retirement;
-the core just proves the artifacts are recoverable from the journal.)
-"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -34,7 +16,6 @@ def _unit_events(root: Path) -> dict[str, list[dict]]:
 
 
 def handoff(root: Path, unit: str) -> dict | None:
-    """The terminal handoff for one unit, folded from its events — or None if the unit is unknown."""
     fold = journal.fold(root)
     u = fold["units"].get(unit)
     if u is None:
@@ -66,7 +47,6 @@ def handoff(root: Path, unit: str) -> dict | None:
 
 
 def ledger(root: Path) -> list[dict]:
-    """The chunk-ledger as a fold: one row per unit, in first-seen order."""
     fold = journal.fold(root)
     by_unit = _unit_events(root)
     rows = []
@@ -85,8 +65,6 @@ def ledger(root: Path) -> list[dict]:
 
 
 def cost(root: Path) -> dict:
-    """Roll up cost across every `unit.receipt` — total and per-unit. Retries sum (each attempt
-    costs). A receipt with no cost contributes only its tool_calls."""
     per_unit: dict[str, dict] = {}
     tokens = usd = calls = 0
     for e in journal.read(root):

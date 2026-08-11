@@ -1,22 +1,4 @@
 #!/usr/bin/env python3
-"""schedule — the DAG scheduler, concurrency cap, and reflexive routing (P6 of
-docs/CONDUCTOR-PLAN.md).
-
-`run_dag` generalizes the linear `run` (run.py): units declare `depends_on` edges, and the
-conductor schedules them in dependency order, running each ready wave in parallel up to a
-concurrency cap ("parallel-then-verify" — every unit still passes the same verification gate from
-run_unit). A unit whose dependency did not complete is not run; it is surfaced as a blocked stall,
-and that block cascades to its own dependents.
-
-Reflexive routing: before scheduling, the conductor consults the judgment provider about its OWN
-routing move — the same `providers.consult` hook it applies to a unit is applied to the conductor's
-decision, so the gap detector fires on the conductor's vocabulary too (docs/CONDUCTOR-PLAN.md "The
-seam": one hook applied even to the conductor's own moves). It records a `conductor.route` event.
-
-State lives only in the journal: `run_dag` reads dependency outcomes from the events run_unit wrote,
-so the schedule is reproducible from the log. journal.append is thread-safe, so the parallel workers
-share the one log safely.
-"""
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -29,9 +11,6 @@ from situation import Situation
 
 
 def _validate(units: dict[str, Unit]) -> None:
-    """Reject a plan that names an unknown dependency or contains a cycle — a scheduling bug the
-    caller must fix, raised before any unit runs (unlike a runtime stall, which is a first-class
-    outcome)."""
     for u in units.values():
         for d in u.depends_on:
             if d not in units:
@@ -56,10 +35,6 @@ def _validate(units: dict[str, Unit]) -> None:
 
 
 def reflexive_route(root: Path, plan: Plan, provider, routing_situation: Situation | None = None) -> dict:
-    """Consult the provider about the conductor's OWN routing move, then record `conductor.route`.
-    The default routing situation describes the schedule shape (unit + edge counts); a caller can
-    pass its own — including a `fit` of `loose`/`none`, which surfaces a gap in the conductor's
-    routing vocabulary exactly as a unit's would. Degrades cleanly under a null provider."""
     if routing_situation is None:
         edges = sum(len(u.depends_on) for u in plan.units)
         routing_situation = Situation(
@@ -74,8 +49,6 @@ def reflexive_route(root: Path, plan: Plan, provider, routing_situation: Situati
 
 
 def _blocked(root: Path, unit: Unit, failed_deps: list[str]) -> dict:
-    """Record and return the result for a unit that cannot run because a dependency did not
-    complete. Proposed then immediately stalled (blocked) — never dispatched."""
     journal.append(root, "unit.proposed", unit=unit.id, unit_of_work=unit.unit_of_work,
                    situation=unit.situation.to_dict())
     surfaced = [f"dependency '{d}' did not complete" for d in failed_deps]
@@ -87,8 +60,6 @@ def _blocked(root: Path, unit: Unit, failed_deps: list[str]) -> dict:
 
 
 def _resumed_result(unit: Unit, fold: dict) -> dict:
-    """Reconstruct a per-unit result for a unit that already concluded in the journal (resume path),
-    shaped like `run_unit`'s result so the returned list is uniform."""
     u = fold["units"].get(unit.id, {})
     st = u.get("state")
     outcome = u.get("outcome") or ("result" if st == "done" else "stall")
@@ -101,16 +72,6 @@ def _resumed_result(unit: Unit, fold: dict) -> dict:
 def run_dag(plan: Plan, provider, executor, root: Path, verifier=None,
             concurrency: int | None = None, max_retries: int | None = None,
             routing_situation: Situation | None = None, policy=None, resume: bool = False) -> dict:
-    """Run a plan honoring `depends_on`, one ready wave at a time, each wave in parallel up to
-    `concurrency`. Returns per-unit results (in plan order) + the fold's deliver-vs-stall summary +
-    the reflexive-routing result. A unit is `done` only when it delivered AND passed verification;
-    a dependency that stalled/blocked blocks its dependents (cascading). `concurrency` and
-    `max_retries` default to the root's editable conductor policy (`policy.load_policy`).
-
-    `resume=True` seeds state from the journal: a unit that already reached a terminal state (`done`
-    or `stalled`) is NOT re-dispatched — its outcome is taken from the log and its dependents proceed
-    (or cascade-block) accordingly. This makes a background cascade restart-safe and idempotent: a
-    re-invoked plan continues from where it stopped instead of re-spawning finished units."""
     import policy as policy_mod
     pol = policy or policy_mod.load_policy(root)
     if concurrency is None:

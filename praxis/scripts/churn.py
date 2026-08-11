@@ -25,8 +25,6 @@ from pathlib import Path
 
 
 def _git_log_files(repo: Path, since: str | None, max_count: int | None) -> list[str] | None:
-    """Every changed-file path across the selected commit window (one line per file-change).
-    Returns None when the directory is not a git repo or git is unavailable."""
     cmd = ["git", "-C", str(repo), "log", "--no-merges", "--name-only", "--pretty=format:"]
     if since:
         cmd.append(f"{since}..HEAD")

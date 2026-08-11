@@ -1,30 +1,4 @@
 #!/usr/bin/env python3
-"""conductor — the MCP surface for driving work through the conductor from Claude Code (or any MCP
-client).
-
-Tools:
-  plan             — hand the conductor a TASKLIST (1..N tasks) and CASCADE it: plan into a DAG and
-                     run each ready wave as ISOLATED children, gating on a test command. The cascade
-                     runs in a DETACHED worker and the call returns at once (poll plan_status) — it
-                     survives an MCP-server restart, so you can hand off a big plan and come back.
-  plan_status      — progress of the current plan (done / in_flight / stalled / waiting), whether the
-                     background cascade is still running, and the cost rollup.
-  register_plan    — record a tasklist's DAG WITHOUT running it (no spawns), so you can implement the
-                     units INLINE via next_handoff. Use this when you mean to do the work yourself.
-  next_handoff     — the PULL: hand the next ready unit's brief + judgment to a self-advancing agent
-                     (records the read that opens the edit gate). For in-context chaining after
-                     register_plan (or after a plan cascade, to resume a stalled unit).
-  conduct          — run ONE unit of work through the conductor (compose judgment → isolated claude
-                     executor → verification gate → journal). Elicits the gap signal via its own
-                     arguments: the caller states `suggested_kind` (what it would freely call this)
-                     and `fit` (how well the chosen task_kind matches) — the always-on gap detector.
-  conductor_status — the journal fold: open unit, deliver-vs-stall summary, cost rollup.
-  conductor_gaps   — recurring vocabulary gaps ready to mint (the promotion candidates).
-  conductor_mint   — promote a recurring suggestion into real vocabulary (the operator's ratify).
-
-Register (user scope):
-  claude mcp add praxis -s user -- python3 <this file>
-"""
 from __future__ import annotations
 
 import json
@@ -47,9 +21,6 @@ def _root(search_base: str | None) -> Path:
 
 
 def _parse_tasklist(tasks: str) -> tuple[list | None, str | None]:
-    """Parse the `tasks` JSON argument into a non-empty list of task objects. Returns (list, None) on
-    success or (None, error_json) when the string is not JSON or not a non-empty array — the shared
-    intake for the `plan` and `register_plan` tools."""
     try:
         parsed = json.loads(tasks)
     except json.JSONDecodeError as e:

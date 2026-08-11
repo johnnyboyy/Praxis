@@ -35,17 +35,10 @@ DEFAULT_MARKERS = [".praxis/config.md", "praxis/config.md"]
 
 
 def split_files(files: str) -> list[str]:
-    """A comma-separated `--files` argument, split and trimmed. The lowest common ancestor for this:
-    every praxis-core CLI takes the same argument shape, and root_tree is the one module all of them
-    already import without creating a cycle (frame, in particular, imports root_tree — not the
-    reverse)."""
     return [f.strip() for f in files.split(",") if f.strip()]
 
 
 def praxis_dir(root: Path) -> Path:
-    """The root's praxis state dir (marker, chunks, frames, handoffs, plugin slots): `.praxis` when
-    its marker exists, legacy `praxis` when only that marker exists, `.praxis` for a directory that
-    is not yet a root (so initialization lands on the standard name)."""
     root = Path(root)
     for name in (".praxis", "praxis"):
         if (root / name / "config.md").is_file():
@@ -62,11 +55,6 @@ NAME_RE = re.compile(r"^\s*name:\s*(.+?)\s*$", re.MULTILINE)
 
 
 def find_roots(base: Path, markers: list[str]) -> list[Path]:
-    """Every directory under `base` (inclusive) that contains any marker file. Sorted by path.
-
-    `SKIP_DIRS` are pruned from the walk. `.claude` is among them deliberately: it holds installed
-    skills (often symlinked in) carrying their OWN praxis/config.md, which is tooling rather than a
-    concern-boundary of the project and must not surface as a root."""
     roots: set[Path] = set()
     base = base.resolve()
     for dirpath, dirnames, _ in os.walk(base):
@@ -80,7 +68,6 @@ def find_roots(base: Path, markers: list[str]) -> list[Path]:
 
 
 def root_name(root: Path, markers: list[str]) -> str:
-    """A root's declared `name:` (from its marker's project-shape), else its directory basename."""
     for marker in markers:
         cfg = root / marker
         if cfg.is_file():
@@ -99,7 +86,6 @@ def which_marker(root: Path, markers: list[str]) -> str:
 
 
 def nearest_root(target: Path, roots: list[Path]) -> Path | None:
-    """The deepest root that is an ancestor of (or equal to) target — the one that governs it."""
     target = target.resolve()
     best: Path | None = None
     for r in roots:
@@ -113,16 +99,6 @@ def nearest_root(target: Path, roots: list[Path]) -> Path | None:
 
 
 def governing_root_above(path: Path) -> Path | None:
-    """The nearest ancestor of `path` (inclusive of `path` itself when it is a marked root dir)
-    carrying a praxis marker — the upward walk the gate/stamp hooks do, in Python. `.praxis` before
-    legacy `praxis`, the same order as `praxis_dir` and `DEFAULT_MARKERS`. Returns None when no
-    ancestor is a root.
-
-    This is the O(depth) answer to "which root governs this path", the counterpart to
-    `nearest_root(path, find_roots(base))`'s O(tree-walk) emulation — and, unlike that pairing, it
-    can escape a search base, so a path deep inside a root resolves even when the root sits above the
-    base a downward `find_roots` would scan.
-    """
     path = Path(path).resolve()
     for cur in (path, *path.parents):
         for name in (".praxis", "praxis"):
@@ -140,11 +116,6 @@ def _is_ancestor_or_equal(anc: Path, node: Path) -> bool:
 
 
 def interop_root(targets: list[Path], roots: list[Path]) -> dict:
-    """The root a task must ENTER at. A single-root task enters at its own root. A task spanning
-    several roots must enter at the deepest root that contains all of them — the interop root, the
-    only place with the context to coordinate both sides. If no such common-ancestor root exists, the
-    task has nowhere to enter: one must be defined at the common ancestor directory first.
-    """
     governing = sorted({r for r in (nearest_root(t, roots) for t in targets) if r is not None},
                        key=lambda p: str(p))
     if len(governing) <= 1:
@@ -159,7 +130,6 @@ def interop_root(targets: list[Path], roots: list[Path]) -> dict:
 
 
 def build_tree(roots: list[Path], markers: list[str]) -> dict:
-    """A parent-linked model of the root set. parent = nearest strictly-ancestor root."""
     nodes: dict[str, dict] = {}
     for r in roots:
         nodes[str(r)] = {
@@ -187,8 +157,6 @@ def build_tree(roots: list[Path], markers: list[str]) -> dict:
 
 
 def orphan_sibling_groups(nodes: dict) -> list[dict]:
-    """Sets of top-level roots (no parent root) sharing a common ancestor DIR that is not itself a root
-    — a place an interop parent root could live but doesn't. The 'missing interop root' signal."""
     tops = [n for n in nodes.values() if n["parent"] is None]
     by_ancestor: dict[str, list[dict]] = {}
     for n in tops:

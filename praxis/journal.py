@@ -1,19 +1,4 @@
 #!/usr/bin/env python3
-"""journal — the conductor's single source of truth: an append-only event log per root, and a fold
-that derives current state from it.
-
-This is P1 of docs/CONDUCTOR-PLAN.md. Everything the conductor knows about a root's work — which
-units exist, what state each is in, what a unit surfaced, the deliver-vs-stall summary — is derived
-here by replaying events, not read from a scatter of marker/stamp/ledger files. Later phases point
-the gate, the conductor loop, and the trace view at this fold and retire those files.
-
-Design rules:
-  - append-only: state is never mutated in place, only advanced by a new event.
-  - a fold is a pure function of the event sequence (same events → same state), so it is trivially
-    testable and recoverable.
-  - unknown event types are preserved (attached to the unit) but never crash the fold — the log
-    tolerates additions ahead of the reducer.
-"""
 from __future__ import annotations
 
 import json
@@ -54,13 +39,6 @@ def journal_path(root: Path) -> Path:
 
 
 def append(root: Path, event: str, unit: str | None = None, **payload) -> dict:
-    """Append one event and return the written record (with ts + seq). seq is monotonic per file,
-    even under concurrent appends from parallel run_dag scheduler threads: `_APPEND_LOCK` serializes
-    the read-seq→write so no two appends read the same seq.
-
-    Reserved payload keys (managed by the envelope, do not pass them): `event`, `unit`, `seq`, `ts`
-    (may be passed to backdate). The journal is per-root, so a `root` field in payload is redundant.
-    """
     path = journal_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     record = {"ts": payload.pop("ts", None) or time.time(), "event": event}
@@ -108,14 +86,6 @@ def read(root: Path) -> list[dict]:
 
 
 def fold(root: Path) -> dict:
-    """Replay the log into current state.
-
-    Returns:
-      units:      { unit_id: { unit, state, events, workflow, phase_index, outcome, status,
-                               surfaced, last:{…latest payload merged…} } }
-      open_units: unit_ids still in flight, in first-seen order
-      summary:    deliver-vs-stall counts by phase (unit label) and by workflow (the trace view)
-    """
     units: dict[str, dict] = {}
     order: list[str] = []
     for ev in read(root):
@@ -176,20 +146,10 @@ def state_of(root: Path, unit: str) -> str | None:
 
 
 def gaps(root: Path) -> list[dict]:
-    """All surfaced vocabulary gaps (`conductor.gap` events) for this root, newest last. These are
-    conductor-level, not unit-scoped: they are where the system didn't fit and asked for a better
-    verb/phase/workflow — the raw material for the accretion (promotion) loop and the operator
-    surface. The core mechanism, symmetric to corpora's ratify gate."""
     return [e for e in read(root) if e.get("event") == "conductor.gap"]
 
 
 def gap_candidates(root: Path) -> list[dict]:
-    """Tally the model's `suggested` names across surfaced gaps — the recurrence signal that drives
-    promotion (a corpora-counter analogue). A suggestion that keeps recurring is a strong candidate
-    to mint into real vocabulary. Sorted by count, newest examples last.
-
-    Returns: [{ suggested, count, vocabulary, chosen_as:[…], examples:[intent…] }]
-    """
     tally: dict[tuple[str, str], dict] = {}
     for e in gaps(root):
         suggested = (e.get("suggested") or "").strip().lower()
@@ -209,8 +169,6 @@ def gap_candidates(root: Path) -> list[dict]:
 
 
 def open_unit(root: Path) -> dict | None:
-    """The most recent in-flight unit for this root, or None. This is what the edit gate consults:
-    'is there an open unit, and what is its edit surface?' — replacing the marker+stamp dance."""
     f = fold(root)
     if not f["open_units"]:
         return None

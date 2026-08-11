@@ -1,17 +1,4 @@
 #!/usr/bin/env python3
-"""plan — the tasklist intake + planning head that feeds the DAG scheduler.
-
-This is the missing head of the conductor (docs/CONDUCTOR-PLAN.md left P6's `run_dag` reachable only
-from tests): it turns a **tasklist** — one task or many — into a `Plan` (a DAG of units with
-`depends_on` edges), then sets it in motion through `schedule.run_dag`. The operator hands over
-tasks; the conductor plans, sequences, and cascades — reporting progress through the one journal.
-
-Planning here is deterministic assembly: `plan_tasks` builds a plan straight from the specs the
-caller declared (honoring their `depends_on`), infers nothing, and records one `conductor.plan`
-event so the plan is a fold, not prose. A judgment planner (an interactive agent that decomposes,
-infers dependencies, or pauses to interview) is a separate seam to reintroduce when a real one lands
-— the interactive agent currently plans upstream and hands `plan_tasks` finished specs.
-"""
 from __future__ import annotations
 
 import time
@@ -25,9 +12,6 @@ from situation import FITS, PHASES, SUBJECTS, TASK_KINDS, Situation
 
 @dataclass
 class TaskSpec:
-    """One raw task from the operator's tasklist. `id` is optional (generated when absent) and is how
-    other specs reference this one in `depends_on`. The gap signal (`suggested_kind` / `fit`) rides
-    here exactly as on a Situation — always collected, never guessed."""
 
     intent: str
     id: str | None = None
@@ -69,9 +53,6 @@ class TaskSpec:
 
 
 def spec_to_unit(spec: TaskSpec, root: Path | None = None) -> Unit:
-    """Turn one spec into a Unit + its Situation. Deterministic: no inference, no judgment — just the
-    faithful projection of the spec's declared features onto the feature object the provider composes
-    against."""
     sit = Situation(task_kind=spec.task_kind, intent=spec.intent, subject=spec.subject,
                     suggested_kind=spec.suggested_kind, fit=spec.fit, phase=spec.phase,
                     project_shape=spec.project_shape, root=str(root) if root else None,
@@ -80,10 +61,6 @@ def spec_to_unit(spec: TaskSpec, root: Path | None = None) -> Unit:
 
 
 def build_units(specs: list[TaskSpec], root: Path | None = None) -> list[Unit]:
-    """Assign stable ids (declared or generated), validate that ids are unique and every `depends_on`
-    names a task in this same tasklist, and project each spec to a Unit. Raises on a duplicate id or
-    a dangling dependency — a tasklist bug the caller must fix, distinct from a runtime stall (the
-    cycle check itself lives in schedule._validate, run at scheduling time)."""
     ids: list[str] = []
     seen: set[str] = set()
     for i, spec in enumerate(specs):
@@ -106,9 +83,6 @@ def _gen_id(task_kind: str, i: int) -> str:
 
 
 def plan_tasks(root: str | Path, specs: list[TaskSpec]) -> list[Unit]:
-    """Assemble a tasklist into its DAG of units (deterministic — honoring the declared `depends_on`,
-    inferring nothing) and record one `ready` `conductor.plan` event carrying the resolved specs, unit
-    ids, and edges, so the plan is reconstructable from the journal. Returns the units."""
     root = Path(root).resolve()
     units = build_units(specs, root)
     specs_out = []
@@ -128,10 +102,6 @@ def plan_tasks(root: str | Path, specs: list[TaskSpec]) -> list[Unit]:
 
 
 def reconstruct_units(root: str | Path) -> list | None:
-    """Rebuild a plan's units from the journal — the latest `ready` `conductor.plan` event's stored
-    specs. This is how a STATELESS surface (an MCP `next_handoff` call) recovers the tasklist to find
-    the next ready unit, keeping the journal the single source of truth. None when no plan is on the
-    log."""
     root = Path(root).resolve()
     latest = None
     for e in journal.read(root):
@@ -146,9 +116,6 @@ def reconstruct_units(root: str | Path) -> list | None:
 def plan_and_run(root: str | Path, specs: list[TaskSpec], provider, executor, *,
                  verifier=None, concurrency: int | None = None,
                  max_retries: int | None = None) -> dict:
-    """The whole head-to-tail move: plan a tasklist, then set the DAG in motion through `run_dag` and
-    let the units cascade. Returns the `run_dag` result (`{status:'ran', results, summary, routing,
-    cost}`)."""
     root = Path(root).resolve()
     units = plan_tasks(root, specs)
     result = run_dag(Plan(units=units), provider, executor, root, verifier=verifier,

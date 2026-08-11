@@ -1,28 +1,4 @@
 #!/usr/bin/env python3
-"""run — the linear conductor core with the verification gate (P4 + P5 of docs/CONDUCTOR-PLAN.md).
-
-Given a plan (a list of units), the conductor iterates it, and for each unit:
-  1. records `unit.proposed`,
-  2. consults the judgment provider (`providers.consult`) — folding in the composed judgment and
-     surfacing any vocabulary gap — and records `unit.framed`,
-  3. dispatches the unit through an **executor** (`unit.dispatched` → `unit.running`), which is the
-     only thing that knows *how* a unit runs (inline, subprocess, later remote); the conductor cares
-     only that it hands back a `Receipt`,
-  4. records the receipt (`unit.receipt` → verifying), then runs the **verification gate**:
-       - no verifier ⇒ the receipt is accepted as-is (`result` → `unit.done`, `stall` → stalled);
-       - a verifier that PASSES ⇒ `unit.verified` (carrying evidence) → `unit.done`;
-       - a verifier that finds a DEFECT ⇒ record it and loop back to step 3 with the defects as
-         feedback, up to `max_retries` times; when the retries are exhausted the unit is SURFACED as
-         a blocked stall carrying the outstanding defects.
-     A receipt that is itself a `stall` (the unit blocking on questions/tradeoffs, not a defect in
-     delivered work) is surfaced immediately and never retried.
-
-Everything is a journal event, so state and the deliver-vs-stall summary are the fold over what this
-loop wrote — the conductor keeps no state of its own. This is the LINEAR core: units run in order.
-The DAG (`depends_on` scheduling) and the concurrency cap are P6. The verification gate is a
-RECORDED transition (the `unit.verified` event and the `unit.note kind=defect` events), not prose —
-so "was this verified, and how many defect loops did it take?" is a fold over the log.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -39,8 +15,6 @@ STATUSES = ("complete", "blocked", "questions-pending", "tradeoffs-pending")
 
 @dataclass
 class Receipt:
-    """The terminal claim an executor returns (docs/CONDUCTOR-PLAN.md "Receipt"). A stall is a
-    first-class outcome, not a failure: it means the unit could not complete and surfaced why."""
 
     outcome: str
     status: str = "complete"
@@ -66,10 +40,6 @@ class Receipt:
 
 @dataclass
 class Unit:
-    """One unit of work in a plan: an id, the situation the provider composes against, the
-    unit-of-work noun (defaults to the situation's bridge label, then its seed task_kind), and the
-    ids of the units it `depends_on` (empty for a leaf; the DAG scheduler in schedule.py reads
-    these)."""
 
     id: str
     situation: Situation
@@ -83,23 +53,17 @@ class Unit:
 
 @dataclass
 class Plan:
-    """A linear plan. P6 adds `depends_on` edges (a DAG) and a concurrency cap; here units run in
-    listed order."""
 
     units: list
 
 
 @runtime_checkable
 class Executor(Protocol):
-    """The 'how it runs' seam: given a unit and the composed judgment, return a Receipt. The
-    conductor never learns whether the work ran inline, in a subprocess, or on a remote host."""
 
     def run(self, unit: Unit, composed: dict) -> Receipt: ...
 
 
 class InlineExecutor:
-    """Runs a unit in-process by calling a handler `(unit, composed) -> Receipt | dict`. The handler
-    is the actual work (or, in tests, a stub); a plain dict it returns is normalized to a Receipt."""
 
     def __init__(self, handler):
         self._handler = handler
@@ -110,16 +74,6 @@ class InlineExecutor:
 
 
 class SubprocessExecutor:
-    """Runs a unit as an isolated subprocess. `argv_builder(unit, composed) -> list[str]` yields the
-    command; a JSON receipt on stdout is parsed, a clean exit with no structured receipt is taken as
-    a bare result, and a nonzero exit / launch failure / timeout becomes a blocked stall carrying
-    the reason — so an executor failure is a recorded stall, never an exception that aborts the run.
-
-    `cost_extractor(stdout, stderr) -> {tokens, usd} | None` (P7) captures the child run's cost when
-    the child does not fold it into the receipt itself — e.g. pulling the token usage out of a `pi`
-    spawn's event stream. An explicit `cost` in the receipt JSON always wins; the extractor only
-    fills a gap.
-    """
 
     def __init__(self, argv_builder, timeout: int = 300, cost_extractor=None):
         self._argv_builder = argv_builder
@@ -148,9 +102,6 @@ class SubprocessExecutor:
 
 @dataclass
 class Verdict:
-    """The outcome of verifying a receipt (docs/CONDUCTOR-PLAN.md P5). `verified` is the gate;
-    `defects` is what to feed back on the retry when it isn't; `evidence` is the recorded proof
-    (test output, a diff check) attached to the `unit.verified` event or the surfaced stall."""
 
     verified: bool
     defects: list = field(default_factory=list)
@@ -164,15 +115,11 @@ class Verdict:
 
 @runtime_checkable
 class Verifier(Protocol):
-    """The 'is the delivered work actually right' seam. Given the unit, its receipt, and the composed
-    judgment, return a Verdict. The conductor never learns *how* verification happens (run the tests,
-    diff the output, ask a provider) — only whether it passed and, if not, what the defects are."""
 
     def verify(self, unit: Unit, receipt: Receipt, composed: dict) -> Verdict: ...
 
 
 class CallableVerifier:
-    """Verifies in-process via a handler `(unit, receipt, composed) -> Verdict | dict`."""
 
     def __init__(self, handler):
         self._handler = handler
@@ -183,10 +130,6 @@ class CallableVerifier:
 
 
 class CommandVerifier:
-    """Verifies by running a command (e.g. the scaffold tests): `argv_builder(unit, receipt,
-    composed) -> list[str]`. Exit 0 ⇒ verified, with a tail of stdout as evidence; a nonzero exit ⇒
-    a defect carrying the command's stderr/stdout for the feedback loop; a launch failure / timeout ⇒
-    a defect too (verification could not be established, so the work is not accepted)."""
 
     def __init__(self, argv_builder, timeout: int = 300):
         self._argv_builder = argv_builder
@@ -207,9 +150,6 @@ class CommandVerifier:
 
 
 def verifier_from_test_cmd(test_cmd: str | None) -> "Verifier | None":
-    """A CommandVerifier that runs `test_cmd` (shell-split) as the verification gate, or None when no
-    command is given. The single source for the conductor entrypoints (run_task, run_tasklist,
-    run_cascade) that gate a spawned run on a test command."""
     if not test_cmd:
         return None
     import shlex
@@ -219,11 +159,6 @@ def verifier_from_test_cmd(test_cmd: str | None) -> "Verifier | None":
 
 def run_unit(root: Path, unit: Unit, provider, executor: Executor,
              verifier: Verifier | None = None, max_retries: int = 2) -> dict:
-    """Drive one unit through its lifecycle — including the verification gate — writing each
-    transition as a journal event, and return a per-unit result. Consults the provider before
-    executing (the pre-execute hook); the executor turns the composition into a receipt; the
-    verifier (when present) gates that receipt, looping back with defect feedback up to
-    `max_retries` times before surfacing a blocked stall."""
     journal.append(root, "unit.proposed", unit=unit.id, unit_of_work=unit.unit_of_work,
                    situation=unit.situation.to_dict())
     composed = consult(provider, unit.situation, root=root)
@@ -280,11 +215,6 @@ def run_unit(root: Path, unit: Unit, provider, executor: Executor,
 def run(plan: Plan, provider, executor: Executor, root: Path,
         verifier: Verifier | None = None, max_retries: int | None = None,
         policy=None) -> dict:
-    """Run a linear plan to completion, returning per-unit results plus the fold's deliver-vs-stall
-    summary and the cost rollup. The loop keeps no state of its own — everything it knows is what it
-    wrote to the journal, so a re-fold of the log reproduces this run exactly. Pass a `verifier` to
-    enforce the verification gate on every unit. `max_retries` defaults to the root's editable
-    conductor policy (`policy.load_policy`)."""
     import views
     import policy as policy_mod
     pol = policy or policy_mod.load_policy(root)

@@ -1,23 +1,4 @@
 #!/usr/bin/env python3
-"""handoff — the forward handoff: composing a unit's brief + judgment on demand, and the gate-backed
-PULL that hands it to a self-advancing agent.
-
-Two delivery paths share one assembly (`assemble`) so a unit's handoff is composed lazily, per unit,
-at the moment it is needed — never pre-built for the whole chain by the conductor:
-
-  - PUSH (cross-spawn cascade): `run_unit` (run.py) already consults the provider per unit and hands
-    the composed judgment to the executor, which injects it into a fresh spawn. The runner pulls in
-    CODE; the agent has no discretion to skip it — guaranteed delivery.
-  - PULL (in-context chaining): a long-lived agent that finishes one unit calls `pull` to get the
-    NEXT ready unit's handoff itself, so the conductor doesn't micro-manage the chain. Reliability
-    comes from the GATE, not the agent's diligence: `pull` frames the unit and records
-    `payload_read`, and the edit gate (praxis/scripts/gate.py) denies edits for a spawn/file-delivery
-    unit until that read is on the journal. The agent is free to skip the pull; it just cannot edit
-    until it has pulled — the read is the fence in front of the work.
-
-`next_ready` picks the next unit whose dependencies have all reached `done` and which has not itself
-started — a pure fold over the journal, so the cascade is reproducible from the log.
-"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -29,10 +10,6 @@ from run import Unit
 
 def assemble(intent: str, composed: dict, brief: str | None = None,
              feedback: list | None = None) -> dict:
-    """Build a unit's handoff from its composed judgment: the JUDGMENT block (the domain bodies, the
-    stable system-prompt half) and the BRIEF (the concrete instruction, with any verification
-    feedback appended). Returns both plus their sizes — the single assembly both the push executor
-    and the pull tool use, so the two paths can never drift."""
     judgment = "\n\n".join(a["body"] for a in (composed.get("artifacts") or []) if a.get("body"))
     lines = [brief or intent or ""]
     fb = feedback if feedback is not None else composed.get("feedback")
@@ -50,9 +27,6 @@ def _state_of(fold: dict, uid: str) -> str | None:
 
 
 def next_ready(root: str | Path, units: list[Unit]) -> Unit | None:
-    """The next unit ready to run: dependencies all `done`, and it has not itself started. Returns
-    None when nothing is ready (either everything concluded, or the only remaining units are still
-    waiting on an unfinished/failed dependency). Pure fold over the journal."""
     root = Path(root).resolve()
     fold = journal.fold(root)
     for u in units:
@@ -64,8 +38,6 @@ def next_ready(root: str | Path, units: list[Unit]) -> Unit | None:
 
 
 def status(root: str | Path, units: list[Unit]) -> dict:
-    """Where the tasklist stands, folded from the journal: which units are done, in flight, stalled,
-    or still waiting — the progress surface the operator watches while the chain cascades."""
     root = Path(root).resolve()
     fold = journal.fold(root)
     buckets = {"done": [], "in_flight": [], "stalled": [], "waiting": []}
@@ -85,11 +57,6 @@ def status(root: str | Path, units: list[Unit]) -> dict:
 
 def pull(root: str | Path, units: list[Unit], provider, brief: str | None = None,
          delivery: str = "spawn") -> dict:
-    """Hand the next ready unit's handoff to a self-advancing agent (the PULL path). Frames the unit
-    (`unit.proposed` → `unit.framed`, carrying its delivery + edit surface so the gate can rule on
-    it), composes its judgment on demand, records `payload_read` (the pull IS the read — the content
-    is being delivered now, so the gate opens for THIS unit's edits), and returns the brief +
-    judgment. When nothing is ready, returns a `waiting`/`complete` status and hands over nothing."""
     root = Path(root).resolve()
     st = status(root, units)
     unit = next_ready(root, units)

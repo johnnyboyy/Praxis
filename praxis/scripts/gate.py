@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""gate — the edit-gate decision as a pure function of the conductor journal (P2 of
-docs/CONDUCTOR-PLAN.md).
+"""gate — the edit-gate decision as a pure function of the conductor journal.
 
 Consults `conductor.journal.open_unit(root)` — the most recent in-flight unit for a root — instead
 of the tmp session-stamp files. No freshness window: a unit is open until `close_work` (or a stall)
@@ -42,10 +41,6 @@ def _rel(root: Path, abs_file: str) -> str | None:
 
 
 def gate_decision(root: Path, abs_file: str) -> tuple[str, str | None]:
-    """(verdict, reason) — verdict is "no_unit" / "allow" / "deny"; reason is set only for "deny".
-
-    Fail-open: any internal error (a corrupt journal, an unreadable path) resolves to "no_unit" so
-    the caller falls through rather than the gate being the reason a legitimate edit is blocked."""
     try:
         unit = journal.open_unit(root)
     except Exception:
@@ -84,8 +79,6 @@ def gate_decision(root: Path, abs_file: str) -> tuple[str, str | None]:
 
 
 def mark_payload_read(root: Path) -> bool:
-    """Record that the open unit's payload has been read. Returns False (no-op) when there is no
-    open unit to attach the read to."""
     unit = journal.open_unit(root)
     if unit is None:
         return False

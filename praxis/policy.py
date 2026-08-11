@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-"""policy — the conductor's guardrails as editable data, not hardcoded (P9 of docs/CONDUCTOR-PLAN.md).
-
-The concurrency cap, the retry bound, and whether verification is mandatory are operator guards.
-Rather than bake them into the run loop as constants, they live in a `Policy` the operator can edit
-at `<root>/.praxis/conductor.json`; `run`/`run_dag` read their defaults from it. A missing or corrupt
-file degrades to the built-in defaults, so a project with no policy file still runs.
-
-Example `<root>/.praxis/conductor.json`:
-    { "concurrency": 8, "max_retries": 1, "verify_required": true }
-"""
 from __future__ import annotations
 
 import json
@@ -22,8 +12,6 @@ POLICY_NAME = "conductor.json"
 
 @dataclass
 class Policy:
-    """Editable conductor guardrails. Defaults match the loop's historical hardcoded values, so
-    adopting the policy file changes nothing until the operator edits it."""
 
     concurrency: int = 4
     max_retries: int = 2
@@ -44,7 +32,6 @@ def policy_path(root: Path) -> Path:
 
 
 def load_policy(root: Path) -> Policy:
-    """The root's conductor policy, or the built-in defaults when no readable/parseable file exists."""
     path = policy_path(root)
     try:
         data = json.loads(path.read_text())

@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-"""conduct — the wiring that lets a real harness drive work THROUGH the conductor.
-
-This is surface/wiring, not core (like adapters.py it is allowed to know the world): it binds the
-pure conductor loop (`run.run_unit`) to a real judgment provider (corpora, via `adapters`), a real
-executor (an isolated `claude -p` subprocess), and a real verifier (a project test command). The
-core modules still import neither praxis nor corpora.
-
-`run_task` is the single entry the MCP tool (mcp_server.py) and the CLI call. A `dry_run` builds the
-situation, consults corpora (surfacing any vocabulary gap), and assembles the child command —
-WITHOUT spawning claude or writing a unit lifecycle — so an operator can preview the composed
-judgment and the routing before paying for a real run.
-"""
 from __future__ import annotations
 
 import json
@@ -35,9 +23,6 @@ _SHAPE_KEYS = ("language", "framework", "has-ui", "styling", "package-manager")
 
 
 def project_shape_for(root: str | Path) -> dict:
-    """Read the `## project-shape` fields from `<root>/.corpora/config.md` (the features
-    non-universal corpora domains gate on). Missing file → {} (universals + subject-matched
-    non-gated domains still compose)."""
     for cfg in (Path(root) / ".corpora" / "config.md", Path(root) / "corpora" / "config.md"):
         try:
             text = cfg.read_text()
@@ -53,12 +38,6 @@ def project_shape_for(root: str | Path) -> dict:
 
 
 class ClaudeExecutor:
-    """Runs a unit as an isolated `claude -p` subprocess seeded with the composed judgment as the
-    appended system prompt. Clean run → a `result` receipt carrying the child's summary as evidence
-    and its cost; a nonzero exit / launch failure / timeout / `is_error` → a recorded blocked stall,
-    never an exception. `allow_edits` adds `--permission-mode bypassPermissions` so the child can
-    actually edit (off by default — a read-only child is a safe no-op); extra flags come from
-    `CONDUCTOR_CLAUDE_EXTRA_ARGS`."""
 
     def __init__(self, *, brief: str | None = None, model: str | None = None,
                  cwd: str | None = None, timeout: int = 900, allow_edits: bool = False,
@@ -139,10 +118,6 @@ def run_task(root: str | Path, *, intent: str, brief: str | None = None,
              project_shape: dict | None = None, test_cmd: str | None = None,
              model: str | None = None, max_retries: int | None = None,
              allow_edits: bool = False, dry_run: bool = False) -> dict:
-    """Drive one unit of work through the conductor: build the situation (harvesting the model's
-    `suggested_kind`/`fit`), consult corpora, dispatch to an isolated claude, verify with the test
-    command, and record everything to the journal. `dry_run` previews composition + routing + the
-    child command without spawning or writing a unit."""
     root = Path(root).resolve()
     shape = project_shape if project_shape is not None else project_shape_for(root)
     situation = Situation(task_kind=task_kind, intent=intent, subject=subject,
@@ -174,14 +149,6 @@ def run_tasklist(root: str | Path, tasks: list[dict], *, test_cmd: str | None = 
                  model: str | None = None, max_retries: int | None = None,
                  concurrency: int | None = None, allow_edits: bool = False,
                  dry_run: bool = False) -> dict:
-    """Drive a whole tasklist through the conductor: the caller (the interactive planner) hands over
-    structured tasks — each with its intent, seed `task_kind`, the gap signal (`suggested_kind`/
-    `fit`), and any `depends_on` edges — and the conductor plans them into a DAG and sets it
-    cascading through `run_dag`, each unit composing its own judgment and gating on `test_cmd`.
-
-    `dry_run` previews the plan (the units, their edges, and each unit's composed routing + gap)
-    WITHOUT spawning or writing a plan — call it once to check the shape, then re-call with
-    dry_run=false, allow_edits=true to execute."""
     import plan as plan_mod
     root = Path(root).resolve()
     provider = adapters.corpora_provider(root)
@@ -208,8 +175,6 @@ def run_tasklist(root: str | Path, tasks: list[dict], *, test_cmd: str | None = 
 
 
 def _specs_for(root: Path, tasks: list[dict]) -> list:
-    """Build TaskSpecs from a raw tasklist, defaulting each task's project_shape to the root's shape
-    (the features non-universal domains gate on)."""
     import plan as plan_mod
     shape = project_shape_for(root)
     specs = []
@@ -223,10 +188,6 @@ def _specs_for(root: Path, tasks: list[dict]) -> list:
 def run_tasklist_detached(root: str | Path, tasks: list[dict], *, test_cmd: str | None = None,
                           model: str | None = None, max_retries: int | None = None,
                           concurrency: int | None = None, allow_edits: bool = False) -> dict:
-    """Hand a tasklist to a DETACHED worker process and return at once, so a long cascade neither
-    blocks the MCP call nor dies with the server: it runs in its own session, resumes from the
-    journal if interrupted, and is guarded against double-runs. Poll `plan_status` to reattach. The
-    plumbing lives in cascade.py (imported lazily to keep the module graph acyclic)."""
     import cascade
     return cascade.launch_detached(root, tasks, test_cmd=test_cmd, model=model,
                                    max_retries=max_retries, concurrency=concurrency,
@@ -234,9 +195,6 @@ def run_tasklist_detached(root: str | Path, tasks: list[dict], *, test_cmd: str 
 
 
 def plan_status(root: str | Path) -> dict:
-    """Where the current plan stands, folded from the journal: per-unit progress buckets
-    (done / in_flight / stalled / waiting), whether the detached cascade is still running, and the
-    cost rollup. `no-plan` when no tasklist has been registered for this root."""
     import cascade
     import handoff as handoff_mod
     import plan as plan_mod
@@ -254,12 +212,6 @@ def plan_status(root: str | Path) -> dict:
 
 
 def register_plan(root: str | Path, tasks: list[dict]) -> dict:
-    """Record a tasklist's DAG to the journal WITHOUT running it — the entry the pull workflow needs.
-    Registering is judgment-free deterministic assembly: it assigns ids, validates the edges, and
-    writes one `conductor.plan` event carrying the resolved specs, so `next_handoff` can reconstruct
-    the plan and hand units into the caller's OWN context one at a time. No provider consult, no
-    spawn, no cascade — the opposite of `run_tasklist` (which records AND cascades isolated children).
-    Use this when you mean to implement the units inline, pulling each handoff."""
     import plan as plan_mod
     root = Path(root).resolve()
     specs = _specs_for(root, tasks)
@@ -272,9 +224,6 @@ def register_plan(root: str | Path, tasks: list[dict]) -> dict:
 
 
 def next_handoff(root: str | Path, brief: str | None = None) -> dict:
-    """The PULL: reconstruct the current plan from the journal and hand the next ready unit's brief +
-    composed judgment to a self-advancing agent, recording the read that opens the edit gate for it.
-    Returns a `waiting`/`complete` status when nothing is ready. No plan on the log → an error dict."""
     import handoff as handoff_mod
     import plan as plan_mod
     root = Path(root).resolve()

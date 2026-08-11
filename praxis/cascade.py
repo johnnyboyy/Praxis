@@ -62,8 +62,6 @@ def _pid_alive(pid: int) -> bool:
 
 
 def is_running(root: str | Path) -> dict | None:
-    """The live worker's record `{pid, started, units}` if one is running for this root, else None.
-    A pidfile whose process is gone is stale — removed, and treated as not running."""
     root = Path(root).resolve()
     pf = _pidfile(root)
     try:
@@ -81,9 +79,6 @@ def is_running(root: str | Path) -> dict | None:
 
 def run_cascade(root: str | Path, *, executor, provider=None, test_cmd: str | None = None,
                 concurrency: int | None = None, max_retries: int | None = None) -> dict:
-    """The worker core: reconstruct the registered plan and run its DAG to completion, resuming from
-    the journal (finished units are not re-run). Synchronous and executor/provider-injectable, so it
-    is exercised in-process by tests; the CLI wraps it with the real isolated executor."""
     import plan as plan_mod
     root = Path(root).resolve()
     units = plan_mod.reconstruct_units(root)
@@ -99,9 +94,6 @@ def run_cascade(root: str | Path, *, executor, provider=None, test_cmd: str | No
 def launch_detached(root: str | Path, tasks: list[dict], *, test_cmd: str | None = None,
                     model: str | None = None, max_retries: int | None = None,
                     concurrency: int | None = None, allow_edits: bool = False) -> dict:
-    """Record the plan, then spawn the worker in its own session and return at once. Refuses if a
-    worker is already live for this root. The plan is recorded here (fast, deterministic) so
-    `plan_status` sees it immediately; the detached worker then runs it."""
     from conduct import _specs_for
     import plan as plan_mod
     root = Path(root).resolve()
@@ -134,10 +126,6 @@ def launch_detached(root: str | Path, tasks: list[dict], *, test_cmd: str | None
 
 
 def _spawn_daemon(argv: list[str], logpath: Path) -> None:
-    """Start `argv` as a fully detached daemon via double-fork: the grandchild is reparented to init
-    (so it survives this process and is auto-reaped — no lingering child or zombie), in its own
-    session, with stdio redirected to the cascade log. The parent reaps the short-lived intermediate
-    and returns. Only fork-safe syscalls run between fork and exec."""
     pid = os.fork()
     if pid > 0:
         os.waitpid(pid, 0)
@@ -156,8 +144,6 @@ def _spawn_daemon(argv: list[str], logpath: Path) -> None:
 
 
 def _build_executor(root: Path, *, model: str | None, allow_edits: bool):
-    """The real isolated executor, or a fake one for a hermetic detached-spawn test
-    (PRAXIS_CASCADE_FAKE=1 → every unit returns a bare result, no child spawn)."""
     if os.environ.get("PRAXIS_CASCADE_FAKE"):
         from run import InlineExecutor, Receipt
         return InlineExecutor(lambda u, c: Receipt(outcome="result")), _fake_provider()
