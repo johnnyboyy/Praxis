@@ -1,9 +1,11 @@
 import sys
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import config  # noqa: E402
 import contributors as cb  # noqa: E402
 import journal  # noqa: E402
 from situation import Situation  # noqa: E402
@@ -26,6 +28,59 @@ class _StubContributor:
 class ContributorsForTest(unittest.TestCase):
     def test_defaults_to_empty(self):
         self.assertEqual(cb.contributors_for("/any/root"), [])
+
+    def test_config_declared_contributor_loads_and_contributes(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            modroot = root / "plugindir"
+            modroot.mkdir()
+            (modroot / "fake_contrib.py").write_text(textwrap.dedent("""
+                class _C:
+                    source = "fake"
+                    def contribute(self, situation):
+                        from contributors import Contribution
+                        return [Contribution(source="fake", title="T", body="B")]
+                def make(root):
+                    return _C()
+            """))
+            config.write(root, "contributors", {"fake": "fake_contrib:make"})
+            sys.path.insert(0, str(modroot))
+            try:
+                got = cb.contributors_for(root)
+                self.assertEqual(len(got), 1)
+                contribs = got[0].contribute(_sit())
+                self.assertEqual([c.title for c in contribs], ["T"])
+            finally:
+                sys.path.remove(str(modroot))
+                sys.modules.pop("fake_contrib", None)
+
+    def test_bad_spec_is_skipped(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            config.write(root, "contributors", {"broken": "no_such_module:make"})
+            self.assertEqual(cb.contributors_for(root), [])
+
+
+class ValidateContributorTest(unittest.TestCase):
+    def test_conforming_stub_has_no_problems(self):
+        class _OK:
+            source = "s"
+            def contribute(self, situation):
+                return []
+        self.assertEqual(cb.validate_contributor(_OK()), [])
+
+    def test_missing_contribute_is_problem(self):
+        class _NoContribute:
+            source = "s"
+        self.assertTrue(cb.validate_contributor(_NoContribute()))
+
+    def test_non_callable_hooks_is_problem(self):
+        class _BadHooks:
+            source = "s"
+            hooks = "not callable"
+            def contribute(self, situation):
+                return []
+        self.assertTrue(cb.validate_contributor(_BadHooks()))
 
 
 class GatherEmptyTest(unittest.TestCase):

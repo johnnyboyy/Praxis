@@ -54,10 +54,39 @@ def fire(contributors, step: str, ctx: HookContext) -> None:
             hook(ctx)
 
 
+def validate_contributor(obj) -> list[str]:
+    problems: list[str] = []
+    source = getattr(obj, "source", None)
+    if not isinstance(source, str) or not source.strip():
+        problems.append("source must be a non-empty str")
+    if not callable(getattr(obj, "contribute", None)):
+        problems.append("contribute must be callable")
+    if hasattr(obj, "hooks") and not callable(getattr(obj, "hooks")):
+        problems.append("hooks, when present, must be callable")
+    return problems
+
+
 def contributors_for(root: str | Path) -> list[Contributor]:
-    # resolution seam: no plugin is registered into praxis-core, so this returns [].
-    # Registering plugins later replaces this body with a lookup.
-    return []
+    import importlib
+
+    import config
+
+    specs = config.read(root, "contributors")
+    loaded: list[Contributor] = []
+    for name, spec in specs.items():
+        try:
+            module_path, _, factory_name = spec.rpartition(":")
+            if not module_path:
+                continue
+            module = importlib.import_module(module_path)
+            factory = getattr(module, factory_name)
+            contributor = factory(root)
+        except Exception:
+            continue
+        if validate_contributor(contributor):
+            continue
+        loaded.append(contributor)
+    return loaded
 
 
 def gather(contributors, situation: Situation, root: Path | None = None,
