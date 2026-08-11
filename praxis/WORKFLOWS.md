@@ -146,3 +146,16 @@ Surfaced by *building* the runner (the model discovering its own gaps — the th
   preservation gate (`verified`, recorded but not routing); unifying them — a failed gate forcing a
   fail-route — is a future call. Still open: the orchestration altitude across units (fan-out →
   barrier full-verify → fix units) and inline unit-completion.
+
+- 2026-08-10 (orchestration altitude, first cut): `orchestrate.run_orchestrated` — fan-out via
+  `run_dag`, then a single **barrier full-verify** (a `() -> Verdict` callable), then a bounded
+  fix-loop that spawns targeted **fix-units** per defect (carry edge, patch in place) and re-verifies.
+  **Escalation to re-plan is triggered, not defaulted**, on three signals: a fan-out unit `stalled`
+  (barrier skipped — nothing to verify), the fix-loop exhausting `max_loops`, or a fix-unit reporting
+  structural misfit (stall or `phase_fit` loose/none — a perturbation that was secretly a rebuild).
+  The hook only records `orchestration.escalated` + returns `status="escalated"`; **re-plan machinery
+  is deliberately deferred** until a real run trips a trigger (grow it when the failure tells us its
+  shape). Rationale (agreed): fix-units are the standard because they're non-destructive (preserve the
+  passing units); re-plan is the expensive re-extraction reserved for structural failure.
+  Process note: this unit was built by SPAWN + verify (the model's default), correcting two prior
+  units done inline — inline is now a *declared* carry-edge exception, not a silent convenience.
