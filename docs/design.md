@@ -168,3 +168,18 @@ Surfaced by *building* the runner:
   `close_unit`; stay in-context — questions, small carry-edge work). New MCP tools are live only after
   an MCP-server restart. Open: `max_loops` is derived from `max_retries` (overloaded — a dedicated
   fix-loop budget later); `close_unit` only closes as `result` (no stalled/abandoned close yet).
+
+- 2026-08-11 (git-based opt-in roots + bootstrap; SECOND real /praxis:orchestrate drive): root
+  discovery is now git-bounded and opt-in (`root_tree.resolve_root`: nearest `.praxis/config.md` up to
+  the git root, else `None` — unmarked repos ungated); `config.py` makes `.praxis/config.md` a
+  namespaced store; `/praxis:init` + `conduct.init_root` + `init` tool bootstrap a repo; the drive
+  tools surface "not-a-root". `.gitignore` narrowed so `config.md` is committed, runtime ignored.
+
+- 2026-08-11 (three backlog items resolved, overnight): (1) **gate/routing unified** (`2d2fa57`) — a
+  phase advances only if `passed AND verified`; a failed preservation gate forces the fail-route.
+  (2) **loop budgets split** (`144da12`) — `max_retries` (per-unit) / `fix_rounds` (barrier fix-loop) /
+  `max_phase_loops` (phase re-entry guard) are now distinct; cascade no longer derives the fix-loop
+  from per-unit retries. (3) **re-plan scaffolding** (`e5de377`) — `failing_subdag` + `replan` splice a
+  caller-provided replacement and re-run scoped via `resume=True`; escalations carry `failing_subdag`;
+  the replacement is the caller's judgment (no auto-loop). `record_receipt(outcome="stall")` now covers
+  the stalled/abandoned inline close.
