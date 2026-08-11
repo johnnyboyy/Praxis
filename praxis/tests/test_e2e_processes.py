@@ -4,6 +4,7 @@ read the outcome back off the journal — the inline PULL process (register → 
 the background CASCADE process (async → stall cascade → plan_status complete), and RESUME after an
 interruption. These exercise the real wiring (plan → schedule → handoff → journal → views), not a
 single unit."""
+import os
 import sys
 import tempfile
 import time
@@ -14,6 +15,7 @@ PRAXIS = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PRAXIS / "scripts"))
 sys.path.insert(0, str(PRAXIS))
 
+import cascade  # noqa: E402
 import conduct as conduct_engine  # noqa: E402
 import gate  # noqa: E402
 import journal  # noqa: E402
@@ -33,14 +35,12 @@ class TempRoot:
         self._tmp.cleanup()
 
 
-def _wait_done(root, timeout=15):
-    key = str(Path(root).resolve())
+def _wait_worker_done(root, timeout=20):
     t0 = time.time()
     while time.time() - t0 < timeout:
-        run = conduct_engine._RUNS.get(key)
-        if run and run.get("done"):
+        if cascade.is_running(root) is None and conduct_engine.plan_status(root)["status"] != "idle":
             return True
-        time.sleep(0.01)
+        time.sleep(0.02)
     return False
 
 
@@ -84,35 +84,53 @@ class InlinePullProcessTest(unittest.TestCase):
 
 
 class CascadeProcessTest(unittest.TestCase):
-    """The background cascade process: hand over a DAG, it runs in dependency order to completion; a
+    """The cascade process (worker core, in-process): a DAG runs in dependency order to completion; a
     unit that stalls blocks its dependents, and the whole run is recoverable from the journal."""
 
-    def test_async_cascade_with_stall_cascade(self):
+    def test_cascade_with_stall_cascade(self):
         with TempRoot() as root:
             def handler(u, c):
                 if u.id == "provision":
                     return Receipt(outcome="stall", status="blocked", surfaced=["no credentials"])
                 return Receipt(outcome="result")
 
-            tasks = [
+            conduct_engine.register_plan(root, [
                 {"intent": "schema", "id": "schema"},
                 {"intent": "api", "id": "api", "depends_on": ["schema"]},
                 {"intent": "provision infra", "id": "provision", "depends_on": ["api"]},
                 {"intent": "deploy", "id": "deploy", "depends_on": ["provision"]},
-            ]
-            out = conduct_engine.run_tasklist_async(root, tasks, executor=InlineExecutor(handler),
-                                                    provider=NullProvider(), concurrency=1)
-            self.assertEqual(out["status"], "running")
-            self.assertTrue(_wait_done(root), "cascade did not finish")
+            ])
+            cascade.run_cascade(root, executor=InlineExecutor(handler), provider=NullProvider(),
+                                concurrency=1)
 
             st = conduct_engine.plan_status(root)
             self.assertEqual(st["status"], "complete")
             self.assertEqual(set(st["progress"]["done"]), {"schema", "api"})
             self.assertEqual(set(st["progress"]["stalled"]), {"provision", "deploy"})
-
-            fold = journal.fold(root)
-            self.assertEqual(fold["units"]["deploy"]["state"], "stalled")  # cascaded block
+            self.assertEqual(journal.fold(root)["units"]["deploy"]["state"], "stalled")
             self.assertIn("cost", st)
+
+
+class DetachedWorkerProcessTest(unittest.TestCase):
+    """The durable 'hand off and come back later' process: a real detached worker PROCESS runs the
+    plan, survives independently, and the run is observed by reattaching through plan_status. The
+    worker uses a fake executor (PRAXIS_CASCADE_FAKE) so no child is spawned and nothing is spent."""
+
+    def test_detached_cascade_runs_to_completion(self):
+        with TempRoot() as root:
+            os.environ["PRAXIS_CASCADE_FAKE"] = "1"
+            try:
+                out = conduct_engine.run_tasklist_detached(
+                    root, [{"intent": "a", "id": "a"},
+                           {"intent": "b", "id": "b", "depends_on": ["a"]}])
+                self.assertEqual(out["status"], "running")
+                self.assertTrue(out["detached"])
+                self.assertTrue(_wait_worker_done(root), "detached worker did not finish")
+                st = conduct_engine.plan_status(root)
+                self.assertEqual(st["status"], "complete")
+                self.assertEqual(sorted(st["progress"]["done"]), ["a", "b"])
+            finally:
+                os.environ.pop("PRAXIS_CASCADE_FAKE", None)
 
 
 class ResumeProcessTest(unittest.TestCase):
@@ -120,19 +138,14 @@ class ResumeProcessTest(unittest.TestCase):
 
     def test_resume_runs_only_the_remaining_units(self):
         with TempRoot() as root:
-            tasks = [{"intent": "a", "id": "a"},
-                     {"intent": "b", "id": "b", "depends_on": ["a"]},
-                     {"intent": "c", "id": "c", "depends_on": ["b"]}]
-            conduct_engine.register_plan(root, tasks)
+            conduct_engine.register_plan(root, [{"intent": "a", "id": "a"},
+                                                {"intent": "b", "id": "b", "depends_on": ["a"]},
+                                                {"intent": "c", "id": "c", "depends_on": ["b"]}])
             journal.append(root, "unit.done", unit="a", outcome="result", status="complete")
-
             ran = []
             ex = InlineExecutor(lambda u, c: ran.append(u.id) or Receipt(outcome="result"))
-            out = conduct_engine.run_tasklist_async(root, tasks, executor=ex,
-                                                    provider=NullProvider(), concurrency=1)
-            self.assertEqual(out["status"], "running")
-            self.assertTrue(_wait_done(root))
-            self.assertEqual(ran, ["b", "c"])                 # 'a' resumed from the log, not re-run
+            cascade.run_cascade(root, executor=ex, provider=NullProvider(), concurrency=1)
+            self.assertEqual(ran, ["b", "c"])
             self.assertEqual(conduct_engine.plan_status(root)["status"], "complete")
 
 

@@ -234,78 +234,26 @@ def _specs_for(root: Path, tasks: list[dict]) -> list:
     return specs
 
 
-# ── background cascade (so the MCP call can't wedge on a long DAG of spawns) ──────────────────────
+# ── background cascade — a detached worker so a big plan survives an MCP-server restart ────────────
 
-import threading  # noqa: E402
-
-_RUNS: dict[str, dict] = {}          # root path -> {thread, started, done}
-_RUNS_LOCK = threading.Lock()
-
-
-def _cascade_running(key: str) -> bool:
-    run = _RUNS.get(key)
-    return bool(run and not run.get("done") and run["thread"].is_alive())
-
-
-def run_tasklist_async(root: str | Path, tasks: list[dict], *, test_cmd: str | None = None,
-                       model: str | None = None, max_retries: int | None = None,
-                       concurrency: int | None = None, allow_edits: bool = False,
-                       executor=None, provider=None) -> dict:
-    """Record the plan, then run the DAG in a BACKGROUND thread and return immediately — so a long
-    cascade of isolated child spawns never blocks (and never times out) the MCP call. Progress is
-    observed through the journal via `plan_status` / `conductor_status`. The background run is
-    `resume=True`, so a re-invocation (or a restart) continues from the journal instead of
-    re-spawning finished units; a cascade already in flight for this root is not started twice.
-    `executor` is injectable for tests; production uses an isolated `ClaudeExecutor`."""
-    import plan as plan_mod
-    from run import Plan
-    from schedule import run_dag
-    root = Path(root).resolve()
-    key = str(root)
-    with _RUNS_LOCK:
-        if _cascade_running(key):
-            return {"status": "already-running", "since": _RUNS[key]["started"],
-                    "note": "a cascade is already in flight for this root; poll plan_status"}
-
-    specs = _specs_for(root, tasks)
-    outcome = plan_mod.plan_tasks(root, specs)
-    if outcome.status == "questions":
-        return {"status": "questions", "questions": outcome.questions, "note": outcome.note}
-    units = outcome.units
-    prov = provider if provider is not None else adapters.corpora_provider(root)
-    ex = executor if executor is not None else ClaudeExecutor(model=model, cwd=str(root),
-                                                              allow_edits=allow_edits)
-    verifier = None
-    if test_cmd:
-        argv = shlex.split(test_cmd)
-        verifier = CommandVerifier(lambda u, r, c, _argv=argv: _argv)
-
-    def _worker():
-        try:
-            run_dag(Plan(units=units), prov, ex, root, verifier=verifier,
-                    concurrency=concurrency, max_retries=max_retries, resume=True)
-        except Exception as e:  # never let a background crash vanish silently — record it
-            journal.append(root, "conductor.plan", status="error", note=f"cascade failed: {e}")
-        finally:
-            with _RUNS_LOCK:
-                if key in _RUNS:
-                    _RUNS[key]["done"] = True
-
-    t = threading.Thread(target=_worker, name=f"cascade:{key}", daemon=True)
-    with _RUNS_LOCK:
-        _RUNS[key] = {"thread": t, "started": time.time(), "done": False}
-    t.start()
-    return {"status": "running",
-            "plan": {"units": [u.id for u in units],
-                     "edges": [[d, u.id] for u in units for d in u.depends_on]},
-            "note": "the cascade runs in the background — poll plan_status (or conductor_status) to "
-                    "watch units complete; call again to resume if it is interrupted"}
+def run_tasklist_detached(root: str | Path, tasks: list[dict], *, test_cmd: str | None = None,
+                          model: str | None = None, max_retries: int | None = None,
+                          concurrency: int | None = None, allow_edits: bool = False) -> dict:
+    """Hand a tasklist to a DETACHED worker process and return at once, so a long cascade neither
+    blocks the MCP call nor dies with the server: it runs in its own session, resumes from the
+    journal if interrupted, and is guarded against double-runs. Poll `plan_status` to reattach. The
+    plumbing lives in cascade.py (imported lazily to keep the module graph acyclic)."""
+    import cascade
+    return cascade.launch_detached(root, tasks, test_cmd=test_cmd, model=model,
+                                   max_retries=max_retries, concurrency=concurrency,
+                                   allow_edits=allow_edits)
 
 
 def plan_status(root: str | Path) -> dict:
     """Where the current plan stands, folded from the journal: per-unit progress buckets
-    (done / in_flight / stalled / waiting), whether a background cascade is still running, and the
+    (done / in_flight / stalled / waiting), whether the detached cascade is still running, and the
     cost rollup. `no-plan` when no tasklist has been registered for this root."""
+    import cascade
     import handoff as handoff_mod
     import plan as plan_mod
     root = Path(root).resolve()
@@ -313,9 +261,12 @@ def plan_status(root: str | Path) -> dict:
     if units is None:
         return {"status": "no-plan", "note": "no tasklist has been planned for this root yet"}
     prog = handoff_mod.status(root, units)
-    running = _cascade_running(str(root))
-    status = "running" if running else ("complete" if prog["complete"] else "idle")
-    return {"status": status, "progress": prog, "cost": views.cost(root)}
+    live = cascade.is_running(root)
+    status = "running" if live else ("complete" if prog["complete"] else "idle")
+    out = {"status": status, "progress": prog, "cost": views.cost(root)}
+    if live:
+        out["worker"] = {"pid": live.get("pid"), "since": live.get("started")}
+    return out
 
 
 def register_plan(root: str | Path, tasks: list[dict]) -> dict:
