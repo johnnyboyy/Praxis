@@ -244,6 +244,20 @@ def close_unit(root: str | Path, unit_id: str | None = None, note: str | None = 
     return {"status": "closed", "unit": target}
 
 
+def record_receipt(root: str | Path, unit_id: str, outcome: str = "result",
+                   note: str | None = None) -> dict:
+    root = Path(root).resolve()
+    if outcome == "result":
+        journal.append(root, "unit.done", unit=unit_id, outcome="result",
+                       status="complete", note=note)
+    elif outcome == "stall":
+        journal.append(root, "unit.stalled", unit=unit_id, outcome="stall",
+                       status="blocked", surfaced=[note] if note else [], note=note)
+    else:
+        raise ValueError(f"outcome must be 'result' or 'stall', got {outcome!r}")
+    return {"status": "recorded", "unit": unit_id, "outcome": outcome}
+
+
 def _stub_unit(situation: Situation) -> Unit:
     return Unit(id="preview", situation=situation)
 

@@ -142,6 +142,16 @@ def close_unit(unit_id: str | None = None, note: str | None = None,
 
 
 @mcp.tool()
+def record_receipt(unit_id: str, outcome: str = "result", note: str | None = None,
+                   search_base: str | None = None) -> str:
+    """Journal the outcome of a dispatched unit. `outcome=result` marks the unit done and unlocks its
+    dependents; `outcome=stall` marks it blocked (with `note` as the blocker) and its dependents stay
+    waiting."""
+    return json.dumps(conduct_engine.record_receipt(_root(search_base), unit_id, outcome=outcome,
+                                                     note=note), indent=2)
+
+
+@mcp.tool()
 def conductor_status(search_base: str | None = None) -> str:
     """The journal fold for the governing root: the open unit (if any), the deliver-vs-stall summary
     by phase and workflow, and the cost rollup."""

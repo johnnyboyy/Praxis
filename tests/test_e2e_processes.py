@@ -136,6 +136,45 @@ class CloseUnitTest(unittest.TestCase):
             self.assertEqual(conduct_engine.close_unit(root), {"status": "no-open-unit"})
 
 
+class RecordReceiptTest(unittest.TestCase):
+    """The fan-out receipt process: a dispatched unit's outcome is journaled by record_receipt — a
+    result unlocks its dependents, a stall marks it blocked and leaves them waiting, and the plan
+    reads complete once every unit is done or stalled."""
+
+    def test_result_unlocks_dependent_then_stall_completes_plan(self):
+        with TempRoot() as root:
+            import handoff as handoff_mod
+            import plan as plan_mod
+
+            conduct_engine.register_plan(root, [
+                {"intent": "u1", "id": "u1", "targets": ["u1.py"]},
+                {"intent": "u2", "id": "u2", "depends_on": ["u1"], "targets": ["u2.py"]}])
+
+            self.assertEqual(conduct_engine.next_handoff(root)["unit"], "u1")
+
+            self.assertEqual(conduct_engine.record_receipt(root, "u1", "result"),
+                             {"status": "recorded", "unit": "u1", "outcome": "result"})
+            self.assertEqual(journal.state_of(root, "u1"), "done")
+
+            self.assertEqual(conduct_engine.next_handoff(root)["unit"], "u2")
+            conduct_engine.record_receipt(root, "u2", "stall", note="blocked on X")
+            self.assertEqual(journal.state_of(root, "u2"), "stalled")
+            u2 = journal.fold(root)["units"]["u2"]
+            self.assertEqual(u2["surfaced"], ["blocked on X"])
+
+            units = plan_mod.reconstruct_units(root)
+            st = handoff_mod.status(root, units)
+            self.assertTrue(st["complete"])
+            self.assertEqual(len(st["done"]) + len(st["stalled"]), st["total"])
+            self.assertIn("u2", st["stalled"])
+            self.assertIn("u1", st["done"])
+
+    def test_bogus_outcome_raises(self):
+        with TempRoot() as root:
+            with self.assertRaises(ValueError):
+                conduct_engine.record_receipt(root, "u1", outcome="bogus")
+
+
 class DetachedWorkerProcessTest(unittest.TestCase):
     """The durable 'hand off and come back later' process: a real detached worker PROCESS runs the
     plan, survives independently, and the run is observed by reattaching through plan_status. The
