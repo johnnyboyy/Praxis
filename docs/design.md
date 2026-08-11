@@ -1,4 +1,4 @@
-# Praxis Workflows
+# Praxis design — phases, typed edges, and workflows
 
 Praxis runs a **unit of work through a workflow** — a graph of **phases** — instead of a single
 dispatch. Praxis owns the process; *what to think* (coding judgment, UI inventories, legal checklists)

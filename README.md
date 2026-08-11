@@ -44,5 +44,5 @@ Both are explicit-only (they will not be auto-invoked by the model).
 
 ## Design
 
-See [`WORKFLOWS.md`](WORKFLOWS.md) for the phase/workflow model, typed edges, and
+See [`docs/design.md`](docs/design.md) for the phase/workflow model, typed edges, and
 the phase-walking runner.
