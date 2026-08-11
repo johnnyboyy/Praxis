@@ -1,9 +1,7 @@
 # Praxis design — phases, typed edges, and workflows
 
 Praxis runs a **unit of work through a workflow** — a graph of **phases** — instead of a single
-dispatch. Praxis owns the process; *what to think* (coding judgment, UI inventories, legal checklists)
-rides in as **contributors** (see `contributors.py`). This document is the spec the implementation
-synthesizes from.
+dispatch. This document is the spec the implementation synthesizes from.
 
 ## Primitives
 
@@ -74,7 +72,7 @@ Two verification scopes: **local** (a unit's own new tests, fast, inside the uni
 
 `gather` runs at each phase with the phase in the `Situation`; contributors return phase-appropriate
 sections. `uiux → plan` (reusable components, so the planner designs for reuse); `conventions →
-implement`; `law-checklist → extract`. Domain knowledge is a contributor — praxis stays neutral.
+implement`; `law-checklist → extract`. Domain knowledge is a contributor.
 
 ## Discovery over stone
 
@@ -114,13 +112,13 @@ runs (see the discovery log below).
   when its deps are `done`, and nothing marks an inline unit `done`). Surfaced by trying to enact this
   very build as a multi-unit inline plan. Needs an inline "phase/unit complete" close.
 
-Surfaced by *building* the runner (the model discovering its own gaps — the thesis proving itself):
+Surfaced by *building* the runner:
 
 - **`coverage-diff` is a two-input phase the single-slot boundary can't feed** (highest priority). The
   runner threads one `carry`/`ir` value between phases, but coverage-diff needs BOTH the original IR and
   the newly-synthesized artifact ("both IN"). Fix: thread a small map of named phase outputs, not one
   slot, so a phase can consume several prior outputs. This is the rebuild triple straining against the
-  linear model — exactly the kind of misfit the system is meant to catch.
+  linear model.
 - **`gather` re-surfaces the task-kind gap at every phase.** With a loose/none unit fit, each phase
   re-emits a `conductor.gap`. The task-kind gap should surface once (at the first phase), not per phase.
 - **The phase-level `gate` field is unused** — gates are edge-derived (`GATES[edge_in]`). Either drop

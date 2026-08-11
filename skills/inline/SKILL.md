@@ -1,5 +1,5 @@
 ---
-description: Do one small thing or answer a question in this conversation via praxis — frame a single unit, work in-context, close it. For questions, small carry-edge edits, and exploration where staying in the conversation is the point.
+description: Do one small thing or answer a question in this conversation via praxis — frame a single unit, work in-context, close it. For questions, small carry-edge edits, and exploration.
 disable-model-invocation: true
 ---
 

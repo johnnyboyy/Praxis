@@ -1,21 +1,16 @@
 #!/usr/bin/env python3
 """root_tree — deterministic discovery of the tree of concern-boundaries ("roots") in a source tree.
 
-Part of praxis-core, the process/orchestration layer. Two disciplines keep praxis decoupled from any
-judgment engine it drives:
-
-  1. Praxis never imports or invokes an engine. This script reads the filesystem and reports facts.
-  2. A root is a directory carrying praxis's own config marker. `.praxis/config.md` is the standard
-     (so a repo that SHIPS a praxis/ source tree can self-host without its source dir doubling as the
-     marker); bare `praxis/config.md` stays recognized for existing roots. The marker set is
-     configurable (`--marker`), so a project can add an engine's own config marker without any code
-     change here.
+A root is a directory carrying praxis's own config marker. `.praxis/config.md` is the standard
+(so a repo that SHIPS a praxis/ source tree can self-host without its source dir doubling as the
+marker); bare `praxis/config.md` stays recognized for existing roots. The marker set is
+configurable (`--marker`), so a project can add an engine's own config marker without any code
+change here.
 
 A *root* is a boundary of concern: a directory meant to be reasoned about in isolation from its siblings
-(FAMOUS app vs admin; motors circuit-builder vs marketing). The point is to make the root tree a **fact
-produced before any routing**, never inferred: given a task (a path, or a set of touched files) the
-caller asks which root(s) own it, and a task spanning two roots is two units of work — one handed to each
-root — not one agent straddling both.
+(FAMOUS app vs admin; motors circuit-builder vs marketing). Given a task (a path, or a set of touched
+files) the caller asks which root(s) own it, and a task spanning two roots is two units of work — one
+handed to each root — not one agent straddling both.
 
 Commands:
   tree   [--from DIR] [--marker M ...] [--json]   discover every root under DIR, print the tree

@@ -5,10 +5,6 @@ unit of work, composes context per phase, drives it through typed-edge workflows
 (or spawns it isolated), verifies at a barrier, and gates edits until a unit is
 framed.
 
-Praxis is engine-neutral: it owns the *process*, not the judgment. Domain
-knowledge, principles, and verification criteria plug in through **contributors**
-— praxis composes and drives; the contributors decide.
-
 ## Install
 
 From a marketplace:

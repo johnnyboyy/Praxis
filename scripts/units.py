@@ -4,9 +4,7 @@ paths that kind of work may write) and the OUTPUT (the deliverable whose deliver
 
 Part of praxis-core. The frame marker and session stamp prove *that* a unit was framed; the lease
 declares *what that unit's work may touch*, so the edit gate can bounce the first out-of-surface
-write — the design→code boundary as a mechanical deny instead of a judgment call (observed live:
-an entire implementation ran under a design composition because nothing ever asked "is this edit
-the kind of output this frame authorizes?").
+write.
 
 Declarations live in `<root>/.praxis/units.md` (legacy `praxis/units.md`), root-authored like
 `config.md` — process metadata, not judgment, so it is praxis-side even though the unit *names*

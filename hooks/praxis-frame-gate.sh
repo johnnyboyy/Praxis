@@ -93,7 +93,7 @@ case "$VERDICT" in
     deny "$REASON"
     ;;
   no_unit)
-    deny "No open unit of work in the journal for this root ($ROOT_PATH) — drive this work through the conductor first (the plan / next_handoff tools, or conduct for a single unit) so a unit is framed before editing; the pull is the fence in front of the work."
+    deny "No open unit of work in the journal for this root ($ROOT_PATH) — drive this work through the conductor first (the plan / next_handoff tools, or conduct for a single unit) so a unit is framed before editing."
     ;;
   *)
     # Unrecognized verdict ⇒ fail open, never the reason a legit edit is blocked.

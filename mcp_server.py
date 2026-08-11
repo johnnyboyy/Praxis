@@ -41,13 +41,13 @@ def conduct(intent: str, brief: str | None = None, task_kind: str = "change",
     the result on `test_cmd` (looping back with the failure as feedback if it fails), and records
     every step to the journal.
 
-    GAP SIGNAL — always fill these two honestly, they are the point:
+    GAP SIGNAL — always fill these two honestly:
       `task_kind`      — the closest of create | change | explore (the verb work RUNS under).
       `suggested_kind` — what you would NATURALLY call this task, in your own words (free text).
       `fit`            — how well `task_kind` matches your suggestion: "clean" (great fit),
                          "loose" (approximate), or "none" (it really isn't create/change/explore).
     A loose/none fit surfaces a vocabulary gap for the operator to later mint — do not force a clean
-    rating to avoid it; the divergence is how the system discovers the verbs it's missing.
+    rating to avoid it.
 
     `subject` is coding | design | process | prose. `intent` is what the work is trying to do;
     `brief` is the concrete instruction handed to the child (defaults to `intent`). `test_cmd` is the
