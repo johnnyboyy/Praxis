@@ -1,0 +1,7 @@
+{
+  "name": "praxis",
+  "description": "Process/orchestration engine: frames a unit of work, composes context per phase, drives it through typed-edge workflows (or spawns it isolated), verifies at a barrier, and gates edits until a unit is framed.",
+  "version": "0.1.0",
+  "author": { "name": "John Zdanis" },
+  "repository": "https://github.com/johnzdanis/skills-pi"
+}

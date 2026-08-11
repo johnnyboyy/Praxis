@@ -1,0 +1,11 @@
+{
+  "name": "jdev-praxis",
+  "owner": { "name": "John Zdanis" },
+  "plugins": [
+    {
+      "name": "praxis",
+      "source": "./praxis",
+      "description": "Process/orchestration engine with an edit gate, phase/workflow drive, and inline + orchestrated entry points."
+    }
+  ]
+}
