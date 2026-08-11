@@ -87,14 +87,31 @@ def _blocked(root: Path, unit: Unit, failed_deps: list[str]) -> dict:
             "blocked_on": failed_deps, "receipt": None}
 
 
+def _resumed_result(unit: Unit, fold: dict) -> dict:
+    """Reconstruct a per-unit result for a unit that already concluded in the journal (resume path),
+    shaped like `run_unit`'s result so the returned list is uniform."""
+    u = fold["units"].get(unit.id, {})
+    st = u.get("state")
+    outcome = u.get("outcome") or ("result" if st == "done" else "stall")
+    return {"unit": unit.id, "unit_of_work": unit.unit_of_work, "outcome": outcome,
+            "status": u.get("status"), "verified": (st == "done") or None, "attempts": None,
+            "defects": u.get("surfaced") or [], "gap_surfaced": None,
+            "routed_kind": u.get("last", {}).get("routed_kind"), "receipt": None, "resumed": True}
+
+
 def run_dag(plan: Plan, provider, executor, root: Path, verifier=None,
             concurrency: int | None = None, max_retries: int | None = None,
-            routing_situation: Situation | None = None, policy=None) -> dict:
+            routing_situation: Situation | None = None, policy=None, resume: bool = False) -> dict:
     """Run a plan honoring `depends_on`, one ready wave at a time, each wave in parallel up to
     `concurrency`. Returns per-unit results (in plan order) + the fold's deliver-vs-stall summary +
     the reflexive-routing result. A unit is `done` only when it delivered AND passed verification;
     a dependency that stalled/blocked blocks its dependents (cascading). `concurrency` and
-    `max_retries` default to the root's editable conductor policy (`policy.load_policy`)."""
+    `max_retries` default to the root's editable conductor policy (`policy.load_policy`).
+
+    `resume=True` seeds state from the journal: a unit that already reached a terminal state (`done`
+    or `stalled`) is NOT re-dispatched — its outcome is taken from the log and its dependents proceed
+    (or cascade-block) accordingly. This makes a background cascade restart-safe and idempotent: a
+    re-invoked plan continues from where it stopped instead of re-spawning finished units."""
     import policy as policy_mod
     pol = policy or policy_mod.load_policy(root)
     if concurrency is None:
@@ -113,6 +130,15 @@ def run_dag(plan: Plan, provider, executor, root: Path, verifier=None,
     state: dict[str, str] = {}          # unit id -> "done" | "stalled" | "blocked"
     results: dict[str, dict] = {}
     pending = list(plan.units)
+
+    if resume:
+        fold = journal.fold(root)
+        for u in list(pending):
+            st = fold["units"].get(u.id, {}).get("state")
+            if st in ("done", "stalled"):
+                state[u.id] = st
+                results[u.id] = _resumed_result(u, fold)
+                pending.remove(u)
 
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         while pending:

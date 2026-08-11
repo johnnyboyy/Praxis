@@ -4,8 +4,11 @@ client).
 
 Tools:
   plan             — hand the conductor a TASKLIST (1..N tasks) and CASCADE it: plan into a DAG and
-                     run each ready wave through run_dag as ISOLATED children, gating on a test
-                     command. For handing work to fresh isolated contexts.
+                     run each ready wave as ISOLATED children, gating on a test command. The cascade
+                     runs in the BACKGROUND and the call returns at once (poll plan_status). For
+                     handing work to fresh isolated contexts.
+  plan_status      — progress of the current plan (done / in_flight / stalled / waiting), whether the
+                     background cascade is still running, and the cost rollup.
   register_plan    — record a tasklist's DAG WITHOUT running it (no spawns), so you can implement the
                      units INLINE via next_handoff. Use this when you mean to do the work yourself.
   next_handoff     — the PULL: hand the next ready unit's brief + judgment to a self-advancing agent
@@ -93,18 +96,32 @@ def plan(tasks: str, test_cmd: str | None = None, model: str | None = None,
     YOU are the planner: interview the operator, decompose the request into these tasks, and infer
     the `depends_on` edges before calling this. The conductor plans them into a DAG and runs each
     ready wave (dependencies first), composing corpora judgment per unit and gating on `test_cmd`.
-    `dry_run` (default TRUE) previews the plan + each unit's routing/gap WITHOUT spawning; re-call
-    with dry_run=false, allow_edits=true to execute. Fill `suggested_kind`/`fit` honestly per task —
-    a loose/none fit surfaces a vocabulary gap for later minting; do not force `clean` to avoid it."""
+    `dry_run` (default TRUE) previews the plan + each unit's routing/gap WITHOUT spawning. Re-call
+    with dry_run=false, allow_edits=true to EXECUTE — the cascade then runs in the BACKGROUND and
+    this call returns immediately with status `running`; poll `plan_status` to watch units complete
+    (re-calling resumes an interrupted run, it does not re-spawn finished units). Fill
+    `suggested_kind`/`fit` honestly per task — a loose/none fit surfaces a vocabulary gap."""
     try:
         parsed = json.loads(tasks)
     except json.JSONDecodeError as e:
         return json.dumps({"error": f"tasks must be a JSON array of task objects: {e}"}, indent=2)
     if not isinstance(parsed, list) or not parsed:
         return json.dumps({"error": "tasks must be a non-empty JSON array"}, indent=2)
-    out = conduct_engine.run_tasklist(_root(search_base), parsed, test_cmd=test_cmd, model=model,
-                               concurrency=concurrency, allow_edits=allow_edits, dry_run=dry_run)
+    if dry_run:
+        out = conduct_engine.run_tasklist(_root(search_base), parsed, dry_run=True)
+    else:
+        out = conduct_engine.run_tasklist_async(_root(search_base), parsed, test_cmd=test_cmd,
+                                                model=model, concurrency=concurrency,
+                                                allow_edits=allow_edits)
     return json.dumps(out, indent=2)
+
+
+@mcp.tool()
+def plan_status(search_base: str | None = None) -> str:
+    """Progress of the current plan, folded from the journal: per-unit buckets (done / in_flight /
+    stalled / waiting), whether the background cascade is still running, and the cost rollup. Poll
+    this after a `plan` with dry_run=false. `no-plan` when nothing has been planned for this root."""
+    return json.dumps(conduct_engine.plan_status(_root(search_base)), indent=2)
 
 
 @mcp.tool()
