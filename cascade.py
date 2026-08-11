@@ -77,7 +77,8 @@ def is_running(root: str | Path) -> dict | None:
 
 
 def run_cascade(root: str | Path, *, executor, contributors=None, test_cmd: str | None = None,
-                concurrency: int | None = None, max_retries: int | None = None) -> dict:
+                concurrency: int | None = None, max_retries: int | None = None,
+                fix_rounds: int | None = None) -> dict:
     import plan as plan_mod
     root = Path(root).resolve()
     units = plan_mod.reconstruct_units(root)
@@ -86,7 +87,7 @@ def run_cascade(root: str | Path, *, executor, contributors=None, test_cmd: str 
     contribs = contributors if contributors is not None else contributors_mod.contributors_for(root)
     barrier = orchestrate.barrier_from_test_cmd(test_cmd)
     orch = orchestrate.run_orchestrated(root, units, contribs, executor, barrier=barrier,
-                                        max_loops=(max_retries if max_retries is not None else 3),
+                                        fix_rounds=(fix_rounds if fix_rounds is not None else 3),
                                         resume=True, concurrency=concurrency,
                                         max_retries=max_retries)
     fanout = orch.get("fanout") or {}

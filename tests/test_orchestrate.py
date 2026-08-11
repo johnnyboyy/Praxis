@@ -70,7 +70,7 @@ class OrchestrateTest(unittest.TestCase):
     def test_barrier_always_fails_exhausts_budget(self):
         barrier, calls = _stateful_barrier(R.Verdict(verified=False, defects=["boom"]))
         out = O.run_orchestrated(self.root, [_u("a")], [], R.InlineExecutor(_ok),
-                                 barrier, max_loops=2)
+                                 barrier, fix_rounds=2)
         self.assertEqual(out["status"], "escalated")
         self.assertEqual(out["reason"], "loop-exhausted")
         self.assertEqual(out["attempts"], 3)

@@ -22,7 +22,7 @@ def barrier_from_test_cmd(test_cmd: str | None) -> Callable[[], Verdict]:
 
 
 def run_orchestrated(root: Path, units, contributors, executor,
-                     barrier: Callable[[], Verdict], *, max_loops: int = 3,
+                     barrier: Callable[[], Verdict], *, fix_rounds: int = 3,
                      defect_owner: Callable[[str], dict] | None = None,
                      resume: bool = False, concurrency: int | None = None,
                      max_retries: int | None = None) -> dict:
@@ -35,7 +35,7 @@ def run_orchestrated(root: Path, units, contributors, executor,
                 "units": stalled, "fanout": result}
 
     own = defect_owner or _default_owner
-    for attempt in range(max_loops + 1):
+    for attempt in range(fix_rounds + 1):
         verdict = barrier()
         if verdict.verified:
             journal.append(root, "orchestration.closed", attempt=attempt)
@@ -57,5 +57,5 @@ def run_orchestrated(root: Path, units, contributors, executor,
                         "attempts": attempt + 1, "fix_unit": fu.id, "fanout": result}
 
     journal.append(root, "orchestration.escalated", reason="loop-exhausted")
-    return {"status": "escalated", "reason": "loop-exhausted", "attempts": max_loops + 1,
+    return {"status": "escalated", "reason": "loop-exhausted", "attempts": fix_rounds + 1,
             "fanout": result}

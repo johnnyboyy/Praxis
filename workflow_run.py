@@ -28,7 +28,7 @@ def _incoming(workflow: Workflow, to_phase: str):
 
 def run_workflow(root: Path, unit, workflow: Workflow, contributors, executor,
                  verifiers: dict | None = None, start: str | None = None,
-                 max_loops: int = 3) -> dict:
+                 max_phase_loops: int = 3) -> dict:
     verifiers = verifiers or {}
     by_name = {p.name: p for p in workflow.phases}
     name = start or workflow.first.name
@@ -45,9 +45,10 @@ def run_workflow(root: Path, unit, workflow: Workflow, contributors, executor,
 
     while name is not None:
         visits[name] = visits.get(name, 0) + 1
-        if visits[name] > max_loops:
+        if visits[name] > max_phase_loops:
             journal.append(root, "phase.stalled", unit=unit.id, phase=name,
-                           phase_index=phase_index, note=f"exceeded max_loops={max_loops}")
+                           phase_index=phase_index,
+                           note=f"exceeded max_phase_loops={max_phase_loops}")
             break
         phase = by_name[name]
         situation = copy.copy(unit.situation)

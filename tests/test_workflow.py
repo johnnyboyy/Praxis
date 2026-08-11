@@ -165,9 +165,9 @@ class ConditionalTraversalTest(unittest.TestCase):
         self.assertEqual(out["phases"],
                          ["implement", "verify", "fix", "verify", "fix", "verify", "close"])
 
-    def test_fix_loop_bounded_by_max_loops(self):
+    def test_fix_loop_bounded_by_max_phase_loops(self):
         out = run_workflow(self.root, R.Unit("u1", _sit()), W.BUILD_VERIFY, [],
-                           R.InlineExecutor(_verify_after(fail_times=99)), max_loops=3)
+                           R.InlineExecutor(_verify_after(fail_times=99)), max_phase_loops=3)
         self.assertEqual(out["phases"].count("verify"), 3)
         stalled = [e for e in journal.read(self.root) if e.get("event") == "phase.stalled"]
         self.assertTrue(stalled)
