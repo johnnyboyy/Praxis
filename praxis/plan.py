@@ -54,7 +54,7 @@ class TaskSpec:
     project_shape: dict = field(default_factory=dict)
     workflow: str | None = None
     label: str | None = None
-    depends_on: list = field(default_factory=list)   # ids of other specs in the same tasklist
+    depends_on: list = field(default_factory=list)
 
     def __post_init__(self):
         for name, value, allowed in (("task_kind", self.task_kind, TASK_KINDS),
@@ -88,8 +88,8 @@ class PlanOutcome:
     carries what the planner needs answered before it can plan (the interview pause)."""
 
     status: str                              # "ready" | "questions"
-    units: list = field(default_factory=list)      # list[Unit] when ready
-    questions: list = field(default_factory=list)  # surfaced when questions
+    units: list = field(default_factory=list)
+    questions: list = field(default_factory=list)
     note: str | None = None
 
     def __post_init__(self):

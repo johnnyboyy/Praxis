@@ -250,7 +250,7 @@ def _cascade_running(key: str) -> bool:
 def run_tasklist_async(root: str | Path, tasks: list[dict], *, test_cmd: str | None = None,
                        model: str | None = None, max_retries: int | None = None,
                        concurrency: int | None = None, allow_edits: bool = False,
-                       executor=None) -> dict:
+                       executor=None, provider=None) -> dict:
     """Record the plan, then run the DAG in a BACKGROUND thread and return immediately — so a long
     cascade of isolated child spawns never blocks (and never times out) the MCP call. Progress is
     observed through the journal via `plan_status` / `conductor_status`. The background run is
@@ -272,7 +272,7 @@ def run_tasklist_async(root: str | Path, tasks: list[dict], *, test_cmd: str | N
     if outcome.status == "questions":
         return {"status": "questions", "questions": outcome.questions, "note": outcome.note}
     units = outcome.units
-    provider = adapters.corpora_provider(root)
+    prov = provider if provider is not None else adapters.corpora_provider(root)
     ex = executor if executor is not None else ClaudeExecutor(model=model, cwd=str(root),
                                                               allow_edits=allow_edits)
     verifier = None
@@ -282,7 +282,7 @@ def run_tasklist_async(root: str | Path, tasks: list[dict], *, test_cmd: str | N
 
     def _worker():
         try:
-            run_dag(Plan(units=units), provider, ex, root, verifier=verifier,
+            run_dag(Plan(units=units), prov, ex, root, verifier=verifier,
                     concurrency=concurrency, max_retries=max_retries, resume=True)
         except Exception as e:  # never let a background crash vanish silently — record it
             journal.append(root, "conductor.plan", status="error", note=f"cascade failed: {e}")
@@ -328,7 +328,7 @@ def register_plan(root: str | Path, tasks: list[dict]) -> dict:
     import plan as plan_mod
     root = Path(root).resolve()
     specs = _specs_for(root, tasks)
-    outcome = plan_mod.plan_tasks(root, specs)  # PassthroughPlanner: records the DAG, runs nothing
+    outcome = plan_mod.plan_tasks(root, specs)
     if outcome.status == "questions":
         return {"status": "questions", "questions": outcome.questions, "note": outcome.note}
     units = outcome.units

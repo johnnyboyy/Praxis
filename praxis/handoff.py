@@ -57,7 +57,7 @@ def next_ready(root: str | Path, units: list[Unit]) -> Unit | None:
     fold = journal.fold(root)
     for u in units:
         if _state_of(fold, u.id) is not None:
-            continue                                   # already started/concluded
+            continue
         if all(_state_of(fold, d) == "done" for d in u.depends_on):
             return u
     return None
