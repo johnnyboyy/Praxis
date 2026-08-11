@@ -97,6 +97,17 @@ class WalkTest(unittest.TestCase):
         coverage = cap.seen[2]
         self.assertEqual(coverage["carry"], "art-2")
 
+    def test_coverage_diff_sees_both_ir_and_synthesis(self):
+        cap = _Capture()
+        run_workflow(self.root, R.Unit("u1", _sit()), W.REBUILD_TRIPLE, [], cap)
+        coverage = cap.seen[2]
+        self.assertEqual(coverage["inputs"], {"extract": "art-1", "synthesize": "art-2"})
+
+    def test_task_kind_gap_surfaces_once_not_per_phase(self):
+        run_workflow(self.root, R.Unit("u1", _sit(fit="none", suggested_kind="provision")),
+                     W.TDD_UNIT, [], _Capture())
+        self.assertEqual(len(journal.gaps(self.root)), 1)
+
     def test_edge_in_recorded_on_entry(self):
         run_workflow(self.root, R.Unit("u1", _sit()), W.REBUILD_TRIPLE, [], _Capture())
         entered = self._phase_events("phase.entered")

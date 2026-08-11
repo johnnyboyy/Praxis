@@ -128,3 +128,11 @@ Surfaced by *building* the runner (the model discovering its own gaps — the th
 - **Traversal is linear** — only `pass`/`always` edges are walked; `fail`/`agent-choice` edges (the
   fix-loop, dynamic routing) are defined-but-not-yet-driven. Expected for this cut.
 - **Starting mid-graph treats the first phase as `create`** — no incoming edge is honored on resume.
+
+- 2026-08-10 (later): **resolved discoveries 1–3.** `run_workflow` now threads a named-output map and
+  assembles each phase's `inputs` from ALL its incoming edges, with a new `feeds` (input-only) edge
+  type; `coverage-diff` now receives both `extract`'s IR and `synthesize`'s artifact end-to-end (the
+  rebuild triple is whole). The task-kind gap surfaces once (first phase only). The unused
+  `Phase.gate` field is dropped (gates are edge-derived). Still open: conditional-edge traversal
+  (`fail`/`agent-choice` — the fix-loop) and the orchestration altitude (fan-out → barrier → fix →
+  close), plus inline unit-completion.

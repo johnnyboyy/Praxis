@@ -17,7 +17,7 @@ GATES: dict[EdgeType, str] = {
     EdgeType.extract: "coverage-diff",
 }
 
-WHENS = ("pass", "fail", "always", "agent-choice")
+WHENS = ("pass", "fail", "always", "agent-choice", "feeds")
 STANCES = ("divergent", "convergent", "neutral")
 DELIVERIES = ("inline", "spawn", "deterministic")
 
@@ -30,7 +30,6 @@ class Phase:
     intent: str = ""
     produces: str = ""
     delivery: str = "inline"
-    gate: str | None = None
 
 
 @dataclass
@@ -99,6 +98,7 @@ REBUILD_TRIPLE = Workflow(
     edges=[
         ("extract", "synthesize", "pass", EdgeType.extract),
         ("synthesize", "coverage-diff", "pass", EdgeType.carry),
+        ("extract", "coverage-diff", "feeds", EdgeType.carry),
     ],
 )
 

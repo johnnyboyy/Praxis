@@ -16,6 +16,10 @@ def _next_edge(workflow: Workflow, from_phase: str):
     return None
 
 
+def _incoming(workflow: Workflow, to_phase: str):
+    return [(f, et) for (f, t, _when, et) in workflow.edges if t == to_phase]
+
+
 def run_workflow(root: Path, unit, workflow: Workflow, contributors, executor,
                  verifiers: dict | None = None, start: str | None = None) -> dict:
     verifiers = verifiers or {}
@@ -24,6 +28,7 @@ def run_workflow(root: Path, unit, workflow: Workflow, contributors, executor,
 
     edge_in = None
     carry = None
+    outputs: dict = {}
     phase_index = 0
     walked: list[str] = []
     phase_fits: dict[str, str] = {}
@@ -34,7 +39,10 @@ def run_workflow(root: Path, unit, workflow: Workflow, contributors, executor,
         phase = by_name[name]
         situation = copy.copy(unit.situation)
         situation.phase = phase.name
-        composed = gather(contributors, situation, root=root)
+        composed = gather(contributors, situation, root=(root if phase_index == 0 else None))
+        inputs = {f: outputs[f] for (f, _et) in _incoming(workflow, phase.name) if f in outputs}
+        if inputs:
+            composed["inputs"] = inputs
         if edge_in == EdgeType.carry:
             composed["carry"] = carry
         elif edge_in == EdgeType.extract:
@@ -66,6 +74,7 @@ def run_workflow(root: Path, unit, workflow: Workflow, contributors, executor,
 
         walked.append(phase.name)
         carry = evidence.get("produces")
+        outputs[phase.name] = carry
 
         nxt = _next_edge(workflow, name)
         if nxt is None:
