@@ -17,7 +17,6 @@ import cascade  # noqa: E402
 import conduct as conduct_engine  # noqa: E402
 import journal  # noqa: E402
 from plan import TaskSpec, build_units, plan_tasks  # noqa: E402
-from providers import NullProvider  # noqa: E402
 from run import InlineExecutor, Plan, Receipt  # noqa: E402
 from schedule import run_dag  # noqa: E402
 
@@ -41,7 +40,7 @@ class RunDagResumeTest(unittest.TestCase):
             journal.append(root, "unit.done", unit="a", outcome="result", status="complete")
             ran = []
             ex = InlineExecutor(lambda u, c: ran.append(u.id) or Receipt(outcome="result"))
-            out = run_dag(Plan(units=units), NullProvider(), ex, root, concurrency=1, resume=True)
+            out = run_dag(Plan(units=units), [], ex, root, concurrency=1, resume=True)
             self.assertEqual(ran, ["b"])
             results = {r["unit"]: r for r in out["results"]}
             self.assertTrue(results["a"].get("resumed"))
@@ -54,7 +53,7 @@ class RunDagResumeTest(unittest.TestCase):
             journal.append(root, "unit.stalled", unit="a", outcome="stall", status="blocked")
             ran = []
             ex = InlineExecutor(lambda u, c: ran.append(u.id) or Receipt(outcome="result"))
-            out = run_dag(Plan(units=units), NullProvider(), ex, root, concurrency=1, resume=True)
+            out = run_dag(Plan(units=units), [], ex, root, concurrency=1, resume=True)
             self.assertEqual(ran, [])
             self.assertEqual({r["unit"]: r["outcome"] for r in out["results"]}["b"], "stall")
 
@@ -64,7 +63,7 @@ class RunDagResumeTest(unittest.TestCase):
             journal.append(root, "unit.done", unit="a", outcome="result", status="complete")
             ran = []
             ex = InlineExecutor(lambda u, c: ran.append(u.id) or Receipt(outcome="result"))
-            run_dag(Plan(units=units), NullProvider(), ex, root, concurrency=1, resume=False)
+            run_dag(Plan(units=units), [], ex, root, concurrency=1, resume=False)
             self.assertEqual(ran, ["a"])
 
 
@@ -75,7 +74,7 @@ class RunCascadeCoreTest(unittest.TestCase):
                               TaskSpec(intent="b", id="b", depends_on=["a"])])
             ran = []
             ex = InlineExecutor(lambda u, c: ran.append(u.id) or Receipt(outcome="result"))
-            out = cascade.run_cascade(root, executor=ex, provider=NullProvider(), concurrency=1)
+            out = cascade.run_cascade(root, executor=ex, contributors=[], concurrency=1)
             self.assertEqual(out["status"], "complete")
             self.assertEqual(ran, ["a", "b"])
             fold = journal.fold(root)

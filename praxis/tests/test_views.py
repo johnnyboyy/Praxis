@@ -5,9 +5,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import journal  # noqa: E402
-import providers as pv  # noqa: E402
 import run as R  # noqa: E402
 import views  # noqa: E402
+from contributors import Contribution  # noqa: E402
 from situation import Situation  # noqa: E402
 
 
@@ -17,24 +17,12 @@ def _sit(**over):
     return Situation(**kw)
 
 
-class _StubProvider:
-    """Minimal composing provider — returns fixed domains so the handoff view has something to show."""
+class _StubContributor:
+    def __init__(self, source):
+        self._source = source
 
-    def __init__(self, domains):
-        self._domains = list(domains)
-
-    def compose(self, situation):
-        return {"artifacts": [], "stance": None, "note": "ok",
-                "domains": list(self._domains), "routed_kind": situation.routed_kind}
-
-    def ratify(self, proposal):
-        return {"verdict": "unavailable"}
-
-    def retrospect(self, scope):
-        return {"signals": []}
-
-    def capabilities(self):
-        return []
+    def contribute(self, situation):
+        return [Contribution(source=self._source, title="frame", body="body")]
 
 
 class HandoffViewTest(unittest.TestCase):
@@ -42,7 +30,7 @@ class HandoffViewTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         (self.root / ".praxis").mkdir()
-        self.provider = _StubProvider(["prose-craft"])
+        self.contributors = [_StubContributor("prose-craft")]
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -55,20 +43,20 @@ class HandoffViewTest(unittest.TestCase):
             return R.Receipt(outcome="result", tool_calls=4, cost={"tokens": 100, "usd": 0.02})
 
         verify = R.CallableVerifier(lambda u, r, c: R.Verdict(verified=True, evidence={"tests": "42 passed"}))
-        R.run_unit(self.root, R.Unit("u1", _sit(label="implement-feature")), self.provider,
+        R.run_unit(self.root, R.Unit("u1", _sit(label="implement-feature")), self.contributors,
                    R.InlineExecutor(work), verify)
         h = views.handoff(self.root, "u1")
         self.assertEqual(h["state"], "done")
         self.assertTrue(h["verified"])
         self.assertEqual(h["evidence"], {"tests": "42 passed"})
-        self.assertEqual(h["domains_loaded"], ["prose-craft"])
+        self.assertEqual(h["sources_loaded"], ["prose-craft"])
         self.assertEqual(h["attempts"], 1)
         self.assertEqual(h["cost"], {"tokens": 100, "usd": 0.02})
         self.assertEqual(h["tool_calls"], 4)
 
     def test_stalled_unit_handoff_carries_defects(self):
         verify = R.CallableVerifier(lambda u, r, c: R.Verdict(verified=False, defects=["boom"]))
-        R.run_unit(self.root, R.Unit("u1", _sit()), self.provider,
+        R.run_unit(self.root, R.Unit("u1", _sit()), self.contributors,
                    R.InlineExecutor(lambda u, c: R.Receipt(outcome="result")), verify, max_retries=1)
         h = views.handoff(self.root, "u1")
         self.assertEqual(h["outcome"], "stall")
@@ -93,7 +81,7 @@ class LedgerViewTest(unittest.TestCase):
                 else R.Receipt(outcome="result")
 
         plan = R.Plan([R.Unit(f"u{i}", _sit(label="implement-feature")) for i in (1, 2, 3)])
-        R.run(plan, pv.NullProvider(), R.InlineExecutor(handler), self.root)
+        R.run(plan, [], R.InlineExecutor(handler), self.root)
         rows = views.ledger(self.root)
         self.assertEqual([r["unit"] for r in rows], ["u1", "u2", "u3"])
         self.assertEqual([r["outcome"] for r in rows], ["result", "stall", "result"])
@@ -118,7 +106,7 @@ class CostViewTest(unittest.TestCase):
             return R.Receipt(outcome="result", tool_calls=2, cost={"tokens": 50, "usd": 0.01})
 
         plan = R.Plan([R.Unit("u1", _sit(label="a")), R.Unit("u2", _sit(label="b"))])
-        out = R.run(plan, pv.NullProvider(), R.InlineExecutor(work), self.root,
+        out = R.run(plan, [], R.InlineExecutor(work), self.root,
                     verifier=R.CallableVerifier(verify), max_retries=1)
         cost = out["cost"]
         self.assertEqual(cost["tokens"], 150)

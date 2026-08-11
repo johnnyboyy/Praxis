@@ -12,8 +12,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import handoff as handoff_mod  # noqa: E402
 import journal  # noqa: E402
+from contributors import Contribution  # noqa: E402
 from plan import build_units, TaskSpec  # noqa: E402
-from providers import NullProvider  # noqa: E402
 from situation import Situation  # noqa: E402
 
 
@@ -34,17 +34,18 @@ def _units():
 
 
 class AssembleTest(unittest.TestCase):
-    def test_assembles_judgment_and_brief(self):
-        composed = {"artifacts": [{"body": "principle A"}, {"body": "principle B"}],
-                    "domains": ["d1"]}
+    def test_assembles_overlay_and_brief(self):
+        composed = {"contributions": [Contribution(source="s", title="A", body="principle A"),
+                                      Contribution(source="s", title="B", body="principle B")],
+                    "sources": ["s"]}
         ho = handoff_mod.assemble("do the thing", composed)
-        self.assertIn("principle A", ho["judgment"])
-        self.assertIn("principle B", ho["judgment"])
+        self.assertIn("## A\nprinciple A", ho["overlay"])
+        self.assertIn("## B\nprinciple B", ho["overlay"])
         self.assertIn("do the thing", ho["brief"])
-        self.assertEqual(ho["domains"], ["d1"])
+        self.assertEqual(ho["sources"], ["s"])
 
     def test_feedback_is_appended_to_brief(self):
-        ho = handoff_mod.assemble("x", {"artifacts": []}, feedback=["missing test"])
+        ho = handoff_mod.assemble("x", {"contributions": []}, feedback=["missing test"])
         self.assertIn("did not pass verification", ho["brief"])
         self.assertIn("missing test", ho["brief"])
 
@@ -86,7 +87,7 @@ class PullTest(unittest.TestCase):
         import gate
         with TempRoot() as root:
             units = _units()
-            out = handoff_mod.pull(root, units, NullProvider())
+            out = handoff_mod.pull(root, units, [])
             self.assertEqual(out["status"], "ready")
             self.assertEqual(out["unit"], "s")
             self.assertIn("schema", out["brief"])
@@ -109,7 +110,7 @@ class PullTest(unittest.TestCase):
             units = _units()
             for uid in ("s", "api"):
                 journal.append(root, "unit.done", unit=uid, outcome="result", status="complete")
-            out = handoff_mod.pull(root, units, NullProvider())
+            out = handoff_mod.pull(root, units, [])
             self.assertEqual(out["status"], "complete")
 
 

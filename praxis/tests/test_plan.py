@@ -11,7 +11,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import journal  # noqa: E402
 from plan import (TaskSpec, build_units, plan_and_run, plan_tasks, reconstruct_units,
                   spec_to_unit)  # noqa: E402
-from providers import NullProvider  # noqa: E402
 from run import InlineExecutor, Receipt, Unit  # noqa: E402
 
 
@@ -101,7 +100,7 @@ class PlanAndRunTest(unittest.TestCase):
             specs = [TaskSpec(intent="schema", id="s"),
                      TaskSpec(intent="api", id="api", depends_on=["s"]),
                      TaskSpec(intent="ui", id="ui", depends_on=["api"])]
-            out = plan_and_run(root, specs, NullProvider(), executor, concurrency=1)
+            out = plan_and_run(root, specs, [], executor, concurrency=1)
             self.assertEqual(out["status"], "ran")
             self.assertEqual(order, ["s", "api", "ui"])
             self.assertEqual([r["outcome"] for r in out["results"]], ["result", "result", "result"])
@@ -118,7 +117,7 @@ class PlanAndRunTest(unittest.TestCase):
             executor = InlineExecutor(handler)
             specs = [TaskSpec(intent="schema", id="s"),
                      TaskSpec(intent="api", id="api", depends_on=["s"])]
-            out = plan_and_run(root, specs, NullProvider(), executor, concurrency=1)
+            out = plan_and_run(root, specs, [], executor, concurrency=1)
             outcomes = {r["unit"]: r["outcome"] for r in out["results"]}
             self.assertEqual(outcomes["s"], "stall")
             self.assertEqual(outcomes["api"], "stall")

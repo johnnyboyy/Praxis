@@ -36,7 +36,7 @@ def handoff(root: Path, unit: str) -> dict | None:
         "status": u.get("status"),
         "verified": verified,
         "evidence": evidence,
-        "domains_loaded": last.get("domains", []),
+        "sources_loaded": last.get("sources", []),
         "surfaced": u.get("surfaced"),
         "defects": defects,
         "attempts": attempts,

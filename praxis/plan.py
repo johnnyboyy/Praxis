@@ -113,11 +113,11 @@ def reconstruct_units(root: str | Path) -> list | None:
     return build_units(specs, root)
 
 
-def plan_and_run(root: str | Path, specs: list[TaskSpec], provider, executor, *,
+def plan_and_run(root: str | Path, specs: list[TaskSpec], contributors, executor, *,
                  verifier=None, concurrency: int | None = None,
                  max_retries: int | None = None) -> dict:
     root = Path(root).resolve()
     units = plan_tasks(root, specs)
-    result = run_dag(Plan(units=units), provider, executor, root, verifier=verifier,
+    result = run_dag(Plan(units=units), contributors, executor, root, verifier=verifier,
                      concurrency=concurrency, max_retries=max_retries)
     return {"status": "ran", "plan": {"units": [u.id for u in units]}, **result}

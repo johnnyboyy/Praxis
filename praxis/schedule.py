@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import journal
-from providers import consult
+from contributors import HookContext, fire, gather
 from run import Plan, Unit, run_unit
 from situation import Situation
 
@@ -34,14 +34,14 @@ def _validate(units: dict[str, Unit]) -> None:
         raise ValueError(f"dependency cycle among units: {cyclic}")
 
 
-def reflexive_route(root: Path, plan: Plan, provider, routing_situation: Situation | None = None) -> dict:
+def reflexive_route(root: Path, plan: Plan, contributors, routing_situation: Situation | None = None) -> dict:
     if routing_situation is None:
         edges = sum(len(u.depends_on) for u in plan.units)
         routing_situation = Situation(
             task_kind="change", subject="process", phase="convergent",
             intent=f"schedule {len(plan.units)} unit(s) across {edges} dependency edge(s)",
             suggested_kind="orchestrate", fit="clean")
-    composed = consult(provider, routing_situation, root=root)
+    composed = gather(contributors, routing_situation, root=root)
     journal.append(root, "conductor.route", units=len(plan.units),
                    gap_surfaced=composed.get("gap_surfaced"),
                    routed_kind=composed.get("routed_kind"), note=composed.get("note"))
@@ -69,7 +69,7 @@ def _resumed_result(unit: Unit, fold: dict) -> dict:
             "routed_kind": u.get("last", {}).get("routed_kind"), "receipt": None, "resumed": True}
 
 
-def run_dag(plan: Plan, provider, executor, root: Path, verifier=None,
+def run_dag(plan: Plan, contributors, executor, root: Path, verifier=None,
             concurrency: int | None = None, max_retries: int | None = None,
             routing_situation: Situation | None = None, policy=None, resume: bool = False) -> dict:
     import policy as policy_mod
@@ -87,7 +87,7 @@ def run_dag(plan: Plan, provider, executor, root: Path, verifier=None,
         raise ValueError("duplicate unit ids in plan")
     _validate(units)
 
-    routing = reflexive_route(root, plan, provider, routing_situation)
+    routing = reflexive_route(root, plan, contributors, routing_situation)
 
     state: dict[str, str] = {}
     results: dict[str, dict] = {}
@@ -119,7 +119,7 @@ def run_dag(plan: Plan, provider, executor, root: Path, verifier=None,
                         journal.append(root, "unit.depends_on", unit=u.id, depends_on=d)
                     runnable.append(u)
 
-            futures = {pool.submit(run_unit, root, u, provider, executor, verifier, max_retries): u
+            futures = {pool.submit(run_unit, root, u, contributors, executor, verifier, max_retries): u
                        for u in runnable}
             for fut in as_completed(futures):
                 u = futures[fut]
@@ -130,6 +130,7 @@ def run_dag(plan: Plan, provider, executor, root: Path, verifier=None,
             for u in wave:
                 pending.remove(u)
 
+    fire(contributors, "close", HookContext(root=root, step="close"))
     import views
     return {"results": [results[u.id] for u in plan.units],
             "summary": journal.fold(root)["summary"], "routing": routing,

@@ -168,6 +168,17 @@ def gap_candidates(root: Path) -> list[dict]:
     return sorted(tally.values(), key=lambda r: r["count"], reverse=True)
 
 
+def note(root: Path, *, unit: str | None = None, source: str, body: str, **extra) -> dict:
+    return append(root, "note", unit=unit, source=source, body=body, **extra)
+
+
+def notes(root: Path, *, unit: str | None = None) -> list[dict]:
+    out = [e for e in read(root) if e.get("event") == "note"]
+    if unit is not None:
+        out = [e for e in out if e.get("unit") == unit]
+    return out
+
+
 def open_unit(root: Path) -> dict | None:
     f = fold(root)
     if not f["open_units"]:

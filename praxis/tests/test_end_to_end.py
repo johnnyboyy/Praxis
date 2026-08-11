@@ -1,7 +1,7 @@
 """End-to-end: the whole conductor vertical composed together.
 
 Each phase's own suite tests its layer in isolation; this exercises the full stack as one system —
-a DAG plan run under an editable policy, through the provider seam (with gap surfacing) and the
+a DAG plan run under an editable policy, through the contributor seam (with gap surfacing) and the
 verification gate, then read back as views, then the accreted vocabulary promoted. It doubles as a
 worked example of how the pieces fit.
 """
@@ -15,7 +15,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import accretion as acc  # noqa: E402
 import journal  # noqa: E402
 import policy as pol  # noqa: E402
-import providers as pv  # noqa: E402
 import run as R  # noqa: E402
 import schedule as S  # noqa: E402
 import views  # noqa: E402
@@ -24,7 +23,7 @@ from situation import Situation  # noqa: E402
 REPO = Path(__file__).resolve().parents[2]
 
 
-class FullStackNullProviderTest(unittest.TestCase):
+class FullStackNoEngineTest(unittest.TestCase):
     """The whole machine, no engine needed — mechanics only, so it always runs."""
 
     def setUp(self):
@@ -60,7 +59,7 @@ class FullStackNullProviderTest(unittest.TestCase):
         def work(unit, composed):
             return R.Receipt(outcome="result", tool_calls=1, cost={"tokens": 10, "usd": 0.001})
 
-        out = S.run_dag(R.Plan(units), pv.NullProvider(), R.InlineExecutor(work), self.root,
+        out = S.run_dag(R.Plan(units), [], R.InlineExecutor(work), self.root,
                         verifier=R.CallableVerifier(verify))
 
         self.assertTrue(all(r["outcome"] == "result" for r in out["results"]))

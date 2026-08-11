@@ -9,10 +9,10 @@ import time
 from pathlib import Path
 
 import accretion
+import contributors as contributors_mod
 import handoff as handoff_mod
 import journal
 import policy as policy_mod
-import providers
 import views
 from run import Receipt, Unit, run_unit, verifier_from_test_cmd
 from situation import Situation
@@ -49,11 +49,11 @@ class ClaudeExecutor:
         self.max_turns = max_turns
         self.dry_run = dry_run
 
-    def _argv(self, brief: str, judgment: str) -> list[str]:
+    def _argv(self, brief: str, overlay: str) -> list[str]:
         import os
         argv = ["claude", "-p", brief, "--output-format", "json"]
-        if judgment:
-            argv += ["--append-system-prompt", judgment]
+        if overlay:
+            argv += ["--append-system-prompt", overlay]
         if self.model:
             argv += ["--model", self.model]
         if self.allow_edits:
@@ -67,16 +67,16 @@ class ClaudeExecutor:
 
     def preview(self, unit: Unit, composed: dict) -> dict:
         ho = handoff_mod.assemble(unit.situation.intent, composed, brief=self.brief)
-        judgment, brief = ho["judgment"], ho["brief"]
-        argv = self._argv(brief, judgment)
-        redacted_argv = [("<judgment %d bytes>" % len(judgment)) if a is judgment else a for a in argv]
-        return {"argv": redacted_argv, "brief": brief, "judgment_bytes": len(judgment),
+        overlay, brief = ho["overlay"], ho["brief"]
+        argv = self._argv(brief, overlay)
+        redacted_argv = [("<overlay %d bytes>" % len(overlay)) if a is overlay else a for a in argv]
+        return {"argv": redacted_argv, "brief": brief, "overlay_bytes": len(overlay),
                 "allow_edits": self.allow_edits, "model": self.model, "cwd": self.cwd}
 
     def run(self, unit: Unit, composed: dict) -> Receipt:
         ho = handoff_mod.assemble(unit.situation.intent, composed, brief=self.brief)
-        judgment, brief = ho["judgment"], ho["brief"]
-        argv = self._argv(brief, judgment)
+        overlay, brief = ho["overlay"], ho["brief"]
+        argv = self._argv(brief, overlay)
         if self.dry_run:
             return Receipt(outcome="result", status="complete",
                            evidence={"dry_run": self.preview(unit, composed)})
@@ -123,15 +123,15 @@ def run_task(root: str | Path, *, intent: str, brief: str | None = None,
                           suggested_kind=suggested_kind, fit=fit, phase=phase,
                           project_shape=shape, root=str(root), targets=list(targets),
                           workflow=workflow, label=label)
-    provider = providers.provider_for(root)
+    contributors = contributors_mod.contributors_for(root)
 
     if dry_run:
-        composed = providers.consult(provider, situation, root=root)
+        composed = contributors_mod.gather(contributors, situation, root=root)
         preview = ClaudeExecutor(brief=brief, model=model, cwd=str(root), allow_edits=allow_edits,
                                  dry_run=True).preview(_stub_unit(situation), composed)
         return {"dry_run": True, "routed_kind": composed.get("routed_kind"),
                 "gap_surfaced": composed.get("gap_surfaced"), "stance": composed.get("stance"),
-                "domains": composed.get("domains"), "note": composed.get("note"),
+                "sources": composed.get("sources"), "note": composed.get("note"),
                 "child_command": preview,
                 "next": "re-call with dry_run=false and allow_edits=true to execute"}
 
@@ -139,7 +139,7 @@ def run_task(root: str | Path, *, intent: str, brief: str | None = None,
     executor = ClaudeExecutor(brief=brief, model=model, cwd=str(root), allow_edits=allow_edits)
     verifier = verifier_from_test_cmd(test_cmd)
     unit = Unit(id=_gen_id(task_kind), situation=situation)
-    result = run_unit(root, unit, provider, executor, verifier, retries)
+    result = run_unit(root, unit, contributors, executor, verifier, retries)
     result["cost"] = views.cost(root)
     return result
 
@@ -150,7 +150,7 @@ def run_tasklist(root: str | Path, tasks: list[dict], *, test_cmd: str | None = 
                  dry_run: bool = False) -> dict:
     import plan as plan_mod
     root = Path(root).resolve()
-    provider = providers.provider_for(root)
+    contributors = contributors_mod.contributors_for(root)
     specs = _specs_for(root, tasks)
 
     if dry_run:
@@ -158,18 +158,18 @@ def run_tasklist(root: str | Path, tasks: list[dict], *, test_cmd: str | None = 
         preview = []
         no_gap_recording = None
         for u in units:
-            composed = providers.consult(provider, u.situation, root=no_gap_recording)
+            composed = contributors_mod.gather(contributors, u.situation, root=no_gap_recording)
             preview.append({"unit": u.id, "depends_on": u.depends_on,
                             "routed_kind": composed.get("routed_kind"),
                             "would_surface_gap": u.situation.has_gap,
-                            "domains": composed.get("domains"), "note": composed.get("note")})
+                            "sources": composed.get("sources"), "note": composed.get("note")})
         return {"dry_run": True, "plan": {"units": [u.id for u in units],
                 "edges": [[d, u.id] for u in units for d in u.depends_on]}, "units": preview,
                 "next": "re-call with dry_run=false and allow_edits=true to execute"}
 
     executor = ClaudeExecutor(model=model, cwd=str(root), allow_edits=allow_edits)
     verifier = verifier_from_test_cmd(test_cmd)
-    return plan_mod.plan_and_run(root, specs, provider, executor, verifier=verifier,
+    return plan_mod.plan_and_run(root, specs, contributors, executor, verifier=verifier,
                                  concurrency=concurrency, max_retries=max_retries)
 
 
@@ -229,7 +229,7 @@ def next_handoff(root: str | Path, brief: str | None = None) -> dict:
     units = plan_mod.reconstruct_units(root)
     if units is None:
         return {"status": "no-plan", "note": "no tasklist has been planned for this root yet"}
-    return handoff_mod.pull(root, units, providers.provider_for(root), brief=brief)
+    return handoff_mod.pull(root, units, contributors_mod.contributors_for(root), brief=brief)
 
 
 def _stub_unit(situation: Situation) -> Unit:

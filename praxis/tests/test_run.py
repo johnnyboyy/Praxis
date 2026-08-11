@@ -5,8 +5,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import journal  # noqa: E402
-import providers as pv  # noqa: E402
 import run as R  # noqa: E402
+from contributors import Contribution  # noqa: E402
 from situation import Situation  # noqa: E402
 
 
@@ -20,24 +20,12 @@ def _result(unit, composed):
     return R.Receipt(outcome="result", status="complete", tool_calls=3)
 
 
-class _StubProvider:
-    """Minimal composing provider — returns fixed domains so run_unit has judgment to frame with."""
+class _StubContributor:
+    def __init__(self, source):
+        self._source = source
 
-    def __init__(self, domains):
-        self._domains = list(domains)
-
-    def compose(self, situation):
-        return {"artifacts": [], "stance": None, "note": "ok",
-                "domains": list(self._domains), "routed_kind": situation.routed_kind}
-
-    def ratify(self, proposal):
-        return {"verdict": "unavailable"}
-
-    def retrospect(self, scope):
-        return {"signals": []}
-
-    def capabilities(self):
-        return []
+    def contribute(self, situation):
+        return [Contribution(source=self._source, title="frame", body="body")]
 
 
 class ReceiptTest(unittest.TestCase):
@@ -71,7 +59,7 @@ class RunLifecycleTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         (self.root / ".praxis").mkdir()
-        self.provider = _StubProvider(["prose-craft"])
+        self.contributors = [_StubContributor("prose-craft")]
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -80,7 +68,7 @@ class RunLifecycleTest(unittest.TestCase):
         return [e["event"] for e in journal.read(self.root) if e.get("unit") == unit_id]
 
     def test_result_unit_walks_full_lifecycle_to_done(self):
-        R.run_unit(self.root, R.Unit("u1", _sit(fit="clean")), self.provider,
+        R.run_unit(self.root, R.Unit("u1", _sit(fit="clean")), self.contributors,
                    R.InlineExecutor(_result))
         self.assertEqual(self._events("u1"),
                          ["unit.proposed", "unit.framed", "unit.dispatched", "unit.running",
@@ -90,7 +78,7 @@ class RunLifecycleTest(unittest.TestCase):
     def test_stall_receipt_ends_stalled(self):
         stall = lambda unit, composed: R.Receipt(outcome="stall", status="questions-pending",
                                                  surfaced=["which db?"])
-        res = R.run_unit(self.root, R.Unit("u1", _sit(fit="clean")), self.provider,
+        res = R.run_unit(self.root, R.Unit("u1", _sit(fit="clean")), self.contributors,
                          R.InlineExecutor(stall))
         self.assertEqual(res["outcome"], "stall")
         self.assertEqual(journal.state_of(self.root, "u1"), "stalled")
@@ -98,21 +86,21 @@ class RunLifecycleTest(unittest.TestCase):
         self.assertEqual(u["surfaced"], ["which db?"])
 
     def test_framed_event_carries_composed_domains(self):
-        R.run_unit(self.root, R.Unit("u1", _sit(fit="clean")), self.provider,
+        R.run_unit(self.root, R.Unit("u1", _sit(fit="clean")), self.contributors,
                    R.InlineExecutor(_result))
         framed = next(e for e in journal.read(self.root)
                       if e["event"] == "unit.framed" and e["unit"] == "u1")
-        self.assertEqual(framed["domains"], ["prose-craft"])
+        self.assertEqual(framed["sources"], ["prose-craft"])
         self.assertFalse(framed["gap_surfaced"])
 
     def test_inline_executor_normalizes_dict_receipt(self):
-        res = R.run_unit(self.root, R.Unit("u1", _sit(fit="clean")), self.provider,
+        res = R.run_unit(self.root, R.Unit("u1", _sit(fit="clean")), self.contributors,
                          R.InlineExecutor(lambda u, c: {"outcome": "result", "tool_calls": 9}))
         self.assertEqual(res["receipt"]["tool_calls"], 9)
 
     def test_gap_surfaces_during_run(self):
         R.run_unit(self.root, R.Unit("u1", _sit(fit="none", suggested_kind="provision-infra")),
-                   self.provider, R.InlineExecutor(_result))
+                   self.contributors, R.InlineExecutor(_result))
         self.assertEqual(len(journal.gaps(self.root)), 1)
         framed = next(e for e in journal.read(self.root)
                       if e["event"] == "unit.framed" and e["unit"] == "u1")
@@ -135,7 +123,7 @@ class RunPlanTest(unittest.TestCase):
                 else R.Receipt(outcome="result")
 
         plan = R.Plan([R.Unit(f"u{i}", _sit(fit="clean", label="implement-feature")) for i in (1, 2, 3)])
-        out = R.run(plan, pv.NullProvider(), R.InlineExecutor(handler), self.root)
+        out = R.run(plan, [], R.InlineExecutor(handler), self.root)
         self.assertEqual([r["outcome"] for r in out["results"]], ["result", "stall", "result"])
         bucket = out["summary"]["by_phase"]["implement-feature"]
         self.assertEqual((bucket["runs"], bucket["result"], bucket["stall"]), (3, 2, 1))

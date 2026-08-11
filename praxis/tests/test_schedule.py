@@ -7,7 +7,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import journal  # noqa: E402
-import providers as pv  # noqa: E402
 import run as R  # noqa: E402
 import schedule as S  # noqa: E402
 from situation import Situation  # noqa: E402
@@ -37,7 +36,7 @@ class ValidationTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def _run(self, plan, **kw):
-        return S.run_dag(plan, pv.NullProvider(), R.InlineExecutor(_ok), self.root, **kw)
+        return S.run_dag(plan, [], R.InlineExecutor(_ok), self.root, **kw)
 
     def test_unknown_dependency_raises(self):
         with self.assertRaises(ValueError):
@@ -74,7 +73,7 @@ class DagOrderTest(unittest.TestCase):
 
     def test_dependent_runs_after_dependency(self):
         plan = R.Plan([_u("c", deps=["b"]), _u("b", deps=["a"]), _u("a"), _u("d")])
-        out = S.run_dag(plan, pv.NullProvider(), R.InlineExecutor(self._record), self.root,
+        out = S.run_dag(plan, [], R.InlineExecutor(self._record), self.root,
                         concurrency=4)
         self.assertLess(self.order.index("a"), self.order.index("b"))
         self.assertLess(self.order.index("b"), self.order.index("c"))
@@ -82,7 +81,7 @@ class DagOrderTest(unittest.TestCase):
         self.assertTrue(all(r["outcome"] == "result" for r in out["results"]))
 
     def test_depends_on_edges_recorded(self):
-        S.run_dag(R.Plan([_u("b", deps=["a"]), _u("a")]), pv.NullProvider(),
+        S.run_dag(R.Plan([_u("b", deps=["a"]), _u("a")]), [],
                   R.InlineExecutor(_ok), self.root)
         edges = [(e["unit"], e["depends_on"]) for e in journal.read(self.root)
                  if e["event"] == "unit.depends_on"]
@@ -109,7 +108,7 @@ class BlockedCascadeTest(unittest.TestCase):
     def test_stalled_dependency_blocks_and_cascades(self):
         plan = R.Plan([_u("a"), _u("b", deps=["a"]), _u("c", deps=["b"]), _u("d")])
         out = {r["unit"]: r for r in
-               S.run_dag(plan, pv.NullProvider(), R.InlineExecutor(self._handler),
+               S.run_dag(plan, [], R.InlineExecutor(self._handler),
                          self.root, concurrency=4)["results"]}
         self.assertEqual(out["a"]["outcome"], "stall")
         self.assertEqual(out["b"]["status"], "blocked")
@@ -138,7 +137,7 @@ class ConcurrencyTest(unittest.TestCase):
             return R.Receipt(outcome="result")
 
         plan = R.Plan([_u("a"), _u("b"), _u("c")])
-        out = S.run_dag(plan, pv.NullProvider(), R.InlineExecutor(handler), self.root,
+        out = S.run_dag(plan, [], R.InlineExecutor(handler), self.root,
                         concurrency=3)
         self.assertEqual([r["outcome"] for r in out["results"]], ["result", "result", "result"])
 
@@ -157,12 +156,12 @@ class ConcurrencyTest(unittest.TestCase):
             return R.Receipt(outcome="result")
 
         plan = R.Plan([_u(f"u{i}") for i in range(6)])
-        S.run_dag(plan, pv.NullProvider(), R.InlineExecutor(handler), self.root, concurrency=2)
+        S.run_dag(plan, [], R.InlineExecutor(handler), self.root, concurrency=2)
         self.assertLessEqual(peak[0], 2, f"peak concurrency {peak[0]} exceeded cap 2")
 
     def test_thread_safe_journal_under_parallelism(self):
         plan = R.Plan([_u(f"u{i}") for i in range(20)])
-        S.run_dag(plan, pv.NullProvider(), R.InlineExecutor(_ok), self.root, concurrency=8)
+        S.run_dag(plan, [], R.InlineExecutor(_ok), self.root, concurrency=8)
         seqs = [e["seq"] for e in journal.read(self.root)]
         self.assertEqual(seqs, list(range(len(seqs))))
         fold = journal.fold(self.root)
@@ -184,7 +183,7 @@ class VerificationInDagTest(unittest.TestCase):
 
         plan = R.Plan([_u("a"), _u("b", deps=["a"]), _u("c", deps=["b"])])
         out = {r["unit"]: r for r in
-               S.run_dag(plan, pv.NullProvider(), R.InlineExecutor(_ok), self.root,
+               S.run_dag(plan, [], R.InlineExecutor(_ok), self.root,
                          verifier=R.CallableVerifier(verify), concurrency=2, max_retries=1)["results"]}
         self.assertTrue(out["a"]["verified"])
         self.assertEqual(out["b"]["outcome"], "stall")
@@ -202,7 +201,7 @@ class ReflexiveRoutingTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_records_conductor_route(self):
-        S.run_dag(R.Plan([_u("a"), _u("b", deps=["a"])]), pv.NullProvider(),
+        S.run_dag(R.Plan([_u("a"), _u("b", deps=["a"])]), [],
                   R.InlineExecutor(_ok), self.root)
         routes = [e for e in journal.read(self.root) if e["event"] == "conductor.route"]
         self.assertEqual(len(routes), 1)
@@ -212,7 +211,7 @@ class ReflexiveRoutingTest(unittest.TestCase):
         routing = Situation(task_kind="change", subject="process",
                             intent="fan out and reconverge a build matrix",
                             suggested_kind="orchestrate-matrix", fit="none")
-        S.run_dag(R.Plan([_u("a")]), pv.NullProvider(), R.InlineExecutor(_ok), self.root,
+        S.run_dag(R.Plan([_u("a")]), [], R.InlineExecutor(_ok), self.root,
                   routing_situation=routing)
         gaps = journal.gaps(self.root)
         self.assertEqual(len(gaps), 1)

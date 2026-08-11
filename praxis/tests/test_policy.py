@@ -8,7 +8,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import policy as P  # noqa: E402
-import providers as pv  # noqa: E402
 import run as R  # noqa: E402
 import schedule as S  # noqa: E402
 from situation import Situation  # noqa: E402
@@ -71,7 +70,7 @@ class PolicyDrivesLoopTest(unittest.TestCase):
     def test_max_retries_comes_from_policy(self):
         self._policy({"max_retries": 0})
         verifier = R.CallableVerifier(lambda u, r, c: R.Verdict(verified=False, defects=["x"]))
-        res = R.run(R.Plan([R.Unit("u1", _sit())]), pv.NullProvider(),
+        res = R.run(R.Plan([R.Unit("u1", _sit())]), [],
                     R.InlineExecutor(lambda u, c: R.Receipt(outcome="result")), self.root,
                     verifier=verifier)
         self.assertEqual(res["results"][0]["attempts"], 1)
@@ -79,7 +78,7 @@ class PolicyDrivesLoopTest(unittest.TestCase):
     def test_explicit_arg_overrides_policy(self):
         self._policy({"max_retries": 0})
         verifier = R.CallableVerifier(lambda u, r, c: R.Verdict(verified=False, defects=["x"]))
-        res = R.run(R.Plan([R.Unit("u1", _sit())]), pv.NullProvider(),
+        res = R.run(R.Plan([R.Unit("u1", _sit())]), [],
                     R.InlineExecutor(lambda u, c: R.Receipt(outcome="result")), self.root,
                     verifier=verifier, max_retries=2)
         self.assertEqual(res["results"][0]["attempts"], 3)
@@ -100,7 +99,7 @@ class PolicyDrivesLoopTest(unittest.TestCase):
             return R.Receipt(outcome="result")
 
         plan = R.Plan([R.Unit(f"u{i}", _sit(label="x")) for i in range(4)])
-        S.run_dag(plan, pv.NullProvider(), R.InlineExecutor(handler), self.root)
+        S.run_dag(plan, [], R.InlineExecutor(handler), self.root)
         self.assertEqual(peak[0], 1)
 
     def test_verify_required_rejects_a_run_without_a_verifier(self):
@@ -108,16 +107,16 @@ class PolicyDrivesLoopTest(unittest.TestCase):
         plan = R.Plan([R.Unit("u1", _sit())])
         work = R.InlineExecutor(lambda u, c: R.Receipt(outcome="result"))
         with self.assertRaises(ValueError):
-            R.run(plan, pv.NullProvider(), work, self.root)
+            R.run(plan, [], work, self.root)
         with self.assertRaises(ValueError):
-            S.run_dag(plan, pv.NullProvider(), work, self.root)
+            S.run_dag(plan, [], work, self.root)
 
     def test_verify_required_allows_a_run_with_a_verifier(self):
         self._policy({"verify_required": True})
         plan = R.Plan([R.Unit("u1", _sit())])
         work = R.InlineExecutor(lambda u, c: R.Receipt(outcome="result"))
         verifier = R.CallableVerifier(lambda u, r, c: R.Verdict(verified=True))
-        out = R.run(plan, pv.NullProvider(), work, self.root, verifier=verifier)
+        out = R.run(plan, [], work, self.root, verifier=verifier)
         self.assertEqual(out["results"][0]["outcome"], "result")
 
 

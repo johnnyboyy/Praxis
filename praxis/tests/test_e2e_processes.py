@@ -19,7 +19,6 @@ import cascade  # noqa: E402
 import conduct as conduct_engine  # noqa: E402
 import gate  # noqa: E402
 import journal  # noqa: E402
-from providers import NullProvider  # noqa: E402
 from run import InlineExecutor, Receipt  # noqa: E402
 
 
@@ -97,7 +96,7 @@ class CascadeProcessTest(unittest.TestCase):
                 {"intent": "provision infra", "id": "provision", "depends_on": ["api"]},
                 {"intent": "deploy", "id": "deploy", "depends_on": ["provision"]},
             ])
-            cascade.run_cascade(root, executor=InlineExecutor(handler), provider=NullProvider(),
+            cascade.run_cascade(root, executor=InlineExecutor(handler), contributors=[],
                                 concurrency=1)
 
             st = conduct_engine.plan_status(root)
@@ -141,7 +140,7 @@ class ResumeProcessTest(unittest.TestCase):
             journal.append(root, "unit.done", unit="a", outcome="result", status="complete")
             ran = []
             ex = InlineExecutor(lambda u, c: ran.append(u.id) or Receipt(outcome="result"))
-            cascade.run_cascade(root, executor=ex, provider=NullProvider(), concurrency=1)
+            cascade.run_cascade(root, executor=ex, contributors=[], concurrency=1)
             self.assertEqual(ran, ["b", "c"])
             self.assertEqual(conduct_engine.plan_status(root)["status"], "complete")
 

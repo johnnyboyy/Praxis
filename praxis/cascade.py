@@ -26,8 +26,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import contributors as contributors_mod  # noqa: E402
 import journal  # noqa: E402
-import providers  # noqa: E402
 from run import Plan, verifier_from_test_cmd  # noqa: E402
 from schedule import run_dag  # noqa: E402
 
@@ -77,16 +77,16 @@ def is_running(root: str | Path) -> dict | None:
     return None
 
 
-def run_cascade(root: str | Path, *, executor, provider=None, test_cmd: str | None = None,
+def run_cascade(root: str | Path, *, executor, contributors=None, test_cmd: str | None = None,
                 concurrency: int | None = None, max_retries: int | None = None) -> dict:
     import plan as plan_mod
     root = Path(root).resolve()
     units = plan_mod.reconstruct_units(root)
     if units is None:
         return {"status": "no-plan"}
-    prov = provider if provider is not None else providers.provider_for(root)
+    contribs = contributors if contributors is not None else contributors_mod.contributors_for(root)
     verifier = verifier_from_test_cmd(test_cmd)
-    result = run_dag(Plan(units=units), prov, executor, root, verifier=verifier,
+    result = run_dag(Plan(units=units), contribs, executor, root, verifier=verifier,
                      concurrency=concurrency, max_retries=max_retries, resume=True)
     return {"status": "complete", **result}
 
@@ -146,14 +146,9 @@ def _spawn_daemon(argv: list[str], logpath: Path) -> None:
 def _build_executor(root: Path, *, model: str | None, allow_edits: bool):
     if os.environ.get("PRAXIS_CASCADE_FAKE"):
         from run import InlineExecutor, Receipt
-        return InlineExecutor(lambda u, c: Receipt(outcome="result")), _fake_provider()
+        return InlineExecutor(lambda u, c: Receipt(outcome="result")), []
     from conduct import ClaudeExecutor
     return ClaudeExecutor(model=model, cwd=str(root), allow_edits=allow_edits), None
-
-
-def _fake_provider():
-    from providers import NullProvider
-    return NullProvider()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -176,9 +171,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     _pidfile(root).write_text(json.dumps({"pid": os.getpid(), "started": time.time()}))
-    executor, provider = _build_executor(root, model=a.model, allow_edits=a.allow_edits)
+    executor, contributors = _build_executor(root, model=a.model, allow_edits=a.allow_edits)
     try:
-        run_cascade(root, executor=executor, provider=provider, test_cmd=a.test_cmd,
+        run_cascade(root, executor=executor, contributors=contributors, test_cmd=a.test_cmd,
                     concurrency=a.concurrency, max_retries=a.max_retries)
     except Exception as e:
         journal.append(root, "conductor.plan", status="error", note=f"detached cascade failed: {e}")

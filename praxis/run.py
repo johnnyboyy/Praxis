@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 import journal
-from providers import consult
+from contributors import HookContext, fire, gather
 from situation import Situation
 
 OUTCOMES = ("result", "stall")
@@ -157,14 +157,14 @@ def verifier_from_test_cmd(test_cmd: str | None) -> "Verifier | None":
     return CommandVerifier(lambda unit, receipt, composed, _argv=argv: _argv)
 
 
-def run_unit(root: Path, unit: Unit, provider, executor: Executor,
+def run_unit(root: Path, unit: Unit, contributors, executor: Executor,
              verifier: Verifier | None = None, max_retries: int = 2) -> dict:
     journal.append(root, "unit.proposed", unit=unit.id, unit_of_work=unit.unit_of_work,
                    situation=unit.situation.to_dict())
-    composed = consult(provider, unit.situation, root=root)
+    composed = gather(contributors, unit.situation, root=root)
     journal.append(root, "unit.framed", unit=unit.id, unit_of_work=unit.unit_of_work,
                    routed_kind=composed.get("routed_kind"), gap_surfaced=composed.get("gap_surfaced"),
-                   domains=composed.get("domains", []), stance=composed.get("stance"),
+                   sources=composed.get("sources", []), stance=composed.get("stance"),
                    note=composed.get("note"))
 
     def _result(outcome, status, receipt, verified, attempts, defects):
@@ -198,6 +198,10 @@ def run_unit(root: Path, unit: Unit, provider, executor: Executor,
         if verdict.verified:
             journal.append(root, "unit.verified", unit=unit.id, attempt=attempt,
                            evidence=verdict.evidence)
+            fire(contributors, "verify", HookContext(
+                root=root, step="verify", unit=unit, receipt=receipt.to_dict(),
+                verdict={"verified": True, "defects": verdict.defects,
+                         "evidence": verdict.evidence}))
             journal.append(root, "unit.done", unit=unit.id, outcome="result",
                            status=receipt.status)
             return _result("result", receipt.status, receipt, True, attempt + 1, [])
@@ -212,7 +216,7 @@ def run_unit(root: Path, unit: Unit, provider, executor: Executor,
     return _result("stall", "blocked", receipt, False, max_retries + 1, feedback)
 
 
-def run(plan: Plan, provider, executor: Executor, root: Path,
+def run(plan: Plan, contributors, executor: Executor, root: Path,
         verifier: Verifier | None = None, max_retries: int | None = None,
         policy=None) -> dict:
     import views
@@ -221,7 +225,8 @@ def run(plan: Plan, provider, executor: Executor, root: Path,
     if pol.verify_required and verifier is None:
         raise ValueError("policy sets verify_required but no verifier was supplied")
     retries = pol.max_retries if max_retries is None else max_retries
-    results = [run_unit(root, unit, provider, executor, verifier, retries)
+    results = [run_unit(root, unit, contributors, executor, verifier, retries)
                for unit in plan.units]
+    fire(contributors, "close", HookContext(root=root, step="close"))
     return {"results": results, "summary": journal.fold(root)["summary"],
             "cost": views.cost(root)}
