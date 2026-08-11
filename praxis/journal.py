@@ -149,6 +149,13 @@ def gaps(root: Path) -> list[dict]:
     return [e for e in read(root) if e.get("event") == "conductor.gap"]
 
 
+def phase_gaps(root: Path, *, unit: str | None = None) -> list[dict]:
+    out = [e for e in read(root) if e.get("event") == "phase.gap"]
+    if unit is not None:
+        out = [e for e in out if e.get("unit") == unit]
+    return out
+
+
 def gap_candidates(root: Path) -> list[dict]:
     tally: dict[tuple[str, str], dict] = {}
     for e in gaps(root):
