@@ -172,6 +172,46 @@ class ConditionalTraversalTest(unittest.TestCase):
         stalled = [e for e in journal.read(self.root) if e.get("event") == "phase.stalled"]
         self.assertTrue(stalled)
 
+    def test_failed_preservation_gate_forces_fail_route(self):
+        wf = W.Workflow("gated", [W.PLAN, W.IMPLEMENT, W.REFACTOR], edges=[
+            ("plan", "implement", "pass", W.EdgeType.carry),
+            ("plan", "refactor", "fail", W.EdgeType.carry),
+        ])
+        failing = R.CallableVerifier(
+            lambda unit, receipt, composed: R.Verdict(verified=False, defects=["gate"]))
+        out = run_workflow(self.root, R.Unit("u1", _sit()), wf, [], _Capture(),
+                           verifiers={"does-it": failing})
+        self.assertEqual(out["phases"], ["plan", "refactor"])
+
+    def test_verified_gate_takes_pass_route(self):
+        wf = W.Workflow("gated", [W.PLAN, W.IMPLEMENT, W.REFACTOR], edges=[
+            ("plan", "implement", "pass", W.EdgeType.carry),
+            ("plan", "refactor", "fail", W.EdgeType.carry),
+        ])
+        passing = R.CallableVerifier(
+            lambda unit, receipt, composed: R.Verdict(verified=True, defects=[]))
+        out = run_workflow(self.root, R.Unit("u1", _sit()), wf, [], _Capture(),
+                           verifiers={"does-it": passing})
+        self.assertEqual(out["phases"], ["plan", "implement"])
+
+    def test_failed_gate_overrides_agent_choice_next(self):
+        wf = W.Workflow("gated-pick", [W.PLAN, W.IMPLEMENT, W.REFACTOR], edges=[
+            ("plan", "implement", "agent-choice", W.EdgeType.carry),
+            ("plan", "refactor", "fail", W.EdgeType.carry),
+        ])
+        failing = R.CallableVerifier(
+            lambda unit, receipt, composed: R.Verdict(verified=False, defects=["gate"]))
+
+        def handler(unit, composed):
+            if composed.get("phase") == "plan":
+                return R.Receipt(outcome="result",
+                                 evidence={"next": "implement", "produces": "p"})
+            return R.Receipt(outcome="result", evidence={"produces": composed.get("phase")})
+
+        out = run_workflow(self.root, R.Unit("u1", _sit()), wf, [],
+                           R.InlineExecutor(handler), verifiers={"does-it": failing})
+        self.assertEqual(out["phases"], ["plan", "refactor"])
+
     def test_agent_choice_follows_receipt_next(self):
         wf = W.Workflow("pick", [W.PLAN, W.IMPLEMENT, W.REFACTOR], edges=[
             ("plan", "implement", "agent-choice", W.EdgeType.carry),

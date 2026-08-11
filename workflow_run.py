@@ -91,7 +91,9 @@ def run_workflow(root: Path, unit, workflow: Workflow, contributors, executor,
         outputs[phase.name] = carry
 
         passed = evidence.get("passed", receipt.outcome == "result")
-        nxt = _choose_edge(workflow, name, passed, evidence.get("next"))
+        advance = passed and verified
+        choice = evidence.get("next") if advance else None
+        nxt = _choose_edge(workflow, name, advance, choice)
         if nxt is None:
             break
         name, edge_in = nxt
