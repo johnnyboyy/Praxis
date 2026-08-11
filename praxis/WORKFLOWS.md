@@ -136,3 +136,13 @@ Surfaced by *building* the runner (the model discovering its own gaps — the th
   `Phase.gate` field is dropped (gates are edge-derived). Still open: conditional-edge traversal
   (`fail`/`agent-choice` — the fix-loop) and the orchestration altitude (fan-out → barrier → fix →
   close), plus inline unit-completion.
+
+- 2026-08-10 (later still): **conditional-edge traversal done.** The runner routes on a phase outcome
+  (`evidence["passed"]`, defaulting to receipt success) rather than blindly following `pass`: a `fail`
+  edge routes to a repair phase, so `verify --fail--> fix --pass--> verify` forms a bounded fix-loop
+  (`max_loops` guard emits `phase.stalled` and halts). `agent-choice` edges follow `evidence["next"]`.
+  The composed dict now carries `phase` so executors are phase-aware. New `build-verify` seed workflow.
+  Note (new discovery): routing outcome (receipt/`passed`) is deliberately DECOUPLED from the
+  preservation gate (`verified`, recorded but not routing); unifying them — a failed gate forcing a
+  fail-route — is a future call. Still open: the orchestration altitude across units (fan-out →
+  barrier full-verify → fix units) and inline unit-completion.

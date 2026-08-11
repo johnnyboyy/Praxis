@@ -138,5 +138,54 @@ class WalkTest(unittest.TestCase):
         self.assertEqual(out["phase_fits"]["synthesize"], "clean")
 
 
+def _verify_after(fail_times):
+    state = {"n": 0}
+
+    def handler(unit, composed):
+        if composed.get("phase") == "verify":
+            state["n"] += 1
+            return R.Receipt(outcome="result", evidence={"passed": state["n"] > fail_times})
+        return R.Receipt(outcome="result", evidence={"produces": composed.get("phase")})
+
+    return handler
+
+
+class ConditionalTraversalTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        (self.root / ".praxis").mkdir()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_fix_loop_runs_until_verify_passes(self):
+        out = run_workflow(self.root, R.Unit("u1", _sit()), W.BUILD_VERIFY, [],
+                           R.InlineExecutor(_verify_after(fail_times=2)))
+        self.assertEqual(out["phases"],
+                         ["implement", "verify", "fix", "verify", "fix", "verify", "close"])
+
+    def test_fix_loop_bounded_by_max_loops(self):
+        out = run_workflow(self.root, R.Unit("u1", _sit()), W.BUILD_VERIFY, [],
+                           R.InlineExecutor(_verify_after(fail_times=99)), max_loops=3)
+        self.assertEqual(out["phases"].count("verify"), 3)
+        stalled = [e for e in journal.read(self.root) if e.get("event") == "phase.stalled"]
+        self.assertTrue(stalled)
+
+    def test_agent_choice_follows_receipt_next(self):
+        wf = W.Workflow("pick", [W.PLAN, W.IMPLEMENT, W.REFACTOR], edges=[
+            ("plan", "implement", "agent-choice", W.EdgeType.carry),
+            ("plan", "refactor", "agent-choice", W.EdgeType.carry),
+        ])
+
+        def handler(unit, composed):
+            if composed.get("phase") == "plan":
+                return R.Receipt(outcome="result", evidence={"next": "refactor", "produces": "p"})
+            return R.Receipt(outcome="result", evidence={"produces": composed.get("phase")})
+
+        out = run_workflow(self.root, R.Unit("u1", _sit()), wf, [], R.InlineExecutor(handler))
+        self.assertEqual(out["phases"], ["plan", "refactor"])
+
+
 if __name__ == "__main__":
     unittest.main()

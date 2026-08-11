@@ -9,9 +9,15 @@ from contributors import gather
 from workflow import GATES, EdgeType, Workflow
 
 
-def _next_edge(workflow: Workflow, from_phase: str):
-    for (f, t, when, et) in workflow.edges:
-        if f == from_phase and when in ("pass", "always"):
+def _choose_edge(workflow: Workflow, from_phase: str, passed: bool, choice=None):
+    edges = [(t, when, et) for (f, t, when, et) in workflow.edges if f == from_phase]
+    if choice is not None:
+        for (t, when, et) in edges:
+            if when == "agent-choice" and t == choice:
+                return t, et
+    want = "pass" if passed else "fail"
+    for (t, when, et) in edges:
+        if when in (want, "always"):
             return t, et
     return None
 
@@ -21,7 +27,8 @@ def _incoming(workflow: Workflow, to_phase: str):
 
 
 def run_workflow(root: Path, unit, workflow: Workflow, contributors, executor,
-                 verifiers: dict | None = None, start: str | None = None) -> dict:
+                 verifiers: dict | None = None, start: str | None = None,
+                 max_loops: int = 3) -> dict:
     verifiers = verifiers or {}
     by_name = {p.name: p for p in workflow.phases}
     name = start or workflow.first.name
@@ -29,6 +36,7 @@ def run_workflow(root: Path, unit, workflow: Workflow, contributors, executor,
     edge_in = None
     carry = None
     outputs: dict = {}
+    visits: dict = {}
     phase_index = 0
     walked: list[str] = []
     phase_fits: dict[str, str] = {}
@@ -36,10 +44,16 @@ def run_workflow(root: Path, unit, workflow: Workflow, contributors, executor,
     receipt = None
 
     while name is not None:
+        visits[name] = visits.get(name, 0) + 1
+        if visits[name] > max_loops:
+            journal.append(root, "phase.stalled", unit=unit.id, phase=name,
+                           phase_index=phase_index, note=f"exceeded max_loops={max_loops}")
+            break
         phase = by_name[name]
         situation = copy.copy(unit.situation)
         situation.phase = phase.name
         composed = gather(contributors, situation, root=(root if phase_index == 0 else None))
+        composed["phase"] = phase.name
         inputs = {f: outputs[f] for (f, _et) in _incoming(workflow, phase.name) if f in outputs}
         if inputs:
             composed["inputs"] = inputs
@@ -76,7 +90,8 @@ def run_workflow(root: Path, unit, workflow: Workflow, contributors, executor,
         carry = evidence.get("produces")
         outputs[phase.name] = carry
 
-        nxt = _next_edge(workflow, name)
+        passed = evidence.get("passed", receipt.outcome == "result")
+        nxt = _choose_edge(workflow, name, passed, evidence.get("next"))
         if nxt is None:
             break
         name, edge_in = nxt

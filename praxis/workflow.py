@@ -102,4 +102,17 @@ REBUILD_TRIPLE = Workflow(
     ],
 )
 
-SEED_WORKFLOWS: dict[str, Workflow] = {w.name: w for w in (TDD_UNIT, REBUILD_TRIPLE)}
+BUILD_VERIFY = Workflow(
+    name="build-verify",
+    phases=[IMPLEMENT, VERIFY, FIX, CLOSE],
+    edges=[
+        ("implement", "verify", "pass", EdgeType.carry),
+        ("verify", "close", "pass", EdgeType.carry),
+        ("verify", "fix", "fail", EdgeType.carry),
+        ("fix", "verify", "pass", EdgeType.carry),
+    ],
+)
+
+SEED_WORKFLOWS: dict[str, Workflow] = {
+    w.name: w for w in (TDD_UNIT, REBUILD_TRIPLE, BUILD_VERIFY)
+}
