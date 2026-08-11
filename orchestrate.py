@@ -10,8 +10,28 @@ from run import Plan, Unit, Verdict, run_unit, verifier_from_test_cmd
 from situation import Situation
 
 
+# On escalation, replan splices a caller-supplied replacement into the failing
+# sub-DAG and re-runs it; the replacement is the caller's judgment, not the engine's.
+
+
 def _default_owner(defect: str) -> dict:
     return {"intent": f"fix: {defect}", "targets": []}
+
+
+def failing_subdag(units, seed_ids) -> list[str]:
+    seeds = set(seed_ids)
+    dependents: dict[str, list[str]] = {}
+    for u in units:
+        for d in u.depends_on:
+            dependents.setdefault(d, []).append(u.id)
+    affected = set(seeds)
+    stack = list(seeds)
+    while stack:
+        for dep in dependents.get(stack.pop(), []):
+            if dep not in affected:
+                affected.add(dep)
+                stack.append(dep)
+    return [u.id for u in units if u.id in affected]
 
 
 def barrier_from_test_cmd(test_cmd: str | None) -> Callable[[], Verdict]:
@@ -32,7 +52,13 @@ def run_orchestrated(root: Path, units, contributors, executor,
     if stalled:
         journal.append(root, "orchestration.escalated", reason="unit-stalled", units=stalled)
         return {"status": "escalated", "reason": "unit-stalled", "attempts": 0,
-                "units": stalled, "fanout": result}
+                "units": stalled, "failing_subdag": failing_subdag(units, stalled),
+                "fanout": result}
+
+    # Barrier-level escalations: the fan-out completed, so best-effort seeds are
+    # the fan-out units not marked done (empty when every unit succeeded).
+    not_done = [r["unit"] for r in result["results"] if r["outcome"] != "result"]
+    barrier_subdag = failing_subdag(units, not_done)
 
     own = defect_owner or _default_owner
     for attempt in range(fix_rounds + 1):
@@ -54,8 +80,20 @@ def run_orchestrated(root: Path, units, contributors, executor,
                 journal.append(root, "orchestration.escalated", reason="structural-misfit",
                                fix_unit=fu.id)
                 return {"status": "escalated", "reason": "structural-misfit",
-                        "attempts": attempt + 1, "fix_unit": fu.id, "fanout": result}
+                        "attempts": attempt + 1, "fix_unit": fu.id,
+                        "failing_subdag": barrier_subdag, "fanout": result}
 
     journal.append(root, "orchestration.escalated", reason="loop-exhausted")
     return {"status": "escalated", "reason": "loop-exhausted", "attempts": fix_rounds + 1,
-            "fanout": result}
+            "failing_subdag": barrier_subdag, "fanout": result}
+
+
+def replan(root: Path, units, failing_ids, replacement_units, contributors, executor,
+           barrier: Callable[[], Verdict], *, fix_rounds: int = 3,
+           defect_owner: Callable[[str], dict] | None = None,
+           max_retries: int | None = None) -> dict:
+    drop = set(failing_ids)
+    new_units = [u for u in units if u.id not in drop] + list(replacement_units)
+    return run_orchestrated(root, new_units, contributors, executor, barrier,
+                            fix_rounds=fix_rounds, defect_owner=defect_owner,
+                            resume=True, max_retries=max_retries)

@@ -103,6 +103,29 @@ class OrchestrateTest(unittest.TestCase):
         self.assertEqual(out["reason"], "structural-misfit")
         self.assertEqual(out["fix_unit"], "fix-0-0")
 
+    def test_failing_subdag_transitive_dependents(self):
+        units = [_u("a"), _u("b", ["a"]), _u("c", ["b"])]
+        self.assertEqual(O.failing_subdag(units, ["a"]), ["a", "b", "c"])
+        self.assertEqual(O.failing_subdag(units, ["b"]), ["b", "c"])
+        self.assertEqual(O.failing_subdag(units, ["c"]), ["c"])
+
+    def test_replan_splices_replacement_and_completes(self):
+        barrier, _ = _stateful_barrier(R.Verdict(verified=True))
+
+        def handler(unit, composed):
+            return R.Receipt(outcome="stall", status="blocked") if unit.id == "b" \
+                else R.Receipt(outcome="result")
+
+        units = [_u("a"), _u("b")]
+        out = O.run_orchestrated(self.root, units, [], R.InlineExecutor(handler), barrier)
+        self.assertEqual(out["status"], "escalated")
+        self.assertEqual(out["reason"], "unit-stalled")
+        self.assertEqual(out["failing_subdag"], ["b"])
+
+        replan_out = O.replan(self.root, units, out["failing_subdag"], [_u("b2")],
+                              [], R.InlineExecutor(handler), barrier)
+        self.assertEqual(replan_out["status"], "complete")
+
 
 if __name__ == "__main__":
     unittest.main()
