@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import json
-import re
 import shlex
 import subprocess
 import time
 from pathlib import Path
 
 import accretion
+import config as config_mod
 import contributors as contributors_mod
 import handoff as handoff_mod
 import journal
@@ -22,18 +22,21 @@ _SHAPE_KEYS = ("language", "framework", "has-ui", "styling", "package-manager")
 
 
 def project_shape_for(root: str | Path) -> dict:
-    for cfg in (Path(root) / ".praxis" / "config.md", Path(root) / "praxis" / "config.md"):
-        try:
-            text = cfg.read_text()
-        except OSError:
-            continue
-        shape = {}
-        for key in _SHAPE_KEYS:
-            m = re.search(rf"^{re.escape(key)}:\s*(.+?)\s*$", text, re.MULTILINE)
-            if m:
-                shape[key] = m.group(1).strip()
-        return shape
-    return {}
+    cfg = config_mod.read(root)
+    return {key: cfg[key] for key in _SHAPE_KEYS if key in cfg}
+
+
+def init_root(root=None, language=None, framework=None, has_ui=None,
+              styling=None, package_manager=None) -> dict:
+    import root_tree
+    start = Path(root).resolve() if root else Path.cwd()
+    git_root = root_tree._git_toplevel(start)
+    target = git_root if git_root is not None else start
+    shape = {"language": language, "framework": framework, "has-ui": has_ui,
+             "styling": styling, "package-manager": package_manager}
+    config_mod.write(target, None, {k: v for k, v in shape.items() if v is not None})
+    return {"status": "initialized", "root": str(target),
+            "config": str(config_mod.path(target))}
 
 
 class ClaudeExecutor:

@@ -1,6 +1,7 @@
 """Tests for root_tree. Run with: python3 -m unittest discover -s praxis/tests -v"""
 
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -9,6 +10,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import root_tree as rt  # noqa: E402
+
+
+def git_init(path: Path) -> None:
+    subprocess.run(["git", "init", "-q", str(path)], check=True,
+                   capture_output=True)
 
 
 def mkroot(base: Path, rel: str, marker: str = "praxis/config.md", name: str | None = None) -> Path:
@@ -123,10 +129,11 @@ class PraxisDirTests(unittest.TestCase):
 
 class GoverningRootAboveTests(unittest.TestCase):
     """The upward walk: nearest ancestor of a path carrying a marker, `.praxis` then legacy `praxis`.
-    Unlike nearest_root(path, find_roots(base)), it escapes any search base — an O(depth) answer."""
+    Bounded by the enclosing git repo (here `self.tmp`, git-init'd in setUp) — resolve_root's rule."""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp()).resolve()
+        git_init(self.tmp)
 
     def tearDown(self):
         shutil.rmtree(self.tmp)
@@ -160,6 +167,52 @@ class GoverningRootAboveTests(unittest.TestCase):
         self._mk("outer/inner/.praxis/config.md")
         self.assertEqual(rt.governing_root_above(self.tmp / "outer" / "inner" / "src" / "x.ts"),
                          self.tmp / "outer" / "inner")
+
+
+class ResolveRootTests(unittest.TestCase):
+    """resolve_root: git-bounded, opt-in. Never rises above the git repo root; outside a repo never
+    above the start dir; None when nothing within the bound is marked."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp()).resolve()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _mk(self, rel):
+        p = self.tmp / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("name: t\n")
+
+    def test_nested_subdir_resolves_to_marked_repo_root(self):
+        git_init(self.tmp)
+        self._mk(".praxis/config.md")
+        deep = self.tmp / "src" / "a" / "b"
+        deep.mkdir(parents=True)
+        self.assertEqual(rt.resolve_root(deep / "x.ts"), self.tmp)
+
+    def test_marker_in_subdir_wins_over_repo_root(self):
+        git_init(self.tmp)
+        self._mk(".praxis/config.md")
+        self._mk("svc/.praxis/config.md")
+        (self.tmp / "svc" / "src").mkdir(parents=True)
+        self.assertEqual(rt.resolve_root(self.tmp / "svc" / "src" / "x.ts"), self.tmp / "svc")
+
+    def test_repo_with_no_marker_is_none(self):
+        git_init(self.tmp)
+        (self.tmp / "src").mkdir()
+        self.assertIsNone(rt.resolve_root(self.tmp / "src" / "x.ts"))
+
+    def test_non_git_dir_no_marker_is_none_and_never_escapes_start(self):
+        # A parent dir carries a marker, but start is a non-git dir: the walk must NOT reach the parent.
+        self._mk(".praxis/config.md")
+        start = self.tmp / "loose"
+        start.mkdir()
+        self.assertIsNone(rt.resolve_root(start))
+
+    def test_marker_at_non_git_start_dir_resolves_to_that_dir(self):
+        self._mk("proj/.praxis/config.md")
+        self.assertEqual(rt.resolve_root(self.tmp / "proj"), self.tmp / "proj")
 
 
 if __name__ == "__main__":

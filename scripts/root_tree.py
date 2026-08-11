@@ -23,6 +23,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -93,13 +94,47 @@ def nearest_root(target: Path, roots: list[Path]) -> Path | None:
     return best
 
 
-def governing_root_above(path: Path) -> Path | None:
-    path = Path(path).resolve()
-    for cur in (path, *path.parents):
+def _git_toplevel(start: Path) -> Path | None:
+    """The git repo root containing `start`, or None when `start` is not in a git repo.
+
+    Bounds the upward marker walk: git handles worktrees/submodules/symlinked roots correctly, so
+    the walk never has to guess where the repo ends. A non-git tree (no repo, or git absent) has no
+    bound above `start` itself. `git -C` needs a real directory, so a nonexistent leaf resolves to
+    its parent — the stamp hook's syntactic path-joins still land on a walkable dir.
+    """
+    base = start if start.is_dir() else start.parent
+    while not base.is_dir() and base != base.parent:
+        base = base.parent
+    try:
+        out = subprocess.run(["git", "-C", str(base), "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return None
+    top = out.stdout.strip()
+    return Path(top).resolve() if top else None
+
+
+def resolve_root(start) -> Path | None:
+    """The praxis root governing `start`, or None when nothing within the bound is marked.
+
+    Git-bounded and opt-in: walk up from `start` looking for `.praxis/config.md` (then legacy
+    `praxis/config.md`), but never above the git repo root — or, outside a git repo, never above
+    `start`'s own directory. No marker within that bound ⇒ None: an unmarked repo is not managed.
+    """
+    start = Path(start).resolve()
+    git_root = _git_toplevel(start)
+    floor = git_root if git_root is not None else (start if start.is_dir() else start.parent)
+    for cur in (start, *start.parents):
         for name in (".praxis", "praxis"):
             if (cur / name / "config.md").is_file():
                 return cur
+        if cur == floor:
+            break
     return None
+
+
+def governing_root_above(path: Path) -> Path | None:
+    return resolve_root(path)
 
 
 def _is_ancestor_or_equal(anc: Path, node: Path) -> bool:

@@ -59,8 +59,8 @@ if [ -z "$FILE_PATH" ]; then
 fi
 
 # Walk upward from the file's own directory to the nearest praxis marker — the rule of record is
-# root_tree.governing_root_above (nearest ancestor carrying `.praxis/config.md`, then legacy
-# `praxis/config.md`; `.praxis` wins), which praxis_walk_to_root transcribes.
+# root_tree.resolve_root (nearest ancestor carrying `.praxis/config.md`, then legacy
+# `praxis/config.md`; `.praxis` wins, git-bounded & opt-in), which praxis_walk_to_root transcribes.
 DIR=$(cd "$(dirname "$FILE_PATH")" 2>/dev/null && pwd)
 if [ -z "$DIR" ]; then
   exit 0

@@ -7,9 +7,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "scripts"))
+
 import accretion  # noqa: E402
 import conduct as conduct_engine  # noqa: E402
 import journal  # noqa: E402
+import root_tree  # noqa: E402
 import views  # noqa: E402
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
@@ -17,7 +20,21 @@ mcp = FastMCP("praxis")
 
 
 def _root(search_base: str | None) -> Path:
-    return Path(search_base).resolve() if search_base else Path.cwd()
+    if search_base:
+        return Path(search_base).resolve()
+    cwd = Path.cwd()
+    resolved = root_tree.resolve_root(cwd)
+    return resolved if resolved is not None else cwd
+
+
+def _managed(search_base: str | None) -> bool:
+    return root_tree.resolve_root(_root(search_base)) is not None
+
+
+_NOT_A_ROOT = json.dumps(
+    {"status": "not-a-root",
+     "note": "this repo isn't a praxis root yet — run /praxis:init to set it up first"},
+    indent=2)
 
 
 def _parse_tasklist(tasks: str) -> tuple[list | None, str | None]:
@@ -28,6 +45,18 @@ def _parse_tasklist(tasks: str) -> tuple[list | None, str | None]:
     if not isinstance(parsed, list) or not parsed:
         return None, json.dumps({"error": "tasks must be a non-empty JSON array"}, indent=2)
     return parsed, None
+
+
+@mcp.tool()
+def init(language: str | None = None, framework: str | None = None, has_ui: str | None = None,
+         styling: str | None = None, package_manager: str | None = None,
+         search_base: str | None = None) -> str:
+    """Mark the current git repo (or folder) as a praxis root by writing `.praxis/config.md`, so the
+    gate and drive tools begin managing it. Pass whatever project-shape values you detected:
+    `language`, `framework`, `has_ui`, `styling`, `package_manager` (any left unset are omitted)."""
+    return json.dumps(conduct_engine.init_root(
+        root=search_base, language=language, framework=framework, has_ui=has_ui,
+        styling=styling, package_manager=package_manager), indent=2)
 
 
 @mcp.tool()
@@ -55,6 +84,8 @@ def conduct(intent: str, brief: str | None = None, task_kind: str = "change",
     must be true for the child to actually change files; `dry_run` (default TRUE) previews the
     composed overlay, the routing, and the child command WITHOUT spawning or writing a unit — call
     it once to check, then re-call with dry_run=false, allow_edits=true to execute."""
+    if not _managed(search_base):
+        return _NOT_A_ROOT
     out = conduct_engine.run_task(
         _root(search_base), intent=intent, brief=brief, task_kind=task_kind, subject=subject,
         suggested_kind=suggested_kind, fit=fit, phase=phase,
@@ -86,6 +117,8 @@ def plan(tasks: str, test_cmd: str | None = None, model: str | None = None,
     units complete. The worker survives an MCP-server restart, and re-calling resumes an interrupted
     run (it does not re-spawn finished units). Fill `suggested_kind`/`fit` honestly per task — a
     loose/none fit surfaces a vocabulary gap."""
+    if not _managed(search_base):
+        return _NOT_A_ROOT
     parsed, err = _parse_tasklist(tasks)
     if err:
         return err
@@ -117,6 +150,8 @@ def register_plan(tasks: str, search_base: str | None = None) -> str:
 
     Use `plan` (not this) when you want the conductor to hand each unit to a fresh isolated child;
     use `register_plan` + `next_handoff` when you want to implement inline with the design in hand."""
+    if not _managed(search_base):
+        return _NOT_A_ROOT
     parsed, err = _parse_tasklist(tasks)
     if err:
         return err

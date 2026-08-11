@@ -7,10 +7,10 @@
 # repo copy BEFORE dirname, or the sibling lib can't be found. See each hook's guarded source block.
 #
 # Each primitive transcribes a rule whose Python source of record lives in root_tree.py / server.py:
-#   praxis_walk_to_root  ← root_tree.governing_root_above (nearest ancestor carrying .praxis/config.md,
-#                          then legacy praxis/config.md — `.praxis` wins; the same order as praxis_dir
-#                          and DEFAULT_MARKERS). A SYNTACTIC walk: it never requires the path to exist,
-#                          so the stamp hook's relative-path-joined-onto-a-leaf-base cases still resolve.
+#   praxis_walk_to_root  ← root_tree.resolve_root (nearest ancestor carrying .praxis/config.md, then
+#                          legacy praxis/config.md — `.praxis` wins; the same order as praxis_dir and
+#                          DEFAULT_MARKERS), GIT-BOUNDED and opt-in: it never rises above the git root
+#                          (or, no repo, above the start dir), and returns 1 when nothing is marked.
 #   praxis_stamp_path    ← the session-stamp path server.py.work_status globs:
 #                          $TMPDIR/praxis-front-door/<session>/<sha1 of root path>.
 #   praxis_file_age      ← mtime delta in seconds (BSD `stat -f %m` then GNU `stat -c %Y`).
@@ -36,14 +36,18 @@ praxis_file_age() {
   echo $(( $(date +%s) - mtime ))
 }
 
-# Walk upward from a starting directory to the nearest praxis root. On a hit sets two globals and
-# returns 0; returns 1 when no ancestor is a root. Globals set:
+# Walk upward from a starting directory to the nearest praxis root, GIT-BOUNDED and OPT-IN. On a hit
+# sets two globals and returns 0; returns 1 when no marker is found within the bound (an unmarked
+# repo is not managed — the gate hook turns this return-1 into `exit 0`/allow, keeping such repos
+# UNGATED). The bound is the git repo root ($git_root); outside a git repo the walk never rises above
+# `dir` itself. Same rule as root_tree.resolve_root (the Python source of record). Globals set:
 #   PRAXIS_ROOT_PATH — the governing root directory
 #   PRAXIS_DIR       — its state dir ($root/.praxis, or legacy $root/praxis)
 praxis_walk_to_root() {
-  local dir="$1" p
+  local dir="$1" p git_root
   PRAXIS_ROOT_PATH=""
   PRAXIS_DIR=""
+  git_root=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)
   while [ "$dir" != "/" ] && [ -n "$dir" ]; do
     for p in .praxis praxis; do
       if [ -f "$dir/$p/config.md" ]; then
@@ -52,6 +56,10 @@ praxis_walk_to_root() {
         return 0
       fi
     done
+    # Stop at the bound: the git root, or (no git repo) `dir` itself — never walk above it.
+    if [ -z "$git_root" ] || [ "$dir" = "$git_root" ]; then
+      break
+    fi
     dir=$(dirname "$dir")
   done
   return 1
