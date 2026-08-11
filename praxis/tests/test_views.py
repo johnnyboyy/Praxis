@@ -17,12 +17,32 @@ def _sit(**over):
     return Situation(**kw)
 
 
+class _StubProvider:
+    """Minimal composing provider — returns fixed domains so the handoff view has something to show."""
+
+    def __init__(self, domains):
+        self._domains = list(domains)
+
+    def compose(self, situation):
+        return {"artifacts": [], "stance": None, "note": "ok",
+                "domains": list(self._domains), "routed_kind": situation.routed_kind}
+
+    def ratify(self, proposal):
+        return {"verdict": "unavailable"}
+
+    def retrospect(self, scope):
+        return {"signals": []}
+
+    def capabilities(self):
+        return []
+
+
 class HandoffViewTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         (self.root / ".praxis").mkdir()
-        self.provider = pv.CorporaProvider(lambda r, u: {"domains": ["prose-craft"], "warnings": []})
+        self.provider = _StubProvider(["prose-craft"])
 
     def tearDown(self):
         self.tmp.cleanup()

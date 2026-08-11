@@ -1,8 +1,0 @@
-{
-  "name": "writing",
-  "kind": "process-scaffold-plugin",
-  "doc": "The writing concern — producing real prose PRODUCTS across genres (fiction, non-fiction, advertising/copy, legal, documentation) and styles — as an independent, first-class plugin. Deliberately PRAXIS-FACE ONLY for now: it ships the writing PROCESS (`provides`: the writing-draft / writing-revision phases) and NO judgment face. That asymmetry is the whole design. Process/structure is deterministic and can be laid out and iterated up front; judgment cannot be pre-authored, because a pre-written 'good fiction' or 'good legal prose' principle is just baseline craft an agent would apply anyway — and corpora's entire value is judgment that BEATS baseline, earned from real work and fed forward. So the genre/style DOMAINS start empty: writing-specific judgment is born at the engine's ratify gate when actual writing surfaces something genuinely better than baseline, homed in the project doing the work, and only then promoted back into this plugin's judgment face for other projects. The phases name genre units-of-work (write-fiction, write-nonfiction, write-copy, write-legal, write-documentation) and a cross-cutting style axis as recognized structure to compose against; those compositions return little until judgment accretes. This is NOT the retired prose plugin — that mistakenly repackaged corpora's own artifact-authoring hygiene (prose-craft) and planning dialogue (interviewing); this is the distinct concern of authoring prose products. Lives OUTSIDE praxis/ (like the other plugins) so praxis-core stays engine-free.",
-  "provides": {
-    "phases": "praxis/phases"
-  }
-}

@@ -1,9 +1,0 @@
-{
-  "name": "routing",
-  "kind": "full-stack-plugin",
-  "doc": "Praxis's own process concern, now carrying BOTH faces. Judgment face: the domains encoding judgment about praxis's process — routing/spawning/relay (routing, units-of-work: [route-work]), spawn discipline (spawn-integrity), and decomposition/planning (planning, units-of-work: [plan-work]); staged through a registered engine's gate so praxis's routing phase composes them for its own route-work unit. Praxis face: the `operation` phase — the session/per-unit-of-work loop that conducts praxis-core's primitives (framing, routing, spawn skeleton, handoff/chunk ledgers) together with the registered engine's ratify gate and installed plugins' phases, naming each collaborator by role and degrading when one is absent. The loop lives here rather than in praxis-core deliberately: it is process whose shape is still settling, so it must be able to change/grow/shrink with use without touching the pristine core. It lives OUTSIDE praxis/ so praxis-core stays free of any engine reference; it is praxis's contribution the way corpora/praxis-plugin is corpora's, and (like that plugin) it may name an engine because it is not part of the core.",
-  "provides": {
-    "phases": "praxis/phases"
-  },
-  "judgment_face": "corpora/domains"
-}

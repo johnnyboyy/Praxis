@@ -1,6 +1,0 @@
-__pycache__/
-
-# Saved article content for resolving reading/queue.md fetch failures — copyrighted third-party
-# text, not meant to live in git history by default. See reading/saved/README.md.
-reading/saved/*
-!reading/saved/README.md

@@ -15,6 +15,27 @@ def _sit(**over):
     return Situation(**kw)
 
 
+class _StubProvider:
+    """A minimal composing provider for exercising the generic consult() seam without an engine."""
+
+    def __init__(self, domains):
+        self._domains = list(domains)
+
+    def compose(self, situation):
+        stance = situation.phase if situation.phase in ("divergent", "convergent") else None
+        return {"artifacts": [], "stance": stance, "note": "ok",
+                "domains": list(self._domains), "routed_kind": situation.routed_kind}
+
+    def ratify(self, proposal):
+        return {"verdict": "unavailable"}
+
+    def retrospect(self, scope):
+        return {"signals": []}
+
+    def capabilities(self):
+        return []
+
+
 class NullProviderTest(unittest.TestCase):
     def test_compose_degrades_to_facts(self):
         r = pv.NullProvider().compose(_sit())
@@ -33,63 +54,9 @@ class NullProviderTest(unittest.TestCase):
         self.assertIsInstance(pv.NullProvider(), pv.Provider)
 
 
-class CorporaProviderComposeTest(unittest.TestCase):
-    def test_keys_select_on_label_when_labeled(self):
-        seen = {}
-
-        def select(root, uow):
-            seen["uow"] = uow
-            return {"domains": ["testing"], "warnings": []}
-
-        prov = pv.CorporaProvider(select)
-        r = prov.compose(_sit(fit="clean", label="scaffold-tests", root="/r"))
-        self.assertEqual(seen["uow"], "scaffold-tests")
-        self.assertEqual(r["domains"], ["testing"])
-        self.assertEqual(r["artifacts"], [])
-
-    def test_falls_back_to_task_kind_when_unlabeled(self):
-        seen = {}
-
-        def select(root, uow):
-            seen["uow"] = uow
-            return {"domains": [], "warnings": []}
-
-        pv.CorporaProvider(select).compose(_sit(fit="clean", label=None))
-        self.assertEqual(seen["uow"], "change")
-
-    def test_fit_none_routes_to_unclassified(self):
-        seen = {}
-
-        def select(root, uow):
-            seen["uow"] = uow
-            return {"domains": ["prose-craft"], "warnings": ["unit-of-work 'unclassified' matches no domain"]}
-
-        r = pv.CorporaProvider(select).compose(_sit(fit="none", label="implement-feature"))
-        self.assertEqual(seen["uow"], "unclassified")
-        self.assertEqual(r["routed_kind"], "unclassified")
-        self.assertIn("matches no domain", r["note"])
-
-    def test_parts_become_artifacts(self):
-        def select(root, uow):
-            return {"domains": ["a", "b"], "warnings": []}
-
-        def parts(root, domains):
-            self.assertEqual(domains, ["a", "b"])
-            return {"parts": [{"slot": "domains", "body": "BODY"}], "problems": []}
-
-        r = pv.CorporaProvider(select, parts).compose(_sit(fit="clean", label="x"))
-        self.assertEqual(len(r["artifacts"]), 1)
-        self.assertEqual(r["artifacts"][0], {"slot": "domains", "body": "BODY", "provenance": "corpora"})
-
-    def test_stance_from_phase(self):
-        select = lambda root, uow: {"domains": [], "warnings": []}
-        self.assertEqual(pv.CorporaProvider(select).compose(_sit(phase="divergent"))["stance"],
-                         "divergent")
-        self.assertIsNone(pv.CorporaProvider(select).compose(_sit(phase="none"))["stance"])
-
-    def test_capabilities_reported(self):
-        prov = pv.CorporaProvider(lambda r, u: {}, capabilities=["compose", "ratify", "retrospect"])
-        self.assertEqual(prov.capabilities(), ["compose", "ratify", "retrospect"])
+class ProviderForTest(unittest.TestCase):
+    def test_defaults_to_null_provider(self):
+        self.assertIsInstance(pv.provider_for("/any/root"), pv.NullProvider)
 
 
 class ConsultTest(unittest.TestCase):
@@ -97,7 +64,7 @@ class ConsultTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         (self.root / ".praxis").mkdir()
-        self.prov = pv.CorporaProvider(lambda r, u: {"domains": ["prose-craft"], "warnings": []})
+        self.prov = _StubProvider(["prose-craft"])
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -123,58 +90,6 @@ class ConsultTest(unittest.TestCase):
         r = pv.consult(self.prov, _sit(fit="none", suggested_kind="migrate"), root=None)
         self.assertFalse(r["gap_surfaced"])
         self.assertEqual(r["routed_kind"], "unclassified")
-
-
-def _corpora_binding():
-    """Build (select_fn, parts_fn, capabilities) over the real corpora engine, or None if
-    unavailable. Imports praxis's engine binding — a cross-layer reach the TEST is allowed (the
-    conductor core itself never does this)."""
-    repo = Path(__file__).resolve().parents[2]
-    manifest_path = repo / "corpora" / "praxis-plugin" / "engine" / "plugins" / "corpora.json"
-    if not manifest_path.is_file():
-        return None
-    sys.path.insert(0, str(repo / "praxis" / "scripts"))
-    try:
-        import engine  # noqa: E402
-    except Exception:
-        return None
-    manifest = engine.load_manifest(manifest_path)
-
-    def select(root, uow):
-        payload, _ = engine.call_json(manifest, "compose",
-                                      {"root": root, "unit_of_work": uow, "json": True})
-        if payload is None:
-            return {"domains": [], "warnings": []}
-        return {"domains": payload.get("domains", []), "warnings": payload.get("warnings", [])}
-
-    def parts(root, domains):
-        payload, _ = engine.call_json(manifest, "spawn-parts",
-                                      {"root": root, "domains": ",".join(domains), "json": True})
-        if payload is None:
-            return {"parts": [], "problems": []}
-        return {"parts": payload.get("parts", []), "problems": payload.get("problems", [])}
-
-    caps = list(manifest.get("capabilities", {}).keys())
-    return select, parts, caps
-
-
-class RealCorporaWrapTest(unittest.TestCase):
-    def setUp(self):
-        binding = _corpora_binding()
-        if binding is None:
-            self.skipTest("corpora engine manifest not loadable")
-        self.select, self.parts, self.caps = binding
-        self.repo = str(Path(__file__).resolve().parents[2])
-
-    def test_wraps_real_corpora_compose(self):
-        prov = pv.CorporaProvider(self.select, self.parts, capabilities=self.caps)
-        s = _sit(task_kind="explore", fit="clean", label="scan-architecture",
-                 subject="coding", root=self.repo)
-        r = prov.compose(s)
-        self.assertIn("prose-craft", r["domains"], f"domains={r['domains']}")
-        self.assertTrue(r["artifacts"], "expected composed domain bodies as artifacts")
-        self.assertTrue(all(a["provenance"] == "corpora" for a in r["artifacts"]))
-        self.assertIn("compose", self.caps)
 
 
 if __name__ == "__main__":

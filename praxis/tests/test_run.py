@@ -20,6 +20,26 @@ def _result(unit, composed):
     return R.Receipt(outcome="result", status="complete", tool_calls=3)
 
 
+class _StubProvider:
+    """Minimal composing provider — returns fixed domains so run_unit has judgment to frame with."""
+
+    def __init__(self, domains):
+        self._domains = list(domains)
+
+    def compose(self, situation):
+        return {"artifacts": [], "stance": None, "note": "ok",
+                "domains": list(self._domains), "routed_kind": situation.routed_kind}
+
+    def ratify(self, proposal):
+        return {"verdict": "unavailable"}
+
+    def retrospect(self, scope):
+        return {"signals": []}
+
+    def capabilities(self):
+        return []
+
+
 class ReceiptTest(unittest.TestCase):
     def test_rejects_bad_outcome(self):
         with self.assertRaises(ValueError):
@@ -51,7 +71,7 @@ class RunLifecycleTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         (self.root / ".praxis").mkdir()
-        self.provider = pv.CorporaProvider(lambda r, u: {"domains": ["prose-craft"], "warnings": []})
+        self.provider = _StubProvider(["prose-craft"])
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -153,62 +173,6 @@ class SubprocessExecutorTest(unittest.TestCase):
         ex = R.SubprocessExecutor(lambda unit, composed: ["/no/such/binary/xyzzy"])
         r = ex.run(self.unit, {})
         self.assertEqual(r.outcome, "stall")
-
-
-def _corpora_binding():
-    repo = Path(__file__).resolve().parents[2]
-    manifest_path = repo / "corpora" / "praxis-plugin" / "engine" / "plugins" / "corpora.json"
-    if not manifest_path.is_file():
-        return None
-    sys.path.insert(0, str(repo / "praxis" / "scripts"))
-    try:
-        import engine  # noqa: E402
-    except Exception:
-        return None
-    manifest = engine.load_manifest(manifest_path)
-
-    def select(root, uow):
-        payload, _ = engine.call_json(manifest, "compose",
-                                      {"root": root, "unit_of_work": uow, "json": True})
-        return {"domains": (payload or {}).get("domains", []),
-                "warnings": (payload or {}).get("warnings", [])}
-
-    return select, list(manifest.get("capabilities", {}).keys())
-
-
-class LiveConductorRunTest(unittest.TestCase):
-    """tests + live: the conductor core driving a real plan through the real corpora provider and an
-    inline executor, then reading the whole run back off the journal fold."""
-
-    def setUp(self):
-        binding = _corpora_binding()
-        if binding is None:
-            self.skipTest("corpora engine manifest not loadable")
-        self.select, _ = binding
-        self.repo = Path(__file__).resolve().parents[2]
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        (self.root / ".praxis").mkdir()
-
-    def tearDown(self):
-        self.tmp.cleanup()
-
-    def test_real_provider_linear_run(self):
-        provider = pv.CorporaProvider(self.select)
-        plan = R.Plan([
-            R.Unit("a", _sit(task_kind="explore", fit="clean", label="scan-architecture",
-                             root=str(self.repo))),
-            R.Unit("b", _sit(task_kind="change", fit="none", suggested_kind="provision-infra",
-                             label="implement-feature", root=str(self.repo))),
-        ])
-        out = R.run(plan, provider, R.InlineExecutor(_result), self.root)
-        self.assertEqual([r["outcome"] for r in out["results"]], ["result", "result"])
-        framed_a = next(e for e in journal.read(self.root)
-                        if e["event"] == "unit.framed" and e["unit"] == "a")
-        self.assertIn("prose-craft", framed_a["domains"])
-        self.assertEqual(journal.state_of(self.root, "a"), "done")
-        self.assertEqual(len(journal.gaps(self.root)), 1)
-        self.assertEqual(journal.gap_candidates(self.root)[0]["suggested"], "provision-infra")
 
 
 if __name__ == "__main__":

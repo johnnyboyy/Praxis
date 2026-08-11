@@ -36,7 +36,7 @@ def conduct(intent: str, brief: str | None = None, task_kind: str = "change",
             phase: str = "none", targets: str | None = None, test_cmd: str | None = None,
             model: str | None = None, allow_edits: bool = False, dry_run: bool = True,
             search_base: str | None = None) -> str:
-    """Run one unit of work through the conductor: it composes the applicable judgment (corpora) for
+    """Run one unit of work through the conductor: it composes the applicable judgment for
     this situation, dispatches the work to an ISOLATED claude subprocess under that judgment, gates
     the result on `test_cmd` (looping back with the failure as feedback if it fails), and records
     every step to the journal.
@@ -79,7 +79,7 @@ def plan(tasks: str, test_cmd: str | None = None, model: str | None = None,
 
     YOU are the planner: interview the operator, decompose the request into these tasks, and infer
     the `depends_on` edges before calling this. The conductor plans them into a DAG and runs each
-    ready wave (dependencies first), composing corpora judgment per unit and gating on `test_cmd`.
+    ready wave (dependencies first), composing judgment per unit and gating on `test_cmd`.
     `dry_run` (default TRUE) previews the plan + each unit's routing/gap WITHOUT spawning. Re-call
     with dry_run=false, allow_edits=true to EXECUTE — the cascade then runs in a DETACHED worker
     process and this call returns immediately with status `running`; poll `plan_status` to watch

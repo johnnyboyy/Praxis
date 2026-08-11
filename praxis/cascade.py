@@ -26,8 +26,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import adapters  # noqa: E402
 import journal  # noqa: E402
+import providers  # noqa: E402
 from run import Plan, verifier_from_test_cmd  # noqa: E402
 from schedule import run_dag  # noqa: E402
 
@@ -84,7 +84,7 @@ def run_cascade(root: str | Path, *, executor, provider=None, test_cmd: str | No
     units = plan_mod.reconstruct_units(root)
     if units is None:
         return {"status": "no-plan"}
-    prov = provider if provider is not None else adapters.corpora_provider(root)
+    prov = provider if provider is not None else providers.provider_for(root)
     verifier = verifier_from_test_cmd(test_cmd)
     result = run_dag(Plan(units=units), prov, executor, root, verifier=verifier,
                      concurrency=concurrency, max_retries=max_retries, resume=True)

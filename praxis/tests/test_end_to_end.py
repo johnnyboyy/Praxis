@@ -22,7 +22,6 @@ import views  # noqa: E402
 from situation import Situation  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
-CORPUS_PY = REPO / "corpora" / "scripts" / "corpus.py"
 
 
 class FullStackNullProviderTest(unittest.TestCase):
@@ -90,39 +89,6 @@ class FullStackNullProviderTest(unittest.TestCase):
         self.assertEqual(acc.promotable(self.root, min_count=3), [])
 
         self.assertEqual(journal.fold(self.root)["open_units"], [])
-
-
-@unittest.skipUnless(CORPUS_PY.is_file(), "corpora corpus.py not present")
-class FullStackRealCorporaTest(unittest.TestCase):
-    """The same vertical, but composing real corpora domains through the direct adapter."""
-
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        (self.root / ".praxis").mkdir()
-
-    def tearDown(self):
-        self.tmp.cleanup()
-
-    def test_real_composition_through_the_stack(self):
-        import adapters
-        provider = adapters.corpora_provider(REPO, mode="features")
-        shape = {"language": "python", "framework": "none"}
-        plan = R.Plan([
-            R.Unit("scan", Situation(task_kind="explore", intent="map it", subject="coding",
-                                     project_shape=shape, root=str(REPO))),
-            R.Unit("verify", Situation(task_kind="change", intent="check it", subject="coding",
-                                       project_shape=shape, root=str(REPO)), depends_on=["scan"]),
-        ])
-        out = S.run_dag(plan, provider, R.InlineExecutor(lambda u, c: R.Receipt(outcome="result")),
-                        self.root, verifier=R.CallableVerifier(lambda u, r, c: R.Verdict(verified=True)))
-        self.assertEqual([r["outcome"] for r in out["results"]], ["result", "result"])
-
-        h = views.handoff(self.root, "scan")
-        self.assertIn("prose-craft", h["domains_loaded"])
-        self.assertIn("coding-general", h["domains_loaded"])
-        self.assertTrue(h["verified"])
-        self.assertEqual(h["state"], "done")
 
 
 if __name__ == "__main__":

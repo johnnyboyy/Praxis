@@ -1,9 +1,0 @@
-{
-  "name": "monorepo",
-  "kind": "full-stack-plugin",
-  "doc": "The monorepo concern — a root whose children include other praxis roots. The border of a sovereign root is wherever a `.praxis` marker exists; this plugin gives the OUTER root (the coordination root) its shape, and the model is the same thing recursively down: an inner root that itself contains roots imports this plugin too. Praxis-core already carries the mechanics (root_tree resolves nested roots, route decomposes a spanning task one-unit-per-root, interop carries cross-root dependencies); what core deliberately does NOT carry is the monorepo-specific process and judgment, which live here. Praxis face (`provides`): the coordination phase — framing at the border, decomposing a cross-root task into one unit per child root, handing each unit through the CHILD's own front door so it composes and ratifies against the child's own corpora state, never the parent's. Judgment face (`judgment_face`: corpora/domains): the monorepo-coordination domain (units-of-work: [coordinate-work]), seeded 2026-08-07 from the motors-and-controls migration where the coordination root's config.md had been copy-pasted from a child app — composing a full app-shaped pool at a root with no app code, which then drifted outside any gate that fired. On import the judgment face stages through the registered engine's ratify gate, never written live. Deliberately a plugin, not core: if the coordination shape generalizes beyond monorepos, that is the moment to promote it — not before. Lives OUTSIDE praxis/ (like plugins/routing/) so praxis-core stays engine-free.",
-  "provides": {
-    "phases": "praxis/phases"
-  },
-  "judgment_face": "corpora/domains"
-}

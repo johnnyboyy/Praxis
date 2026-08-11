@@ -9,7 +9,6 @@ import time
 from pathlib import Path
 
 import accretion
-import adapters
 import handoff as handoff_mod
 import journal
 import policy as policy_mod
@@ -23,7 +22,7 @@ _SHAPE_KEYS = ("language", "framework", "has-ui", "styling", "package-manager")
 
 
 def project_shape_for(root: str | Path) -> dict:
-    for cfg in (Path(root) / ".corpora" / "config.md", Path(root) / "corpora" / "config.md"):
+    for cfg in (Path(root) / ".praxis" / "config.md", Path(root) / "praxis" / "config.md"):
         try:
             text = cfg.read_text()
         except OSError:
@@ -124,7 +123,7 @@ def run_task(root: str | Path, *, intent: str, brief: str | None = None,
                           suggested_kind=suggested_kind, fit=fit, phase=phase,
                           project_shape=shape, root=str(root), targets=list(targets),
                           workflow=workflow, label=label)
-    provider = adapters.corpora_provider(root)
+    provider = providers.provider_for(root)
 
     if dry_run:
         composed = providers.consult(provider, situation, root=root)
@@ -151,7 +150,7 @@ def run_tasklist(root: str | Path, tasks: list[dict], *, test_cmd: str | None = 
                  dry_run: bool = False) -> dict:
     import plan as plan_mod
     root = Path(root).resolve()
-    provider = adapters.corpora_provider(root)
+    provider = providers.provider_for(root)
     specs = _specs_for(root, tasks)
 
     if dry_run:
@@ -230,7 +229,7 @@ def next_handoff(root: str | Path, brief: str | None = None) -> dict:
     units = plan_mod.reconstruct_units(root)
     if units is None:
         return {"status": "no-plan", "note": "no tasklist has been planned for this root yet"}
-    return handoff_mod.pull(root, units, adapters.corpora_provider(root), brief=brief)
+    return handoff_mod.pull(root, units, providers.provider_for(root), brief=brief)
 
 
 def _stub_unit(situation: Situation) -> Unit:
