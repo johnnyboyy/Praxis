@@ -1,6 +1,0 @@
-{
-  "bundled": ["implement-feature"],
-  "test-scaffold": ["scaffold-tests", "implement-feature", "verify-scaffold", "triage-scaffold"],
-  "ship-feature": ["design-ux-flow", "implement-feature", "testing"],
-  "hotfix": ["debug-issue", "testing"]
-}

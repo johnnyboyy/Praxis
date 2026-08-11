@@ -1,10 +1,11 @@
 {
   "name": "jdev-praxis",
   "owner": { "name": "John Zdanis" },
+  "description": "praxis — a process/orchestration engine for driving units of work through typed-edge workflows, with an edit gate and inline + orchestrated entry points.",
   "plugins": [
     {
       "name": "praxis",
-      "source": "./praxis",
+      "source": ".",
       "description": "Process/orchestration engine with an edit gate, phase/workflow drive, and inline + orchestrated entry points."
     }
   ]
