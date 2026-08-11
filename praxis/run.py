@@ -42,11 +42,11 @@ class Receipt:
     """The terminal claim an executor returns (docs/CONDUCTOR-PLAN.md "Receipt"). A stall is a
     first-class outcome, not a failure: it means the unit could not complete and surfaced why."""
 
-    outcome: str                                  # result | stall
-    status: str = "complete"                      # complete | blocked | questions-pending | tradeoffs-pending
-    surfaced: list = field(default_factory=list)  # proposals / questions / tradeoffs to relay
-    evidence: dict | None = None                  # verification evidence (populated from P5 on)
-    cost: dict | None = None                       # {tokens, usd} | None
+    outcome: str
+    status: str = "complete"
+    surfaced: list = field(default_factory=list)
+    evidence: dict | None = None
+    cost: dict | None = None
     tool_calls: int = 0
 
     def __post_init__(self):
@@ -140,7 +140,6 @@ class SubprocessExecutor:
         try:
             receipt = Receipt.from_dict(json.loads(p.stdout))
         except (json.JSONDecodeError, ValueError):
-            # A clean exit with no receipt JSON: the unit ran and did not declare a stall.
             receipt = Receipt(outcome="result", status="complete")
         if receipt.cost is None and self._cost_extractor is not None:
             receipt.cost = self._cost_extractor(p.stdout, p.stderr)
@@ -207,6 +206,17 @@ class CommandVerifier:
                        evidence={"returncode": p.returncode})
 
 
+def verifier_from_test_cmd(test_cmd: str | None) -> "Verifier | None":
+    """A CommandVerifier that runs `test_cmd` (shell-split) as the verification gate, or None when no
+    command is given. The single source for the conductor entrypoints (run_task, run_tasklist,
+    run_cascade) that gate a spawned run on a test command."""
+    if not test_cmd:
+        return None
+    import shlex
+    argv = shlex.split(test_cmd)
+    return CommandVerifier(lambda unit, receipt, composed, _argv=argv: _argv)
+
+
 def run_unit(root: Path, unit: Unit, provider, executor: Executor,
              verifier: Verifier | None = None, max_retries: int = 2) -> dict:
     """Drive one unit through its lifecycle — including the verification gate — writing each
@@ -239,14 +249,11 @@ def run_unit(root: Path, unit: Unit, provider, executor: Executor,
         receipt = executor.run(unit, attempt_composed)
         journal.append(root, "unit.receipt", unit=unit.id, attempt=attempt, **receipt.to_dict())
 
-        # A receipt that stalls is the unit blocking itself (questions/tradeoffs/blocked), not a
-        # defect in delivered work — surface it, never retry.
         if receipt.outcome == "stall":
             journal.append(root, "unit.stalled", unit=unit.id, outcome="stall",
                            status=receipt.status)
             return _result("stall", receipt.status, receipt, None, attempt + 1, [])
 
-        # No verifier: accept the receipt as-is (the P4 path, unchanged).
         if verifier is None:
             journal.append(root, "unit.done", unit=unit.id, outcome="result",
                            status=receipt.status)
@@ -260,12 +267,10 @@ def run_unit(root: Path, unit: Unit, provider, executor: Executor,
                            status=receipt.status)
             return _result("result", receipt.status, receipt, True, attempt + 1, [])
 
-        # Defect: record it and loop back with the defects as feedback (bounded by max_retries).
         feedback = verdict.defects
         journal.append(root, "unit.note", unit=unit.id, kind="defect", attempt=attempt,
                        defects=verdict.defects, evidence=verdict.evidence)
 
-    # Retries exhausted without a passing verification — surface the outstanding defects.
     journal.append(root, "unit.stalled", unit=unit.id, outcome="stall", status="blocked",
                    surfaced=feedback,
                    note=f"verification failed after {max_retries + 1} attempt(s)")
@@ -283,6 +288,8 @@ def run(plan: Plan, provider, executor: Executor, root: Path,
     import views
     import policy as policy_mod
     pol = policy or policy_mod.load_policy(root)
+    if pol.verify_required and verifier is None:
+        raise ValueError("policy sets verify_required but no verifier was supplied")
     retries = pol.max_retries if max_retries is None else max_retries
     results = [run_unit(root, unit, provider, executor, verifier, retries)
                for unit in plan.units]

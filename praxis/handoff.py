@@ -105,7 +105,6 @@ def pull(root: str | Path, units: list[Unit], provider, brief: str | None = None
                    domains=composed.get("domains", []), stance=composed.get("stance"),
                    delivery=delivery, surface=unit.situation.targets or None,
                    note=composed.get("note"))
-    # The pull delivers the payload into the agent's context, so record the read that opens the gate.
     journal.append(root, "unit.note", unit=unit.id, payload_read=True)
     journal.append(root, "handoff.pulled", unit=unit.id, judgment_bytes=ho["judgment_bytes"])
     return {"status": "ready", "unit": unit.id, "unit_of_work": unit.unit_of_work,

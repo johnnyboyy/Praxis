@@ -48,7 +48,6 @@ def _tools_and_imports(src: str):
     for n in tree.body:
         if isinstance(n, ast.FunctionDef):
             for d in n.decorator_list:
-                # match @mcp.tool() / @mcp.tool
                 fn = d.func if isinstance(d, ast.Call) else d
                 if isinstance(fn, ast.Attribute) and fn.attr == "tool":
                     tools.append(n.name)
@@ -96,7 +95,6 @@ class ToolCallThroughTest(unittest.TestCase):
         reg = self._json(self.srv.register_plan(tasks, search_base=self.base))
         self.assertEqual(reg["status"], "registered")
         self.assertEqual(reg["plan"]["units"], ["types", "solver"])
-        # pull the first ready unit into context (no spawn); it becomes the open unit
         pull = self._json(self.srv.next_handoff(search_base=self.base))
         self.assertEqual(pull["status"], "ready")
         self.assertEqual(pull["unit"], "types")

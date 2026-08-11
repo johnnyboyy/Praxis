@@ -27,8 +27,6 @@ from pathlib import Path
 import journal
 from situation import PHASES, SUBJECTS, TASK_KINDS, VOCABULARIES
 
-# The built-in seeds each closed vocabulary starts from; workflow/unit start empty (fully open,
-# grown entirely by minting). `unclassified` is never minted — it is the derived fallout, not a term.
 BASE_VOCABULARY: dict[str, list[str]] = {
     "task_kind": list(TASK_KINDS),
     "subject": list(SUBJECTS),

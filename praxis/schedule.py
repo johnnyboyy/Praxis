@@ -36,7 +36,6 @@ def _validate(units: dict[str, Unit]) -> None:
         for d in u.depends_on:
             if d not in units:
                 raise ValueError(f"unit '{u.id}' depends on unknown unit '{d}'")
-    # Kahn's algorithm: peel zero-in-degree nodes; anything left is in a cycle.
     indeg = {uid: len(u.depends_on) for uid, u in units.items()}
     ready = [uid for uid, n in indeg.items() if n == 0]
     seen = 0
@@ -120,6 +119,8 @@ def run_dag(plan: Plan, provider, executor, root: Path, verifier=None,
         max_retries = pol.max_retries
     if concurrency < 1:
         raise ValueError("concurrency must be >= 1")
+    if pol.verify_required and verifier is None:
+        raise ValueError("policy sets verify_required but no verifier was supplied")
     units = {u.id: u for u in plan.units}
     if len(units) != len(plan.units):
         raise ValueError("duplicate unit ids in plan")
@@ -127,7 +128,7 @@ def run_dag(plan: Plan, provider, executor, root: Path, verifier=None,
 
     routing = reflexive_route(root, plan, provider, routing_situation)
 
-    state: dict[str, str] = {}          # unit id -> "done" | "stalled" | "blocked"
+    state: dict[str, str] = {}
     results: dict[str, dict] = {}
     pending = list(plan.units)
 
@@ -142,10 +143,8 @@ def run_dag(plan: Plan, provider, executor, root: Path, verifier=None,
 
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         while pending:
-            # A wave = every pending unit whose dependencies have all concluded (any terminal state).
             wave = [u for u in pending if all(d in state for d in u.depends_on)]
             if not wave:
-                # Should be unreachable after _validate (no cycles) — guard against a logic slip.
                 raise RuntimeError(f"deadlock: {[u.id for u in pending]} have unmet dependencies")
 
             runnable = []

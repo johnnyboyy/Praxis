@@ -20,7 +20,6 @@ import argparse
 import fcntl
 import json
 import os
-import shlex
 import sys
 import time
 from pathlib import Path
@@ -29,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import adapters  # noqa: E402
 import journal  # noqa: E402
-from run import CommandVerifier, Plan  # noqa: E402
+from run import Plan, verifier_from_test_cmd  # noqa: E402
 from schedule import run_dag  # noqa: E402
 
 
@@ -91,10 +90,7 @@ def run_cascade(root: str | Path, *, executor, provider=None, test_cmd: str | No
     if units is None:
         return {"status": "no-plan"}
     prov = provider if provider is not None else adapters.corpora_provider(root)
-    verifier = None
-    if test_cmd:
-        argv = shlex.split(test_cmd)
-        verifier = CommandVerifier(lambda u, r, c, _argv=argv: _argv)
+    verifier = verifier_from_test_cmd(test_cmd)
     result = run_dag(Plan(units=units), prov, executor, root, verifier=verifier,
                      concurrency=concurrency, max_retries=max_retries, resume=True)
     return {"status": "complete", **result}
@@ -115,10 +111,7 @@ def launch_detached(root: str | Path, tasks: list[dict], *, test_cmd: str | None
         return {"status": "already-running", "since": live.get("started"), "pid": live.get("pid"),
                 "note": "a detached cascade is already in flight for this root; poll plan_status"}
 
-    outcome = plan_mod.plan_tasks(root, _specs_for(root, tasks))
-    if outcome.status == "questions":
-        return {"status": "questions", "questions": outcome.questions, "note": outcome.note}
-    units = outcome.units
+    units = plan_mod.plan_tasks(root, _specs_for(root, tasks))
 
     argv = [sys.executable, str(Path(__file__).resolve()), "run", "--root", str(root)]
     if test_cmd:
@@ -194,14 +187,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
-        return 0  # another worker owns the lock — do not double-run
+        return 0
 
     _pidfile(root).write_text(json.dumps({"pid": os.getpid(), "started": time.time()}))
     executor, provider = _build_executor(root, model=a.model, allow_edits=a.allow_edits)
     try:
         run_cascade(root, executor=executor, provider=provider, test_cmd=a.test_cmd,
                     concurrency=a.concurrency, max_retries=a.max_retries)
-    except Exception as e:  # a worker crash must be visible on the journal, not silent
+    except Exception as e:
         journal.append(root, "conductor.plan", status="error", note=f"detached cascade failed: {e}")
     finally:
         try:

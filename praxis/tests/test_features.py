@@ -13,7 +13,6 @@ def _sit(**over):
     return Situation(**kw)
 
 
-# A stub domain manifest in corpora's `manifest` output shape.
 MANIFEST = [
     {"name": "prose-craft", "subject": "process", "universal": True, "applies_when": []},
     {"name": "coding-general", "subject": "coding", "universal": False, "applies_when": []},
@@ -31,13 +30,9 @@ class SelectByFeaturesTest(unittest.TestCase):
         self.assertIn("prose-craft", got)
 
     def test_subject_gates_non_universal(self):
-        # subject=coding, python/none shape ⇒ universal + coding domains whose predicates hold.
         got = pv.select_by_features(
             MANIFEST, _sit(subject="coding", project_shape={"language": "python", "framework": "none"}))
         self.assertEqual(got, ["coding-general", "prose-craft"])
-        self.assertNotIn("design-visual", got)     # wrong subject
-        self.assertNotIn("coding-nextjs", got)      # framework predicate fails
-        self.assertNotIn("coding-ts", got)          # language predicate fails
 
     def test_shape_predicate_admits_matching_domains(self):
         got = pv.select_by_features(
@@ -49,7 +44,6 @@ class SelectByFeaturesTest(unittest.TestCase):
         self.assertEqual(set(got), {"prose-craft", "design-visual"})
 
     def test_fit_none_is_universals_only(self):
-        # unclassified ⇒ never a forced feature match, even though subject/shape would qualify.
         got = pv.select_by_features(
             MANIFEST, _sit(subject="coding", fit="none",
                            project_shape={"language": "python", "framework": "none"}))
@@ -58,7 +52,6 @@ class SelectByFeaturesTest(unittest.TestCase):
 
 class FeatureProviderTest(unittest.TestCase):
     def test_compose_uses_features_not_unit_of_work(self):
-        # No select_fn at all — feature mode must not touch the unit-of-work path.
         prov = pv.CorporaProvider(manifest_fn=lambda root: MANIFEST)
         r = prov.compose(_sit(subject="coding", label="implement-feature",
                               project_shape={"language": "python", "framework": "none"}))
@@ -75,10 +68,9 @@ class FeatureProviderTest(unittest.TestCase):
 
     def test_requires_a_selection_mode(self):
         with self.assertRaises(ValueError):
-            pv.CorporaProvider()   # neither select_fn nor manifest_fn
+            pv.CorporaProvider()
 
 
-# ── The real decoupling: feature selection over the actual corpora manifest ──────────────────────
 def _corpora_manifest_fn():
     """Build a manifest_fn over the real corpora engine, or None if unavailable."""
     repo = Path(__file__).resolve().parents[2]
@@ -110,14 +102,11 @@ class RealFeatureSelectionTest(unittest.TestCase):
 
     def test_feature_select_over_real_corpora(self):
         prov = pv.CorporaProvider(manifest_fn=self.manifest_fn)
-        # subject=coding against the self-host shape (python / no framework): universal prose-craft
-        # plus the framework-agnostic coding domains; NO design domains, NO framework-gated ones.
         r = prov.compose(_sit(subject="coding", root=self.repo,
                               project_shape={"language": "python", "framework": "none"}))
         self.assertIn("prose-craft", r["domains"])
         self.assertIn("coding-general", r["domains"])
-        self.assertNotIn("coding-nextjs", r["domains"])   # framework predicate fails on this shape
-        # no unit-of-work string was involved: selection is purely feature-driven.
+        self.assertNotIn("coding-nextjs", r["domains"])
 
 
 if __name__ == "__main__":

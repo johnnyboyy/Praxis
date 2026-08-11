@@ -111,7 +111,6 @@ class RunPlanTest(unittest.TestCase):
 
     def test_plan_runs_in_order_and_summarizes(self):
         def handler(unit, composed):
-            # u2 stalls, the others deliver.
             return R.Receipt(outcome="stall", status="blocked") if unit.id == "u2" \
                 else R.Receipt(outcome="result")
 
@@ -156,7 +155,6 @@ class SubprocessExecutorTest(unittest.TestCase):
         self.assertEqual(r.outcome, "stall")
 
 
-# ── Live run over the real corpora provider ──────────────────────────────────────────────────────
 def _corpora_binding():
     repo = Path(__file__).resolve().parents[2]
     manifest_path = repo / "corpora" / "praxis-plugin" / "engine" / "plugins" / "corpora.json"
@@ -205,7 +203,6 @@ class LiveConductorRunTest(unittest.TestCase):
         ])
         out = R.run(plan, provider, R.InlineExecutor(_result), self.root)
         self.assertEqual([r["outcome"] for r in out["results"]], ["result", "result"])
-        # Unit a composed real corpora domains; unit b's forced match routed to unclassified + a gap.
         framed_a = next(e for e in journal.read(self.root)
                         if e["event"] == "unit.framed" and e["unit"] == "a")
         self.assertIn("prose-craft", framed_a["domains"])

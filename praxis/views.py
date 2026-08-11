@@ -70,7 +70,7 @@ def ledger(root: Path) -> list[dict]:
     fold = journal.fold(root)
     by_unit = _unit_events(root)
     rows = []
-    for uid, u in fold["units"].items():   # dict preserves first-seen insertion order
+    for uid, u in fold["units"].items():
         events = by_unit.get(uid, [])
         rows.append({
             "unit": uid,

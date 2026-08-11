@@ -25,9 +25,9 @@ class Policy:
     """Editable conductor guardrails. Defaults match the loop's historical hardcoded values, so
     adopting the policy file changes nothing until the operator edits it."""
 
-    concurrency: int = 4          # parallel-then-verify cap in run_dag
-    max_retries: int = 2          # defect loop-backs before a unit is surfaced as a blocked stall
-    verify_required: bool = False # an operator guard: a plan should carry a verifier (advisory)
+    concurrency: int = 4
+    max_retries: int = 2
+    verify_required: bool = False
 
     @classmethod
     def from_dict(cls, d: dict) -> "Policy":

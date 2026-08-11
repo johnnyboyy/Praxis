@@ -26,7 +26,6 @@ class SituationSchemaTest(unittest.TestCase):
                 self._base(**bad)
 
     def test_open_fields_are_not_validated(self):
-        # suggested_kind / label are free-text candidates — anything goes, they grow by discovery.
         s = self._base(suggested_kind="provision-infra", label="whatever-noun")
         self.assertEqual(s.label, "whatever-noun")
 
@@ -39,7 +38,7 @@ class SituationSchemaTest(unittest.TestCase):
         self.assertEqual(loose.routed_kind, "change")
         none = self._base(fit="none")
         self.assertFalse(none.classified)
-        self.assertEqual(none.routed_kind, sit.UNCLASSIFIED)  # derived, not chosen
+        self.assertEqual(none.routed_kind, sit.UNCLASSIFIED)
 
     def test_has_gap(self):
         self.assertFalse(self._base(fit="clean").has_gap)
@@ -83,8 +82,8 @@ class SurfaceGapTest(unittest.TestCase):
         self.assertEqual(len(gaps), 1)
         g = gaps[0]
         self.assertEqual(g["vocabulary"], "task_kind")
-        self.assertEqual(g["chosen"], "change")      # the seed verb work ran under
-        self.assertEqual(g["suggested"], "refactor")  # the free candidate
+        self.assertEqual(g["chosen"], "change")
+        self.assertEqual(g["suggested"], "refactor")
         self.assertEqual(g["fit"], "loose")
         self.assertEqual(g["situation"]["intent"], "tidy the module")
 
@@ -94,7 +93,6 @@ class SurfaceGapTest(unittest.TestCase):
         self.assertEqual(journal.gaps(self.root)[0]["fit"], "none")
 
     def test_recurrence_tallies_in_gap_candidates(self):
-        # The mint signal: the same suggestion accumulating across gaps.
         for _ in range(3):
             sit.surface_task_kind_gap(self.root, self._sit(fit="none", suggested_kind="provision-infra"))
         sit.surface_task_kind_gap(self.root, self._sit(fit="loose", suggested_kind="refactor"))
@@ -105,7 +103,6 @@ class SurfaceGapTest(unittest.TestCase):
         self.assertIn("change", top["chosen_as"])
 
     def test_generic_vocabulary_gap(self):
-        # surface_gap is not task_kind-only: any closed vocabulary can surface.
         ev = sit.surface_gap(self.root, vocabulary="subject", chosen="process",
                              suggested="devops", fit="none", intent="stand up infra")
         self.assertIsNotNone(ev)

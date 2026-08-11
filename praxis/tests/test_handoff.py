@@ -7,8 +7,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-# the cannibalized scripts dir first so `gate` is importable, then conductor's dir at index 0 so its
-# `handoff` (not any same-named module) wins.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -56,7 +54,7 @@ class NextReadyTest(unittest.TestCase):
         with TempRoot() as root:
             units = _units()
             nxt = handoff_mod.next_ready(root, units)
-            self.assertEqual(nxt.id, "s")             # api waits on s
+            self.assertEqual(nxt.id, "s")
 
     def test_dependent_ready_once_dep_done(self):
         with TempRoot() as root:
@@ -85,14 +83,13 @@ class StatusTest(unittest.TestCase):
 
 class PullTest(unittest.TestCase):
     def test_pull_delivers_handoff_and_records_read_so_gate_opens(self):
-        import gate  # praxis-side edit gate, journal-first
+        import gate
         with TempRoot() as root:
             units = _units()
             out = handoff_mod.pull(root, units, NullProvider())
             self.assertEqual(out["status"], "ready")
             self.assertEqual(out["unit"], "s")
             self.assertIn("schema", out["brief"])
-            # the unit is now the open unit, and payload_read was recorded → the gate allows an edit
             self.assertEqual(journal.open_unit(root)["unit"], "s")
             verdict, _ = gate.gate_decision(root, str(root / "schema.py"))
             self.assertEqual(verdict, "allow")
@@ -101,7 +98,6 @@ class PullTest(unittest.TestCase):
         import gate
         with TempRoot() as root:
             units = _units()
-            # frame a spawn-delivery unit WITHOUT a pull/read → gate must deny the edit
             journal.append(root, "unit.proposed", unit="s", unit_of_work="s")
             journal.append(root, "unit.framed", unit="s", unit_of_work="s", delivery="spawn")
             verdict, reason = gate.gate_decision(root, str(root / "schema.py"))

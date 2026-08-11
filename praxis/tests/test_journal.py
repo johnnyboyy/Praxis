@@ -29,7 +29,6 @@ class JournalTest(unittest.TestCase):
 
     def test_seq_survives_reopen(self):
         journal.append(self.root, "unit.proposed", "u1")
-        # simulate a fresh process: seq is derived from the file, not memory
         seq = journal._next_seq(journal.journal_path(self.root))
         self.assertEqual(seq, 1)
 
@@ -49,7 +48,6 @@ class JournalTest(unittest.TestCase):
         journal.append(self.root, "unit.framed", "u1", label="implement-feature")
         self.assertEqual(journal.open_unit(self.root)["unit"], "u1")
         journal.append(self.root, "unit.receipt", "u1", outcome="result", status="complete")
-        # still in flight (verifying) until verified/done
         self.assertEqual(journal.open_unit(self.root)["unit"], "u1")
         journal.append(self.root, "unit.done", "u1")
         self.assertIsNone(journal.open_unit(self.root))
@@ -76,11 +74,10 @@ class JournalTest(unittest.TestCase):
         journal.append(self.root, "unit.framed", "u1", label="x")
         journal.append(self.root, "unit.future_thing", "u1", detail="from a later phase")
         u = journal.fold(self.root)["units"]["u1"]
-        self.assertEqual(u["state"], "framed")  # unknown event didn't advance or crash
+        self.assertEqual(u["state"], "framed")
         self.assertEqual(u["last"]["detail"], "from a later phase")
 
     def test_gaps_are_queryable_and_conductor_scoped(self):
-        # a gap need not carry a unit — it is conductor-level vocabulary feedback
         journal.append(self.root, "conductor.gap", vocabulary="task_kind",
                        intent="provision a k8s namespace with quotas", fit="none",
                        note="no verb fits infra provisioning")
@@ -89,18 +86,16 @@ class JournalTest(unittest.TestCase):
         self.assertEqual(len(g), 1)
         self.assertEqual(g[0]["vocabulary"], "task_kind")
         self.assertEqual(g[0]["fit"], "none")
-        # a unit-less gap does not pollute the unit fold
         self.assertNotIn(None, journal.fold(self.root)["units"])
 
     def test_gap_candidates_tally_recurrence_is_the_mint_signal(self):
-        # the same suggestion recurring under a catch-all verb is the promotion signal
         for intent in ["spin up a staging namespace", "provision a prod db", "add cluster quotas"]:
             journal.append(self.root, "conductor.gap", vocabulary="task_kind",
                            chosen="change", suggested="provision-infra", fit="loose", intent=intent)
         journal.append(self.root, "conductor.gap", vocabulary="task_kind",
                        chosen="create", suggested="write-runbook", fit="loose", intent="docs")
         cands = journal.gap_candidates(self.root)
-        self.assertEqual(cands[0]["suggested"], "provision-infra")  # highest count first
+        self.assertEqual(cands[0]["suggested"], "provision-infra")
         self.assertEqual(cands[0]["count"], 3)
         self.assertIn("change", cands[0]["chosen_as"])
         self.assertEqual(len(cands[0]["examples"]), 3)

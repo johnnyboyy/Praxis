@@ -34,7 +34,6 @@ SUBJECTS = ("coding", "design", "process", "prose")
 PHASES = ("divergent", "convergent", "none")
 FITS = ("clean", "loose", "none")
 
-# The vocabularies a gap can be surfaced against, each carrying `unclassified` as its fallout.
 VOCABULARIES = ("task_kind", "subject", "phase", "workflow", "unit")
 
 UNCLASSIFIED = "unclassified"
@@ -47,17 +46,17 @@ class Situation:
     detector and are always collected, never guessed — a caller that has not asked the model leaves
     `suggested_kind=None` and `fit="clean"` (no divergence claimed, no gap)."""
 
-    task_kind: str                       # create | change | explore — the seed verb work runs under
-    intent: str                          # free-text: what the work is trying to do
-    subject: str                         # coding | design | process | prose
-    suggested_kind: str | None = None    # free-text: what the model would freely call this — THE candidate
-    fit: str = "clean"                   # clean | loose | none — how well task_kind fits the suggestion
-    phase: str = "none"                  # divergent | convergent | none
+    task_kind: str
+    intent: str
+    subject: str
+    suggested_kind: str | None = None
+    fit: str = "clean"
+    phase: str = "none"
     project_shape: dict = field(default_factory=dict)
     root: str | None = None
     targets: list = field(default_factory=list)
-    workflow: str | None = None          # workflow id, or None
-    label: str | None = None             # a conductor's own noun; the bridge a provider keys on
+    workflow: str | None = None
+    label: str | None = None
 
     def __post_init__(self):
         self._check("task_kind", self.task_kind, TASK_KINDS)

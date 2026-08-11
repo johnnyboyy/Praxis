@@ -34,7 +34,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import accretion  # noqa: E402
-import conduct as conduct_engine  # noqa: E402  (aliased: the `conduct` MCP tool below shadows the bare name)
+import conduct as conduct_engine  # noqa: E402
 import journal  # noqa: E402
 import views  # noqa: E402
 from mcp.server.fastmcp import FastMCP  # noqa: E402
@@ -44,6 +44,19 @@ mcp = FastMCP("praxis")
 
 def _root(search_base: str | None) -> Path:
     return Path(search_base).resolve() if search_base else Path.cwd()
+
+
+def _parse_tasklist(tasks: str) -> tuple[list | None, str | None]:
+    """Parse the `tasks` JSON argument into a non-empty list of task objects. Returns (list, None) on
+    success or (None, error_json) when the string is not JSON or not a non-empty array — the shared
+    intake for the `plan` and `register_plan` tools."""
+    try:
+        parsed = json.loads(tasks)
+    except json.JSONDecodeError as e:
+        return None, json.dumps({"error": f"tasks must be a JSON array of task objects: {e}"}, indent=2)
+    if not isinstance(parsed, list) or not parsed:
+        return None, json.dumps({"error": "tasks must be a non-empty JSON array"}, indent=2)
+    return parsed, None
 
 
 @mcp.tool()
@@ -102,12 +115,9 @@ def plan(tasks: str, test_cmd: str | None = None, model: str | None = None,
     units complete. The worker survives an MCP-server restart, and re-calling resumes an interrupted
     run (it does not re-spawn finished units). Fill `suggested_kind`/`fit` honestly per task — a
     loose/none fit surfaces a vocabulary gap."""
-    try:
-        parsed = json.loads(tasks)
-    except json.JSONDecodeError as e:
-        return json.dumps({"error": f"tasks must be a JSON array of task objects: {e}"}, indent=2)
-    if not isinstance(parsed, list) or not parsed:
-        return json.dumps({"error": "tasks must be a non-empty JSON array"}, indent=2)
+    parsed, err = _parse_tasklist(tasks)
+    if err:
+        return err
     if dry_run:
         out = conduct_engine.run_tasklist(_root(search_base), parsed, dry_run=True)
     else:
@@ -136,12 +146,9 @@ def register_plan(tasks: str, search_base: str | None = None) -> str:
 
     Use `plan` (not this) when you want the conductor to hand each unit to a fresh isolated child;
     use `register_plan` + `next_handoff` when you want to implement inline with the design in hand."""
-    try:
-        parsed = json.loads(tasks)
-    except json.JSONDecodeError as e:
-        return json.dumps({"error": f"tasks must be a JSON array of task objects: {e}"}, indent=2)
-    if not isinstance(parsed, list) or not parsed:
-        return json.dumps({"error": "tasks must be a non-empty JSON array"}, indent=2)
+    parsed, err = _parse_tasklist(tasks)
+    if err:
+        return err
     return json.dumps(conduct_engine.register_plan(_root(search_base), parsed), indent=2)
 
 

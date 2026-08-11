@@ -40,7 +40,7 @@ class PolicyLoadTest(unittest.TestCase):
         self._write({"concurrency": 8})
         pol = P.load_policy(self.root)
         self.assertEqual(pol.concurrency, 8)
-        self.assertEqual(pol.max_retries, 2)   # untouched default
+        self.assertEqual(pol.max_retries, 2)
 
     def test_full_policy(self):
         self._write({"concurrency": 1, "max_retries": 0, "verify_required": True})
@@ -69,7 +69,6 @@ class PolicyDrivesLoopTest(unittest.TestCase):
         P.policy_path(self.root).write_text(json.dumps(obj))
 
     def test_max_retries_comes_from_policy(self):
-        # policy max_retries=0 ⇒ a never-verifying unit gets a single attempt then stalls.
         self._policy({"max_retries": 0})
         verifier = R.CallableVerifier(lambda u, r, c: R.Verdict(verified=False, defects=["x"]))
         res = R.run(R.Plan([R.Unit("u1", _sit())]), pv.NullProvider(),
@@ -83,7 +82,7 @@ class PolicyDrivesLoopTest(unittest.TestCase):
         res = R.run(R.Plan([R.Unit("u1", _sit())]), pv.NullProvider(),
                     R.InlineExecutor(lambda u, c: R.Receipt(outcome="result")), self.root,
                     verifier=verifier, max_retries=2)
-        self.assertEqual(res["results"][0]["attempts"], 3)   # 1 + 2 retries, policy ignored
+        self.assertEqual(res["results"][0]["attempts"], 3)
 
     def test_concurrency_cap_comes_from_policy(self):
         self._policy({"concurrency": 1})
@@ -102,7 +101,24 @@ class PolicyDrivesLoopTest(unittest.TestCase):
 
         plan = R.Plan([R.Unit(f"u{i}", _sit(label="x")) for i in range(4)])
         S.run_dag(plan, pv.NullProvider(), R.InlineExecutor(handler), self.root)
-        self.assertEqual(peak[0], 1)   # policy pinned concurrency to 1
+        self.assertEqual(peak[0], 1)
+
+    def test_verify_required_rejects_a_run_without_a_verifier(self):
+        self._policy({"verify_required": True})
+        plan = R.Plan([R.Unit("u1", _sit())])
+        work = R.InlineExecutor(lambda u, c: R.Receipt(outcome="result"))
+        with self.assertRaises(ValueError):
+            R.run(plan, pv.NullProvider(), work, self.root)
+        with self.assertRaises(ValueError):
+            S.run_dag(plan, pv.NullProvider(), work, self.root)
+
+    def test_verify_required_allows_a_run_with_a_verifier(self):
+        self._policy({"verify_required": True})
+        plan = R.Plan([R.Unit("u1", _sit())])
+        work = R.InlineExecutor(lambda u, c: R.Receipt(outcome="result"))
+        verifier = R.CallableVerifier(lambda u, r, c: R.Verdict(verified=True))
+        out = R.run(plan, pv.NullProvider(), work, self.root, verifier=verifier)
+        self.assertEqual(out["results"][0]["outcome"], "result")
 
 
 if __name__ == "__main__":

@@ -45,7 +45,7 @@ class CorporaProviderComposeTest(unittest.TestCase):
         r = prov.compose(_sit(fit="clean", label="scaffold-tests", root="/r"))
         self.assertEqual(seen["uow"], "scaffold-tests")
         self.assertEqual(r["domains"], ["testing"])
-        self.assertEqual(r["artifacts"], [])  # no parts_fn ⇒ names only
+        self.assertEqual(r["artifacts"], [])
 
     def test_falls_back_to_task_kind_when_unlabeled(self):
         seen = {}
@@ -58,7 +58,6 @@ class CorporaProviderComposeTest(unittest.TestCase):
         self.assertEqual(seen["uow"], "change")
 
     def test_fit_none_routes_to_unclassified(self):
-        # A forced match must NOT compose the junk drawer — it routes to unclassified.
         seen = {}
 
         def select(root, uow):
@@ -66,7 +65,7 @@ class CorporaProviderComposeTest(unittest.TestCase):
             return {"domains": ["prose-craft"], "warnings": ["unit-of-work 'unclassified' matches no domain"]}
 
         r = pv.CorporaProvider(select).compose(_sit(fit="none", label="implement-feature"))
-        self.assertEqual(seen["uow"], "unclassified")  # label ignored under fit==none
+        self.assertEqual(seen["uow"], "unclassified")
         self.assertEqual(r["routed_kind"], "unclassified")
         self.assertIn("matches no domain", r["note"])
 
@@ -113,7 +112,7 @@ class ConsultTest(unittest.TestCase):
         r = pv.consult(self.prov, _sit(fit="loose", suggested_kind="refactor"), root=self.root)
         self.assertTrue(r["gap_surfaced"])
         self.assertEqual(len(journal.gaps(self.root)), 1)
-        self.assertEqual(r["domains"], ["prose-craft"])  # still composed under chosen
+        self.assertEqual(r["domains"], ["prose-craft"])
 
     def test_none_fit_surfaces_and_routes_unclassified(self):
         r = pv.consult(self.prov, _sit(fit="none", suggested_kind="migrate"), root=self.root)
@@ -126,9 +125,6 @@ class ConsultTest(unittest.TestCase):
         self.assertEqual(r["routed_kind"], "unclassified")
 
 
-# ── The real wrap: CorporaProvider over the actual corpora engine ────────────────────────────────
-# Proves the seam is not just a stub — it composes against corpora's real read capabilities. Skipped
-# cleanly when the engine manifest / corpora CLI is not loadable, so the suite stays portable.
 def _corpora_binding():
     """Build (select_fn, parts_fn, capabilities) over the real corpora engine, or None if
     unavailable. Imports praxis's engine binding — a cross-layer reach the TEST is allowed (the
@@ -168,11 +164,10 @@ class RealCorporaWrapTest(unittest.TestCase):
         if binding is None:
             self.skipTest("corpora engine manifest not loadable")
         self.select, self.parts, self.caps = binding
-        self.repo = str(Path(__file__).resolve().parents[2])  # self-hosting root (domains-dir: corpora/domains)
+        self.repo = str(Path(__file__).resolve().parents[2])
 
     def test_wraps_real_corpora_compose(self):
         prov = pv.CorporaProvider(self.select, self.parts, capabilities=self.caps)
-        # A clean, known unit: corpora composes at least its universal domains, with real bodies.
         s = _sit(task_kind="explore", fit="clean", label="scan-architecture",
                  subject="coding", root=self.repo)
         r = prov.compose(s)

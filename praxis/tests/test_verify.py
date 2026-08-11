@@ -87,7 +87,6 @@ class VerificationGateTest(unittest.TestCase):
                          R.InlineExecutor(handler), _VerifyAfter(pass_on=2))
         self.assertTrue(res["verified"])
         self.assertEqual(res["attempts"], 2)
-        # First attempt saw no feedback; the retry saw the first attempt's defect.
         self.assertEqual(seen_feedback, [None, ["defect #1"]])
         self.assertEqual(self._events("u1"),
                          ["unit.proposed", "unit.framed",
@@ -103,13 +102,12 @@ class VerificationGateTest(unittest.TestCase):
                          R.InlineExecutor(_result), _VerifyAfter(pass_on=99), max_retries=1)
         self.assertEqual(res["outcome"], "stall")
         self.assertFalse(res["verified"])
-        self.assertEqual(res["attempts"], 2)               # initial + 1 retry
-        self.assertEqual(res["defects"], ["defect #2"])    # the last attempt's defect
+        self.assertEqual(res["attempts"], 2)
+        self.assertEqual(res["defects"], ["defect #2"])
         self.assertEqual(journal.state_of(self.root, "u1"), "stalled")
         u = journal.fold(self.root)["units"]["u1"]
         self.assertEqual(u["status"], "blocked")
         self.assertEqual(u["surfaced"], ["defect #2"])
-        # Two defect notes recorded (one per failed attempt).
         notes = [e for e in journal.read(self.root)
                  if e["event"] == "unit.note" and e.get("kind") == "defect"]
         self.assertEqual(len(notes), 2)
@@ -121,8 +119,6 @@ class VerificationGateTest(unittest.TestCase):
         self.assertEqual(res["attempts"], 1)
 
     def test_receipt_stall_is_surfaced_not_retried(self):
-        # A stall is the unit blocking on questions/tradeoffs, not a defect — the verifier is never
-        # consulted and there is no loop-back.
         verifier = _VerifyAfter(pass_on=1)
         stall = lambda u, c: R.Receipt(outcome="stall", status="questions-pending",
                                        surfaced=["which db?"])
@@ -177,7 +173,6 @@ class RunWithVerifierTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_plan_run_gates_every_unit(self):
-        # u2's work never verifies ⇒ it stalls; the others pass on the first try.
         def verify(unit, receipt, composed):
             return R.Verdict(verified=unit.id != "u2",
                              defects=[] if unit.id != "u2" else ["still broken"])

@@ -70,7 +70,6 @@ class RootTreeTests(unittest.TestCase):
                          (self.tmp / "app").resolve())
 
     def test_multiple_markers_are_recognized_generically(self):
-        # The marker set is data: praxis's own plus any extra a project supplies (e.g. an engine's).
         markers = ["praxis/config.md", "engine/config.md"]
         mkroot(self.tmp, "a", marker="praxis/config.md")
         mkroot(self.tmp, "b", marker="engine/config.md")
@@ -83,10 +82,6 @@ class RootTreeTests(unittest.TestCase):
         mkroot(self.tmp, "app/node_modules/somepkg")
         roots = rt.find_roots(self.tmp, rt.DEFAULT_MARKERS)
         self.assertEqual([r.name for r in roots], ["app"])
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class PraxisDirTests(unittest.TestCase):
@@ -165,3 +160,7 @@ class GoverningRootAboveTests(unittest.TestCase):
         self._mk("outer/inner/.praxis/config.md")
         self.assertEqual(rt.governing_root_above(self.tmp / "outer" / "inner" / "src" / "x.ts"),
                          self.tmp / "outer" / "inner")
+
+
+if __name__ == "__main__":
+    unittest.main()

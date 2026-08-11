@@ -61,7 +61,6 @@ class InlinePullProcessTest(unittest.TestCase):
             ]
             self.assertEqual(conduct_engine.register_plan(root, tasks)["status"], "registered")
 
-            # nothing framed yet ⇒ the gate refuses an edit
             verdict, _ = gate.gate_decision(root, str(root / "types.py"))
             self.assertIn(verdict, ("no_unit", "deny"))
 
@@ -71,7 +70,6 @@ class InlinePullProcessTest(unittest.TestCase):
                 if h["status"] != "ready":
                     break
                 order.append(h["unit"])
-                # the pull framed THIS unit and recorded the read ⇒ the gate now allows its target
                 v, _ = gate.gate_decision(root, str(root / target[h["unit"]]))
                 self.assertEqual(v, "allow")
                 journal.append(root, "unit.done", unit=h["unit"], outcome="result",
@@ -79,7 +77,6 @@ class InlinePullProcessTest(unittest.TestCase):
 
             self.assertEqual(order, ["types", "solver", "tests"])
             self.assertEqual(conduct_engine.plan_status(root)["status"], "complete")
-            # the fit==none unit surfaced a mintable vocabulary gap along the way
             self.assertTrue(any(g["suggested"] == "scaffold-tests" for g in journal.gaps(root)))
 
 

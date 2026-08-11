@@ -27,10 +27,9 @@ import journal
 import policy as policy_mod
 import providers
 import views
-from run import CommandVerifier, Receipt, Unit, run_unit
+from run import Receipt, Unit, run_unit, verifier_from_test_cmd
 from situation import Situation
 
-# ── project shape (features corpora's applies-when predicates read) ──────────────────────────────
 
 _SHAPE_KEYS = ("language", "framework", "has-ui", "styling", "package-manager")
 
@@ -52,8 +51,6 @@ def project_shape_for(root: str | Path) -> dict:
         return shape
     return {}
 
-
-# ── the claude-p executor (the 'how it runs' seam, pointed at Claude Code headless) ──────────────
 
 class ClaudeExecutor:
     """Runs a unit as an isolated `claude -p` subprocess seeded with the composed judgment as the
@@ -94,9 +91,8 @@ class ClaudeExecutor:
         ho = handoff_mod.assemble(unit.situation.intent, composed, brief=self.brief)
         judgment, brief = ho["judgment"], ho["brief"]
         argv = self._argv(brief, judgment)
-        # redact the (large) judgment from the shown argv
-        shown = [("<judgment %d bytes>" % len(judgment)) if a is judgment else a for a in argv]
-        return {"argv": shown, "brief": brief, "judgment_bytes": len(judgment),
+        redacted_argv = [("<judgment %d bytes>" % len(judgment)) if a is judgment else a for a in argv]
+        return {"argv": redacted_argv, "brief": brief, "judgment_bytes": len(judgment),
                 "allow_edits": self.allow_edits, "model": self.model, "cwd": self.cwd}
 
     def run(self, unit: Unit, composed: dict) -> Receipt:
@@ -121,7 +117,6 @@ class ClaudeExecutor:
         try:
             data = json.loads(stdout)
         except json.JSONDecodeError:
-            # a clean exit with unparseable output: took as a bare result with the raw text
             return Receipt(outcome="result", status="complete",
                            evidence={"result": stdout.strip()[:2000]})
         if data.get("is_error"):
@@ -136,8 +131,6 @@ class ClaudeExecutor:
                        evidence={"result": data.get("result"), "num_turns": data.get("num_turns")},
                        cost=cost)
 
-
-# ── the entry the MCP tool + CLI call ────────────────────────────────────────────────────────────
 
 def run_task(root: str | Path, *, intent: str, brief: str | None = None,
              task_kind: str = "change", subject: str = "coding",
@@ -170,17 +163,12 @@ def run_task(root: str | Path, *, intent: str, brief: str | None = None,
 
     retries = (policy_mod.load_policy(root).max_retries if max_retries is None else max_retries)
     executor = ClaudeExecutor(brief=brief, model=model, cwd=str(root), allow_edits=allow_edits)
-    verifier = None
-    if test_cmd:
-        argv = shlex.split(test_cmd)
-        verifier = CommandVerifier(lambda u, r, c, _argv=argv: _argv)
+    verifier = verifier_from_test_cmd(test_cmd)
     unit = Unit(id=_gen_id(task_kind), situation=situation)
     result = run_unit(root, unit, provider, executor, verifier, retries)
     result["cost"] = views.cost(root)
     return result
 
-
-# ── the tasklist entry (1..N tasks → plan → cascade through run_dag) ────────────────────────
 
 def run_tasklist(root: str | Path, tasks: list[dict], *, test_cmd: str | None = None,
                  model: str | None = None, max_retries: int | None = None,
@@ -202,8 +190,9 @@ def run_tasklist(root: str | Path, tasks: list[dict], *, test_cmd: str | None = 
     if dry_run:
         units = plan_mod.build_units(specs, root)
         preview = []
+        no_gap_recording = None
         for u in units:
-            composed = providers.consult(provider, u.situation, root=None)  # no gap write on preview
+            composed = providers.consult(provider, u.situation, root=no_gap_recording)
             preview.append({"unit": u.id, "depends_on": u.depends_on,
                             "routed_kind": composed.get("routed_kind"),
                             "would_surface_gap": u.situation.has_gap,
@@ -213,10 +202,7 @@ def run_tasklist(root: str | Path, tasks: list[dict], *, test_cmd: str | None = 
                 "next": "re-call with dry_run=false and allow_edits=true to execute"}
 
     executor = ClaudeExecutor(model=model, cwd=str(root), allow_edits=allow_edits)
-    verifier = None
-    if test_cmd:
-        argv = shlex.split(test_cmd)
-        verifier = CommandVerifier(lambda u, r, c, _argv=argv: _argv)
+    verifier = verifier_from_test_cmd(test_cmd)
     return plan_mod.plan_and_run(root, specs, provider, executor, verifier=verifier,
                                  concurrency=concurrency, max_retries=max_retries)
 
@@ -233,8 +219,6 @@ def _specs_for(root: Path, tasks: list[dict]) -> list:
         specs.append(plan_mod.TaskSpec.from_dict(d))
     return specs
 
-
-# ── background cascade — a detached worker so a big plan survives an MCP-server restart ────────────
 
 def run_tasklist_detached(root: str | Path, tasks: list[dict], *, test_cmd: str | None = None,
                           model: str | None = None, max_retries: int | None = None,
@@ -271,18 +255,15 @@ def plan_status(root: str | Path) -> dict:
 
 def register_plan(root: str | Path, tasks: list[dict]) -> dict:
     """Record a tasklist's DAG to the journal WITHOUT running it — the entry the pull workflow needs.
-    Registering is judgment-free (the deterministic PassthroughPlanner): it assigns ids, validates
-    the edges, and writes one `conductor.plan` event carrying the resolved specs, so `next_handoff`
-    can reconstruct the plan and hand units into the caller's OWN context one at a time. No provider
-    consult, no spawn, no cascade — the opposite of `run_tasklist` (which records AND cascades
-    isolated children). Use this when you mean to implement the units inline, pulling each handoff."""
+    Registering is judgment-free deterministic assembly: it assigns ids, validates the edges, and
+    writes one `conductor.plan` event carrying the resolved specs, so `next_handoff` can reconstruct
+    the plan and hand units into the caller's OWN context one at a time. No provider consult, no
+    spawn, no cascade — the opposite of `run_tasklist` (which records AND cascades isolated children).
+    Use this when you mean to implement the units inline, pulling each handoff."""
     import plan as plan_mod
     root = Path(root).resolve()
     specs = _specs_for(root, tasks)
-    outcome = plan_mod.plan_tasks(root, specs)
-    if outcome.status == "questions":
-        return {"status": "questions", "questions": outcome.questions, "note": outcome.note}
-    units = outcome.units
+    units = plan_mod.plan_tasks(root, specs)
     return {"status": "registered",
             "plan": {"units": [u.id for u in units],
                      "edges": [[d, u.id] for u in units for d in u.depends_on]},
@@ -310,8 +291,6 @@ def _stub_unit(situation: Situation) -> Unit:
 def _gen_id(task_kind: str) -> str:
     return f"{task_kind}-{int(time.time())}-{int(time.time() * 1000) % 1000:03d}"
 
-
-# ── CLI (a runnable entrypoint independent of MCP) ───────────────────────────────────────────────
 
 def main(argv: list[str] | None = None) -> int:
     import argparse

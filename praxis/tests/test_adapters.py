@@ -31,7 +31,6 @@ class AdapterConstructionTest(unittest.TestCase):
             adapters.corpora_provider(REPO, mode="sideways")
 
     def test_missing_corpus_degrades_to_empty(self):
-        # A broken binding must degrade (empty domains), not raise — same as a null engine.
         prov = adapters.corpora_provider(REPO, corpus_py="/no/such/corpus.py", mode="features")
         r = prov.compose(_sit(subject="coding", root=str(REPO)))
         self.assertEqual(r["domains"], [])
@@ -45,16 +44,16 @@ class DirectBindingComposeTest(unittest.TestCase):
         prov = adapters.corpora_provider(REPO, mode="features")
         r = prov.compose(_sit(task_kind="explore", subject="coding", root=str(REPO),
                               project_shape={"language": "python", "framework": "none"}))
-        self.assertIn("prose-craft", r["domains"])       # universal
-        self.assertIn("coding-general", r["domains"])    # subject match, no shape gate
-        self.assertNotIn("coding-nextjs", r["domains"])  # framework predicate fails on this shape
-        self.assertTrue(r["artifacts"])                  # emit-spawn-parts wired ⇒ real bodies
+        self.assertIn("prose-craft", r["domains"])
+        self.assertIn("coding-general", r["domains"])
+        self.assertNotIn("coding-nextjs", r["domains"])
+        self.assertTrue(r["artifacts"])
         self.assertTrue(all(a["provenance"] == "corpora" for a in r["artifacts"]))
 
     def test_units_mode_composes_by_label(self):
         prov = adapters.corpora_provider(REPO, mode="units")
         r = prov.compose(_sit(subject="coding", label="scan-architecture", root=str(REPO)))
-        self.assertIn("prose-craft", r["domains"])       # universal always present
+        self.assertIn("prose-craft", r["domains"])
 
 
 if __name__ == "__main__":

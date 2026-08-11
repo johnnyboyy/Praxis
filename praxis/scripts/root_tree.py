@@ -5,7 +5,9 @@ Part of praxis-core, the process/orchestration layer. Two disciplines keep praxi
 judgment engine it drives:
 
   1. Praxis never imports or invokes an engine. This script reads the filesystem and reports facts.
-  2. A root is a directory carrying praxis's own config marker (`praxis/config.md`). The marker set is
+  2. A root is a directory carrying praxis's own config marker. `.praxis/config.md` is the standard
+     (so a repo that SHIPS a praxis/ source tree can self-host without its source dir doubling as the
+     marker); bare `praxis/config.md` stays recognized for existing roots. The marker set is
      configurable (`--marker`), so a project can add an engine's own config marker without any code
      change here.
 
@@ -29,11 +31,6 @@ import re
 import sys
 from pathlib import Path
 
-# Praxis's own config marker defines a root. `.praxis/` is the standard (dot-prefixed like other
-# tooling state dirs, and it lets a repo that SHIPS a praxis/ source tree self-host without the
-# source dir doubling as its marker); bare `praxis/` is recognized for existing roots. Additional
-# markers (e.g. an engine's own config file) can be supplied per-invocation via --marker; nothing
-# here names any particular engine.
 DEFAULT_MARKERS = [".praxis/config.md", "praxis/config.md"]
 
 
@@ -55,9 +52,6 @@ def praxis_dir(root: Path) -> Path:
             return root / name
     return root / ".praxis"
 
-# Directories that never contain a meaningful root — skip for speed and to avoid vendored copies.
-# `.claude` holds installed skills (often symlinked in), which carry their OWN praxis/config.md; that
-# is the tooling, not a concern-boundary of the project, so it must not surface as a root.
 SKIP_DIRS = {
     "node_modules", ".git", ".next", ".turbo", ".expo", "dist", "build", "out",
     "coverage", ".venv", "venv", "__pycache__", "vendor", ".cache", ".parcel-cache",
@@ -68,11 +62,15 @@ NAME_RE = re.compile(r"^\s*name:\s*(.+?)\s*$", re.MULTILINE)
 
 
 def find_roots(base: Path, markers: list[str]) -> list[Path]:
-    """Every directory under `base` (inclusive) that contains any marker file. Sorted by path."""
+    """Every directory under `base` (inclusive) that contains any marker file. Sorted by path.
+
+    `SKIP_DIRS` are pruned from the walk. `.claude` is among them deliberately: it holds installed
+    skills (often symlinked in) carrying their OWN praxis/config.md, which is tooling rather than a
+    concern-boundary of the project and must not surface as a root."""
     roots: set[Path] = set()
     base = base.resolve()
     for dirpath, dirnames, _ in os.walk(base):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]  # prune in place
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         here = Path(dirpath)
         for marker in markers:
             if (here / marker).is_file():
@@ -96,7 +94,7 @@ def root_name(root: Path, markers: list[str]) -> str:
 def which_marker(root: Path, markers: list[str]) -> str:
     for marker in markers:
         if (root / marker).is_file():
-            return marker.split("/")[0]  # the marker's owning dir, e.g. "praxis"
+            return marker.split("/")[0]
     return "?"
 
 

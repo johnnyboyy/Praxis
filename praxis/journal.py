@@ -24,28 +24,20 @@ from pathlib import Path
 
 JOURNAL_NAME = "journal.jsonl"
 
-# Serializes the read-seq → write critical section of `append`. The conductor's DAG scheduler (P6)
-# runs units on parallel threads that all append to the one log, and seq must stay monotonic without
-# two threads reading the same next value. In-process only, which is all that is needed: the child
-# of a subprocess executor never writes the journal — it returns a receipt the PARENT records.
 _APPEND_LOCK = threading.Lock()
 
-# State-advancing events → the lifecycle state they move a unit into. Everything else (edges,
-# annotations, runtime notes) attaches to the unit without changing its state.
 STATE_EVENTS: dict[str, str] = {
     "unit.proposed": "proposed",
     "unit.framed": "framed",
     "unit.dispatched": "dispatched",
     "unit.running": "running",
-    "unit.receipt": "verifying",   # a receipt is a claim awaiting verification
+    "unit.receipt": "verifying",
     "unit.verified": "verified",
     "unit.done": "done",
     "unit.stalled": "stalled",
     "unit.closed": "closed",
 }
 
-# States in which a unit is still "in flight" — framed but not concluded. The gate asks this: is
-# there an open unit for this root, and what may it edit?
 IN_FLIGHT = {"framed", "dispatched", "running", "verifying", "verified"}
 CONCLUDED = {"done", "closed", "stalled"}
 
@@ -62,7 +54,9 @@ def journal_path(root: Path) -> Path:
 
 
 def append(root: Path, event: str, unit: str | None = None, **payload) -> dict:
-    """Append one event and return the written record (with ts + seq). seq is monotonic per file.
+    """Append one event and return the written record (with ts + seq). seq is monotonic per file,
+    even under concurrent appends from parallel run_dag scheduler threads: `_APPEND_LOCK` serializes
+    the read-seq→write so no two appends read the same seq.
 
     Reserved payload keys (managed by the envelope, do not pass them): `event`, `unit`, `seq`, `ts`
     (may be passed to backdate). The journal is per-root, so a `root` field in payload is redundant.
@@ -73,7 +67,6 @@ def append(root: Path, event: str, unit: str | None = None, **payload) -> dict:
     if unit is not None:
         record["unit"] = unit
     record.update(payload)
-    # Assign seq and write under the lock so concurrent appends stay monotonic and atomic per line.
     with _APPEND_LOCK:
         record["seq"] = _next_seq(path)
         with path.open("a") as fh:
@@ -137,7 +130,6 @@ def fold(root: Path) -> dict:
         u = units[uid]
         u["events"] += 1
         etype = ev.get("event", "")
-        # Merge meaningful payload fields forward (last-write-wins), skipping envelope keys.
         for k, v in ev.items():
             if k in ("ts", "seq", "event", "unit"):
                 continue

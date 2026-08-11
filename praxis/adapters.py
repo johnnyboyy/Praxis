@@ -20,11 +20,8 @@ from pathlib import Path
 
 from providers import CorporaProvider
 
-# corpus.py lives beside the conductor in the repo: <repo>/corpora/scripts/corpus.py.
 DEFAULT_CORPUS_PY = Path(__file__).resolve().parents[1] / "corpora" / "scripts" / "corpus.py"
 
-# The capabilities corpora declares — reported by the provider so the conductor can see what corpora
-# offers without this module hardcoding a judgment about it (parity with the engine manifest).
 CORPORA_CAPABILITIES = ["compose", "spawn-parts", "manifest", "ratify", "retrospect"]
 
 

@@ -73,13 +73,11 @@ class DagOrderTest(unittest.TestCase):
         return R.Receipt(outcome="result")
 
     def test_dependent_runs_after_dependency(self):
-        # a → b → c (chain), plus an independent d.
         plan = R.Plan([_u("c", deps=["b"]), _u("b", deps=["a"]), _u("a"), _u("d")])
         out = S.run_dag(plan, pv.NullProvider(), R.InlineExecutor(self._record), self.root,
                         concurrency=4)
         self.assertLess(self.order.index("a"), self.order.index("b"))
         self.assertLess(self.order.index("b"), self.order.index("c"))
-        # results come back in plan order regardless of run order
         self.assertEqual([r["unit"] for r in out["results"]], ["c", "b", "a", "d"])
         self.assertTrue(all(r["outcome"] == "result" for r in out["results"]))
 
@@ -105,12 +103,10 @@ class BlockedCascadeTest(unittest.TestCase):
     def _handler(self, unit, composed):
         with self.lock:
             self.executed.append(unit.id)
-        # 'a' stalls; everything else would deliver.
         return R.Receipt(outcome="stall", status="blocked") if unit.id == "a" \
             else R.Receipt(outcome="result")
 
     def test_stalled_dependency_blocks_and_cascades(self):
-        # a (stalls) → b → c ; plus independent d that still delivers.
         plan = R.Plan([_u("a"), _u("b", deps=["a"]), _u("c", deps=["b"]), _u("d")])
         out = {r["unit"]: r for r in
                S.run_dag(plan, pv.NullProvider(), R.InlineExecutor(self._handler),
@@ -121,7 +117,6 @@ class BlockedCascadeTest(unittest.TestCase):
         self.assertEqual(out["d"]["outcome"], "result")
         self.assertEqual(out["b"]["blocked_on"], ["a"])
         self.assertEqual(out["c"]["blocked_on"], ["b"])
-        # b and c were never executed — only a and d ran.
         self.assertEqual(sorted(self.executed), ["a", "d"])
         self.assertEqual(journal.state_of(self.root, "b"), "stalled")
 
@@ -136,7 +131,6 @@ class ConcurrencyTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_independent_units_run_in_parallel(self):
-        # A barrier of N only releases if N workers arrive together — proof of real parallelism.
         barrier = threading.Barrier(3, timeout=5)
 
         def handler(unit, composed):
@@ -170,7 +164,6 @@ class ConcurrencyTest(unittest.TestCase):
         plan = R.Plan([_u(f"u{i}") for i in range(20)])
         S.run_dag(plan, pv.NullProvider(), R.InlineExecutor(_ok), self.root, concurrency=8)
         seqs = [e["seq"] for e in journal.read(self.root)]
-        # No lost or duplicated seq under concurrent appends.
         self.assertEqual(seqs, list(range(len(seqs))))
         fold = journal.fold(self.root)
         self.assertEqual(sum(1 for u in fold["units"].values() if u["state"] == "done"), 20)
@@ -186,7 +179,6 @@ class VerificationInDagTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_verification_failure_blocks_dependents(self):
-        # b's work delivers but never verifies ⇒ b stalls ⇒ its dependent c is blocked.
         def verify(unit, receipt, composed):
             return R.Verdict(verified=unit.id != "b", defects=["nope"] if unit.id == "b" else [])
 
@@ -217,8 +209,6 @@ class ReflexiveRoutingTest(unittest.TestCase):
         self.assertEqual(routes[0]["units"], 2)
 
     def test_reflexive_gap_surfaces_on_own_move(self):
-        # The conductor's own routing move is subject to the same gap hook: a poor-fit routing
-        # situation surfaces a conductor-level gap, just as a unit's would.
         routing = Situation(task_kind="change", subject="process",
                             intent="fan out and reconverge a build matrix",
                             suggested_kind="orchestrate-matrix", fit="none")

@@ -19,7 +19,7 @@ composes, returning the artifacts plus whether a gap was recorded.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, Protocol, runtime_checkable
+from typing import Callable, Protocol, TypedDict, runtime_checkable
 
 from situation import Situation, surface_task_kind_gap
 
@@ -57,10 +57,26 @@ class NullProvider:
         return []
 
 
-# Callable shapes CorporaProvider is fed — corpora's read capabilities, as plain functions.
-SelectFn = Callable[[str, str], dict]          # (root, unit_of_work) -> {"domains", "warnings"}
-PartsFn = Callable[[str, list], dict]          # (root, domains)      -> {"parts", "problems"}
-ManifestFn = Callable[[str], list]             # (root)              -> [{name, subject, universal, applies_when}…]
+class Selection(TypedDict):
+    domains: list[str]
+    warnings: list[str]
+
+
+class Parts(TypedDict):
+    parts: list
+    problems: list
+
+
+class DomainSpec(TypedDict):
+    name: str
+    subject: str
+    universal: bool
+    applies_when: list
+
+
+SelectFn = Callable[[str, str], Selection]
+PartsFn = Callable[[str, list], Parts]
+ManifestFn = Callable[[str], list[DomainSpec]]
 
 
 def _norm(v) -> str:
@@ -97,7 +113,7 @@ def select_by_features(manifest: list, situation: Situation) -> list[str]:
             selected.append(d["name"])
             continue
         if not situation.classified:
-            continue  # unclassified ⇒ universals only, never a forced feature match
+            continue
         if d.get("subject") != situation.subject:
             continue
         if not _applies_when_matches(d.get("applies_when", []), situation.project_shape or {}):
@@ -136,7 +152,6 @@ class CorporaProvider:
         self._manifest = manifest_fn
 
     def _compose_key(self, situation: Situation) -> str:
-        # fit == none ⇒ route to unclassified (universals only), never the forced verb's full set.
         if not situation.classified:
             return "unclassified"
         return situation.label or situation.task_kind

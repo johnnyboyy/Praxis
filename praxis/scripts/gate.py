@@ -30,7 +30,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import units  # noqa: E402
 
-# journal is the conductor core one level up (this script lives in <conductor>/scripts/).
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import journal  # noqa: E402
 

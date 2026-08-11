@@ -53,8 +53,8 @@ class HandoffViewTest(unittest.TestCase):
         h = views.handoff(self.root, "u1")
         self.assertEqual(h["outcome"], "stall")
         self.assertFalse(h["verified"])
-        self.assertEqual(h["attempts"], 2)                # initial + 1 retry
-        self.assertEqual(h["defects"], [["boom"], ["boom"]])  # one per failed attempt
+        self.assertEqual(h["attempts"], 2)
+        self.assertEqual(h["defects"], [["boom"], ["boom"]])
         self.assertEqual(h["surfaced"], ["boom"])
 
 
@@ -91,7 +91,6 @@ class CostViewTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_cost_rollup_sums_across_units_and_retries(self):
-        # u1 verifies first try (1 receipt); u2 fails twice (2 receipts) then stalls.
         def verify(unit, receipt, composed):
             return R.Verdict(verified=unit.id == "u1", defects=[] if unit.id == "u1" else ["x"])
 
@@ -102,11 +101,10 @@ class CostViewTest(unittest.TestCase):
         out = R.run(plan, pv.NullProvider(), R.InlineExecutor(work), self.root,
                     verifier=R.CallableVerifier(verify), max_retries=1)
         cost = out["cost"]
-        # u1: 1 receipt; u2: 2 receipts (initial + retry) ⇒ 3 receipts total.
         self.assertEqual(cost["tokens"], 150)
         self.assertEqual(cost["tool_calls"], 6)
         self.assertAlmostEqual(cost["usd"], 0.03)
-        self.assertEqual(cost["per_unit"]["u2"]["tokens"], 100)  # summed over 2 attempts
+        self.assertEqual(cost["per_unit"]["u2"]["tokens"], 100)
 
     def test_cost_is_zero_without_receipts(self):
         self.assertEqual(views.cost(self.root), {"tokens": 0, "usd": 0.0, "tool_calls": 0, "per_unit": {}})
@@ -117,7 +115,6 @@ class SubprocessCostCaptureTest(unittest.TestCase):
         self.unit = R.Unit("u1", _sit())
 
     def test_cost_extractor_fills_missing_cost(self):
-        # Child prints a bare "done" (no receipt JSON); the extractor pulls cost from its output.
         def argv(unit, composed):
             return [sys.executable, "-c", "print('usage tokens=321')"]
 
@@ -136,7 +133,7 @@ class SubprocessCostCaptureTest(unittest.TestCase):
             return [sys.executable, "-c", code]
 
         r = R.SubprocessExecutor(argv, cost_extractor=lambda o, e: {"tokens": 999}).run(self.unit, {})
-        self.assertEqual(r.cost["tokens"], 9)   # the child's own receipt cost is authoritative
+        self.assertEqual(r.cost["tokens"], 9)
 
 
 if __name__ == "__main__":

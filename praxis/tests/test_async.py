@@ -92,10 +92,10 @@ class LivenessGuardTest(unittest.TestCase):
         with TempRoot() as root:
             pf = cascade._pidfile(root)
             pf.write_text(json.dumps({"pid": os.getpid(), "started": 1.0}))
-            self.assertIsNotNone(cascade.is_running(root))     # our own pid is alive
-            pf.write_text(json.dumps({"pid": 2 ** 22, "started": 1.0}))  # almost-certainly-dead pid
+            self.assertIsNotNone(cascade.is_running(root))
+            pf.write_text(json.dumps({"pid": 2 ** 22, "started": 1.0}))
             self.assertIsNone(cascade.is_running(root))
-            self.assertFalse(pf.exists())                       # stale pidfile removed
+            self.assertFalse(pf.exists())
 
     def test_launch_detached_refuses_when_a_worker_is_live(self):
         with TempRoot() as root:
@@ -103,7 +103,6 @@ class LivenessGuardTest(unittest.TestCase):
             out = cascade.launch_detached(root, [{"intent": "a", "id": "a"}])
             self.assertEqual(out["status"], "already-running")
             self.assertEqual(out["pid"], os.getpid())
-            # no plan was recorded and no worker spawned
             self.assertFalse([e for e in journal.read(root) if e["event"] == "conductor.plan"])
 
 

@@ -37,13 +37,12 @@ class VocabularyTest(unittest.TestCase):
         self.assertIsNotNone(ev)
         self.assertTrue(acc.is_known(self.root, "task_kind", "refactor"))
         self.assertIn("refactor", acc.vocabulary(self.root)["task_kind"])
-        # base seeds still present
         self.assertIn("create", acc.vocabulary(self.root)["task_kind"])
 
     def test_mint_is_idempotent(self):
         acc.mint(self.root, "task_kind", "refactor")
-        self.assertIsNone(acc.mint(self.root, "task_kind", "refactor"))     # already known
-        self.assertIsNone(acc.mint(self.root, "task_kind", "  Refactor "))  # normalized dup
+        self.assertIsNone(acc.mint(self.root, "task_kind", "refactor"))
+        self.assertIsNone(acc.mint(self.root, "task_kind", "  Refactor "))
         mints = [e for e in journal.read(self.root) if e["event"] == "conductor.mint"]
         self.assertEqual(len(mints), 1)
 
@@ -80,22 +79,22 @@ class PromotionLoopTest(unittest.TestCase):
     def test_recurrence_drives_promotable(self):
         for _ in range(3):
             self._gap("provision-infra")
-        self._gap("refactor")   # only once
+        self._gap("refactor")
         prom = acc.promotable(self.root, min_count=3)
         self.assertEqual([c["suggested"] for c in prom], ["provision-infra"])
 
     def test_min_count_threshold(self):
         self._gap("provision-infra")
         self._gap("provision-infra")
-        self.assertEqual(acc.promotable(self.root, min_count=3), [])     # only 2 occurrences
-        self.assertTrue(acc.promotable(self.root, min_count=2))          # meets a lower bar
+        self.assertEqual(acc.promotable(self.root, min_count=3), [])
+        self.assertTrue(acc.promotable(self.root, min_count=2))
 
     def test_minting_removes_from_promotable(self):
         for _ in range(3):
             self._gap("provision-infra")
         cand = acc.promotable(self.root, min_count=3)[0]
         acc.mint_candidate(self.root, cand, note="operator: real devops verb")
-        self.assertEqual(acc.promotable(self.root, min_count=3), [])     # now known ⇒ resolved
+        self.assertEqual(acc.promotable(self.root, min_count=3), [])
         self.assertTrue(acc.is_known(self.root, "task_kind", "provision-infra"))
 
     def test_mint_candidate_carries_examples(self):
@@ -114,7 +113,7 @@ class PromotionLoopTest(unittest.TestCase):
         self.assertEqual([c["suggested"] for c in r["promotable"]], ["provision-infra"])
         self.assertEqual(r["minted"]["subject"], ["devops"])
         self.assertIn("devops", r["vocabulary"]["subject"])
-        self.assertIn("coding", r["vocabulary"]["subject"])   # base seed retained
+        self.assertIn("coding", r["vocabulary"]["subject"])
 
 
 if __name__ == "__main__":
