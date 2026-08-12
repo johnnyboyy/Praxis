@@ -1,0 +1,31 @@
+# facet-weights.yaml — read by the injector; not code
+
+task_kind:
+  create:
+    principle_lens: new-behavior      # prefer principles about producing new code/design
+    convention_weight: 1.0
+  change:
+    principle_lens: preservation      # prefer "don't break the anchor" principles
+    convention_weight: 1.0
+  explore:
+    principle_lens: read-only
+    convention_weight: 0.0            # suppress prescriptive conventions entirely
+
+stance:                               # situation.phase
+  convergent:
+    convention_multiplier: 1.5        # pull conventions hard
+    anchor: null
+  divergent:
+    convention_multiplier: 0.0        # suppress convergent-posture conventions
+    suppress_posture: convergent
+    anchor: anti-mean                 # emit the anti-mean anchor Contribution
+  none:
+    convention_multiplier: 1.0
+    anchor: null
+
+workflow:                             # matched against domain frontmatter `workflows`
+  tdd:            { adds_affinity: tdd,          weight: 2.0 }
+  build-verify:   { adds_affinity: build-verify, weight: 2.0 }
+
+label:                                # matched against domain frontmatter `labels`
+  "*":            { pin_weight: 3.0 }  # any label pin strongly boosts its matches

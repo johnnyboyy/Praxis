@@ -10,18 +10,26 @@ the current state, and every other section of `.praxis/config.json` is left unto
 The helper is `praxis/scripts/plugin_registry.py` (pure functions: `discover`, `current`, `apply`).
 Drive it like this:
 
-1. **Resolve roots.** The target praxis root is this repo's root (where `.praxis/config.json` lives;
-   run `:init` first if it is not yet a managed root). The plugins root defaults to
-   `/Users/johnzdanis/jdev/skills/praxis-plugins` — use that unless the user names another.
+1. **Resolve the root.** The target praxis root is this repo's root (where `.praxis/config.json`
+   lives; run `:init` first if it is not yet a managed root). You do NOT pass a plugins root in
+   the common case: discovery defaults to the bundled `praxis/plugins` (derived from the helper's
+   location) and unions it across a layered search path — pass `--plugins-root` only to override
+   the bundled dir.
 
 2. **Read available + current.** Run the helper to get both at once:
 
    ```
-   python3 praxis/scripts/plugin_registry.py --root <ROOT> --plugins-root <PLUGINS_ROOT> --list
+   python3 praxis/scripts/plugin_registry.py --root <ROOT> --list
    ```
 
-   `available` is the discovered plugins (`name`, `spec`, `dir`, `description`); `registered` is the
-   root's current `{name: spec}` map.
+   `available` is the discovered plugins (`name`, `spec`, `dir`, `description`, `layer`); `registered`
+   is the root's current `{name: spec}` map. A plugin is discovered by its module-level
+   `PRAXIS_PLUGIN = True` marker (found statically, not by filename) across four layers, LOW→HIGH
+   precedence — **bundled** (`praxis/plugins`) → **global** (Claude Code plugins dir, default
+   `~/.claude/plugins`) → **project** (`<ROOT>/.praxis/plugins`) → **explicit** (dirs in the root's
+   `plugins_search_paths` config) — with the higher layer winning a name collision. The global layer
+   is why a praxis plugin bundled inside a globally-installed Claude Code plugin shows up in every
+   project without any per-root setup.
 
 3. **Present an opt-in multi-select.** Ask the user with `AskUserQuestion` (`multiSelect: true`), one
    option per available plugin — `label` = the plugin `name`, `description` = its one-liner.
@@ -35,7 +43,7 @@ Drive it like this:
    plugins and drops unchecked ones) by running the helper with the comma-separated names:
 
    ```
-   python3 praxis/scripts/plugin_registry.py --root <ROOT> --plugins-root <PLUGINS_ROOT> --set <name1,name2,...>
+   python3 praxis/scripts/plugin_registry.py --root <ROOT> --set <name1,name2,...>
    ```
 
    (Pass `--set ""` to clear all.) The helper writes `contributors` to exactly the selected set and

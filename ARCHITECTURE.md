@@ -5,8 +5,9 @@ one job, and its entry-point file — the kind of overview that drifts slowly. F
 read the code; for the *why*, read `docs/design.md`; for the plugin contract, `docs/plugins.md`.
 
 Praxis in one line: **a deterministic phase-graph engine that owns process invariants in
-code, and composes all domain judgment from fail-soft, per-root code Contributors.** The core
-ships no judgment.
+code, and composes all domain judgment from fail-soft, per-root code Contributors.** Nothing
+composes until a plugin is registered; praxis bundles a default set under `plugins/` and a root
+turns on the ones it wants.
 
 ## The model (concepts)
 
@@ -38,12 +39,31 @@ ships no judgment.
 | `accretion.py` | Gap-surfacing: recurring `phase.gap` / `conductor.gap` → operator-minted vocabulary (names, not runnable phases). |
 | `mcp_server.py` | The MCP tool surface (see entry points). |
 
+## Plugins & how one is discovered
+
+Plugins live under `plugins/<name>/` (bundled with praxis; see `plugins/ARCHITECTURE.md`).
+A plugin identifies itself with a module-level `PRAXIS_PLUGIN = True` marker in its main
+module — discovery is marker-driven and static (no import, no filename convention).
+`scripts/plugin_registry.py` unions plugins across a layered search path, LOW→HIGH
+precedence (higher wins on a name collision):
+
+1. **bundled** — `plugins/` shipped with praxis (default plugins-root, derived from `__file__`).
+2. **global** — best-effort scan of the Claude Code plugins dir (`~/.claude/plugins`), so a
+   praxis plugin bundled inside a Claude Code plugin, installed globally, is discoverable in
+   every project. Fail-soft if absent.
+3. **project** — `<root>/.praxis/plugins`.
+4. **explicit** — dirs listed in the root's top-level `plugins_search_paths` config key.
+
+A root enables plugins with the `:register-plugins` skill, which writes the `## contributors`
+map and a top-level `plugins_path` (the union of selected plugin dirs, prepended to `sys.path`
+so the `module:make` specs import without any external `PYTHONPATH`).
+
 ## Entry points
 
 - **MCP tools**: `init`, `register_plan`, `next_handoff`, `record_receipt`, `close_unit`,
   `plan`, `plan_status`, `conduct`, `conductor_*`.
 - **Shell hooks** (`hooks/`): the frame-gate + payload stamps, wired via `hooks/hooks.json`.
-- **Skills** (`skills/`): `init`, `inline`, `orchestrate`.
+- **Skills** (`skills/`): `init`, `inline`, `orchestrate`, `register-plugins`.
 
 ## Docs
 
@@ -55,4 +75,6 @@ ships no judgment.
 ## The invariant worth remembering
 
 Mechanism is owned by the core and enforced in code; **judgment is deferred to the model**
-and composed from plugins. An empty root injects nothing — that is intended.
+and composed from plugins. Nothing composes until a plugin is registered — an unregistered
+root injects nothing. Bundling a default plugin set is normal: they still only take effect
+once a root turns them on.
