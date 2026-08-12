@@ -312,7 +312,215 @@ def _run_held_out(held: list, synth_path: Path, timeout: int) -> tuple[int, str]
     return p.returncode, (p.stdout or p.stderr or "").strip()[-1000:]
 
 
-def coverage_diff_verifier(timeout: int = 300) -> "Verifier":
+# ---- TypeScript path (language-aware preservation gate) ---------------------
+#
+# The TS surface-extractor + held-out runner mirror the Python `_ast_surface` /
+# `_run_held_out` shapes EXACTLY so the set-diff (surface ⊆ allowed_surface) and
+# interface-presence checks in `coverage_diff_verifier` are identical regardless
+# of language. Nothing here is a hard dependency of the praxis suite: the tsc and
+# held-out/mutation commands are all CONFIGURABLE (defaults below), and fixtures
+# supply controllable fakes — just as R2's mutation barrier does.
+
+# Default surface command: emit `.d.ts` for the synth and parse it. `pnpm exec`
+# resolves the project-local `typescript` (degrade gracefully if absent — see
+# `_ToolchainError`). Config/IR may override with any argv (e.g. an `npx` form).
+_DEFAULT_TSC_CMD = ["pnpm", "exec", "tsc"]
+# Default held-out runner: Vitest in the synth worktree. Exit code is the verdict.
+_DEFAULT_TS_HELD_CMD = ["pnpm", "exec", "vitest", "run"]
+
+_TS_LANG_ALIASES = {"ts": "typescript", "typescript": "typescript", "tsx": "typescript"}
+_PY_LANG_ALIASES = {"py": "python", "python": "python"}
+
+
+class _ToolchainError(RuntimeError):
+    """The TS toolchain (tsc/ts-morph) is unavailable or could not emit — the
+    caller degrades gracefully (a fail-closed verdict, errors surfaced)."""
+
+
+def _normalize_language(value) -> str:
+    """Map a language signal to `python` | `typescript` (default `python`)."""
+    key = str(value or "python").strip().lower()
+    return _TS_LANG_ALIASES.get(key) or _PY_LANG_ALIASES.get(key) or key
+
+
+def _as_argv(cmd) -> list:
+    """Accept an argv list or a shell string; return an argv list."""
+    if cmd is None:
+        return []
+    if isinstance(cmd, str):
+        import shlex
+        return shlex.split(cmd)
+    return list(cmd)
+
+
+def _is_ts_test_file(p: Path) -> bool:
+    n = p.name
+    if n.endswith(".d.ts"):
+        return True  # declaration files are not source surface
+    stem = n.rsplit(".", 1)[0]
+    if stem.endswith(".test") or stem.endswith(".spec"):
+        return True
+    return "__tests__" in p.parts
+
+
+def _split_top_level(text: str) -> list:
+    """Split on top-level commas, ignoring commas nested in <>, (), {}, []."""
+    parts, depth, cur = [], 0, []
+    for ch in text:
+        if ch in "<({[":
+            depth += 1
+        elif ch in ">)}]":
+            depth = max(0, depth - 1)
+        if ch == "," and depth == 0:
+            parts.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    if cur:
+        parts.append("".join(cur))
+    return parts
+
+
+def _ts_param_names(params: str) -> list:
+    """Extract the parameter NAMES from a TS parameter list (types stripped), so
+    a TS function signature canonicalizes to `name(a, b)` — the SAME shape the
+    Python `_fn_signature` produces, letting an IR reuse one signature style."""
+    import re
+    names = []
+    for part in _split_top_level(params):
+        part = part.strip()
+        if not part:
+            continue
+        # drop parameter-property modifiers seen in constructor params
+        part = re.sub(r"^(?:public|private|protected|readonly)\s+", "", part).strip()
+        m = re.match(r"(\.\.\.)?\s*([A-Za-z_$][\w$]*)", part)
+        if m:
+            names.append((m.group(1) or "") + m.group(2))
+    return names
+
+
+def _balanced_parens(text: str, open_idx: int) -> tuple:
+    """Return (inner, close_idx) for the `(` at open_idx, paren-balanced."""
+    depth, i = 0, open_idx
+    while i < len(text):
+        c = text[i]
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return text[open_idx + 1:i], i
+        i += 1
+    return "", len(text)
+
+
+def _ts_parse_dts(text: str) -> tuple[set, dict]:
+    """Parse an emitted `.d.ts` for its exported public surface + signatures.
+
+    Returns (surface, sigs) with the SAME contract as `_ast_surface`: `surface`
+    is the set of exported symbol names; `sigs` maps functions to `name(a, b)`
+    and classes/interfaces/enums to `Name(...)`. Const/let/var/type export names
+    join the surface without a signature (like Python module-level assigns)."""
+    import re
+    surface: set = set()
+    sigs: dict = {}
+    decl = re.compile(
+        r"\bexport\s+(?:declare\s+)?(?:default\s+)?(?:abstract\s+)?"
+        r"(function|class|const|let|var|interface|type|enum)\s+"
+        r"([A-Za-z_$][\w$]*)")
+    for m in decl.finditer(text):
+        kind, name = m.group(1), m.group(2)
+        surface.add(name)
+        if kind == "function":
+            if name in sigs:
+                continue  # keep first overload
+            paren = text.find("(", m.end())
+            params, _ = _balanced_parens(text, paren) if paren != -1 else ("", 0)
+            sigs[name] = f"{name}({', '.join(_ts_param_names(params))})"
+        elif kind in ("class", "interface", "enum"):
+            sigs.setdefault(name, f"{name}(...)")
+    # `export { a, b as c };` re-exports contribute their (aliased) names.
+    for m in re.finditer(r"\bexport\s*\{([^}]*)\}", text):
+        for spec in _split_top_level(m.group(1)):
+            spec = spec.strip()
+            if not spec or spec.startswith("type "):
+                continue
+            name = spec.split(" as ")[-1].strip()
+            if name and name != "default" and re.match(r"^[A-Za-z_$][\w$]*$", name):
+                surface.add(name)
+    return surface, sigs
+
+
+def _ts_surface(tree_path: Path, tsc_cmd=None, timeout: int = 300) -> tuple[set, dict]:
+    """Extract the synth tree's public surface from its `.ts`/`.tsx` via tsc.
+
+    Runs `tsc --emitDeclarationOnly` to a temp dir and parses the `.d.ts`, so the
+    verdict is read from DISK (never model evidence). Returns the SAME
+    (surface, signatures) shape as `_ast_surface`. Degrades gracefully: raises
+    `_ToolchainError` (errors surfaced) when tsc is absent or emits nothing."""
+    import subprocess
+    import tempfile
+    if tree_path.is_file():
+        files = [tree_path]
+    else:
+        files = sorted(p for p in tree_path.rglob("*")
+                       if p.suffix in (".ts", ".tsx") and not _is_ts_test_file(p))
+    if not files:
+        return set(), {}
+    base = _as_argv(tsc_cmd) or list(_DEFAULT_TSC_CMD)
+    with tempfile.TemporaryDirectory() as td:
+        argv = base + ["--emitDeclarationOnly", "--declaration", "--skipLibCheck",
+                       "--outDir", td, *[str(f) for f in files]]
+        try:
+            p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout,
+                               cwd=str(tree_path if tree_path.is_dir() else tree_path.parent))
+        except (subprocess.SubprocessError, OSError) as e:
+            raise _ToolchainError(f"tsc could not run ({base[0]}): {e}") from e
+        dts = sorted(Path(td).rglob("*.d.ts"))
+        if not dts:
+            detail = (p.stderr or p.stdout or "").strip()[-500:]
+            raise _ToolchainError(f"tsc emitted no declarations (exit {p.returncode}): {detail}")
+        surface: set = set()
+        sigs: dict = {}
+        for d in dts:
+            try:
+                s, g = _ts_parse_dts(d.read_text())
+            except OSError:
+                continue
+            surface |= s
+            sigs.update(g)
+    return surface, sigs
+
+
+def _run_held_out_ts(held: list, synth_path: Path, timeout: int, held_cmd=None) -> tuple[int, str]:
+    """Run the IR's held-out tests via a CONFIGURABLE command (default Vitest) in
+    the synth worktree. The process EXIT CODE is the verdict — same shape as
+    `_run_held_out`. No model claims consulted."""
+    import subprocess
+    base = str(synth_path if synth_path.is_dir() else synth_path.parent)
+    argv = (_as_argv(held_cmd) or list(_DEFAULT_TS_HELD_CMD)) + list(held)
+    try:
+        p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, cwd=base)
+    except (subprocess.SubprocessError, OSError) as e:
+        return 1, f"held-out run could not start: {e}"
+    return p.returncode, (p.stdout or p.stderr or "").strip()[-1000:]
+
+
+def ts_mutation_verifier(stryker_cmd=None, threshold=None, timeout: int = 600) -> "Verifier | None":
+    """Stryker-based TS adapter for the extract-seam mutation adequacy.
+
+    A thin wrapper over `mutation_verifier`: the command defaults to
+    `pnpm exec stryker run` but is fully CONFIGURABLE — there is NO hard
+    `@stryker-mutator` dependency in the praxis suite (fixtures pass a
+    controllable fake command, exactly as R2's mutation fixtures do). Verdict is
+    the Stryker mutation score >= threshold (or exit code when no score prints)."""
+    if threshold is None:
+        return None
+    return mutation_verifier(stryker_cmd or "pnpm exec stryker run", threshold, timeout)
+
+
+def coverage_diff_verifier(timeout: int = 300, language=None,
+                           surface_cmd=None, held_out_cmd=None) -> "Verifier":
     """The rebuild-triple PRESERVATION gate (R3a) — fires at synthesize-exit.
 
     Reads the IR from `composed["ir"]` (threaded via the extract edge) and the
@@ -320,12 +528,20 @@ def coverage_diff_verifier(timeout: int = 300) -> "Verifier":
     ALL hold, each derived from DISK (never model evidence):
       (c) every `interface` symbol is present in the synth with a matching
           signature (completeness);
-      (b) the synth's public surface (ast walk of its `.py`) ⊆ `allowed_surface`
-          (losslessness — anything extra fails);
+      (b) the synth's public surface ⊆ `allowed_surface` (losslessness — anything
+          extra fails);
       (a) the IR's `held_out` tests PASS against the synth tree (generalization —
-          subprocess pytest, exit code is the verdict).
+          held-out runner, exit code is the verdict).
     Fail-closed on a malformed IR or a missing synth path. NOTE: this takes the
-    synth path AS GIVEN — isolation/copy-detection is R3b, not closed here."""
+    synth path AS GIVEN — isolation/copy-detection is R3b, not closed here.
+
+    LANGUAGE-AWARE: the surface-extractor and held-out runner are dispatched by a
+    `language` signal — `python` (default) or `typescript`. The signal + any TS
+    command overrides come from the IR (`ir["language"]`, `ir["surface_cmd"]`,
+    `ir["held_out_cmd"]`) first, else the factory args, else the defaults. Python
+    walks `ast` + pytest; TypeScript emits `.d.ts` via tsc + runs Vitest. Both
+    return the SAME (surface, signatures) shape, so the set-diff + interface
+    checks below are IDENTICAL across languages."""
     import rebuild_ir
 
     def _handler(unit, receipt, composed):
@@ -345,7 +561,23 @@ def coverage_diff_verifier(timeout: int = 300) -> "Verifier":
             return Verdict(verified=False, defects=[f"synth tree missing: {synth}"],
                            evidence={"check": "synth-path"})
 
-        surface, sigs = _ast_surface(synth_path)
+        # Language dispatch: IR wins over factory args over defaults.
+        lang_signal = ir.get("language")
+        if lang_signal is None:
+            lang_signal = language
+        lang = _normalize_language(lang_signal)
+        ts_surface_cmd = ir.get("surface_cmd", surface_cmd)
+        ts_held_cmd = ir.get("held_out_cmd", held_out_cmd)
+
+        if lang == "typescript":
+            try:
+                surface, sigs = _ts_surface(synth_path, ts_surface_cmd, timeout)
+            except _ToolchainError as e:
+                return Verdict(verified=False,
+                               defects=[f"TS surface extraction unavailable: {e}"],
+                               evidence={"check": "toolchain", "language": lang})
+        else:
+            surface, sigs = _ast_surface(synth_path)
 
         # (c) completeness: every interface symbol present with matching signature.
         missing = [s["symbol"] for s in ir["interface"] if s["symbol"] not in surface]
@@ -372,7 +604,11 @@ def coverage_diff_verifier(timeout: int = 300) -> "Verifier":
                            evidence={"check": "surface", "extra": extra})
 
         # (a) generalization: held-out tests pass against the synth (exit code).
-        code, detail = _run_held_out(ir["tests"]["held_out"], synth_path, timeout)
+        if lang == "typescript":
+            code, detail = _run_held_out_ts(ir["tests"]["held_out"], synth_path,
+                                            timeout, ts_held_cmd)
+        else:
+            code, detail = _run_held_out(ir["tests"]["held_out"], synth_path, timeout)
         if code != 0:
             return Verdict(verified=False,
                            defects=[f"held-out tests failed (exit {code})"],

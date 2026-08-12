@@ -4,6 +4,7 @@ No model, no worktree, no isolation (R3b): synthetic IRs + synth trees in
 tmp_path, verdicts derived purely from disk (ast surface set-diff + held-out
 pytest exit code). Isolation is explicitly NOT exercised here — the synth path
 is taken as given; R3b closes the absolute-path copy hole."""
+import shutil
 import sys
 import tempfile
 import textwrap
@@ -245,6 +246,148 @@ class RebuildWalkTest(unittest.TestCase):
         exited = self._events("phase.exited")
         self.assertTrue(exited["extract"]["verified"])
         self.assertFalse(exited["synthesize"]["verified"])  # preservation gate blocks
+
+
+# ---- TypeScript path (language-aware preservation gate) --------------------
+#
+# The SAME coverage-diff gate, dispatched to the TS surface-extractor (tsc ->
+# `.d.ts`) + TS held-out runner (a controllable command). Verdicts are still read
+# from DISK only: the exported-symbol set-diff and the held-out process exit code.
+# No hard TS/stryker dependency is imposed on the suite — the tsc command is
+# `npx -p typescript tsc` (skips cleanly when unavailable) and the held-out runner
+# is `node` (which runs `.ts` natively on Node >= 23 via type-stripping).
+
+# tsc command used by the TS fixtures; overrides the `pnpm exec tsc` default.
+_TS_TSC_CMD = ["npx", "--yes", "-p", "typescript", "tsc"]
+# Held-out runner: Node runs the `.ts` held-out file directly (exit code = verdict).
+_TS_HELD_CMD = ["node"]
+
+
+def _ts_toolchain_ok() -> bool:
+    """True iff both `node` and a working tsc are present — else the TS fixtures
+    skip cleanly (absent toolchain in CI is not a failure)."""
+    if shutil.which("node") is None:
+        return False
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "probe.ts"
+            src.write_text("export function ping(): number { return 1; }\n")
+            surface, _ = R._ts_surface(Path(td), _TS_TSC_CMD, 300)
+        return "ping" in surface
+    except Exception:
+        return False
+
+
+_TS_OK = _ts_toolchain_ok()
+
+
+@unittest.skipUnless(_TS_OK, "tsc/node toolchain unavailable")
+class TsCoverageDiffVerifierTest(unittest.TestCase):
+    """The TS coverage-diff path on a real tiny TS package: a faithful synth
+    PASSES; missing-interface, extra-surface, and failing-held-out each FAIL."""
+
+    FAITHFUL = ("export function add(a: number, b: number): number { return a + b; }\n"
+                "export function sub(a: number, b: number): number { return a - b; }\n")
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.verifier = R.coverage_diff_verifier()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _synth(self, name, impl):
+        d = self.dir / name
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "calc.ts").write_text(impl)
+        return d
+
+    def _held(self, name, module_dir, body):
+        """A held-out `.ts` test OUTSIDE the synth tree that imports the synth's
+        module by relative path and asserts against it (exit code is the verdict)."""
+        p = self.dir / f"held_{name}.ts"
+        rel = "./" + str(module_dir.relative_to(self.dir)) + "/calc.ts"
+        p.write_text(f'import {{ add, sub }} from "{rel}";\n'
+                     'import assert from "node:assert";\n' + body)
+        return str(p)
+
+    def _ir(self, held, **over):
+        ir = {"language": "typescript", "surface_cmd": _TS_TSC_CMD,
+              "held_out_cmd": _TS_HELD_CMD,
+              "interface": [{"symbol": "add", "signature": "add(a, b)"},
+                            {"symbol": "sub", "signature": "sub(a, b)"}],
+              "allowed_surface": ["add", "sub"],
+              "tests": {"spec": ["s1", "s2", "s3"], "held_out": [held]}}
+        ir.update(over)
+        return ir
+
+    def _verify(self, synth, ir):
+        receipt = R.Receipt(outcome="result", evidence={"produces": str(synth)})
+        return self.verifier.verify(None, receipt, {"ir": ir})
+
+    def test_faithful_ts_synth_passes(self):
+        synth = self._synth("good", self.FAITHFUL)
+        held = self._held("good", synth,
+                          "assert.strictEqual(add(2, 3), 5);\n"
+                          "assert.strictEqual(sub(5, 2), 3);\n")
+        v = self._verify(synth, self._ir(held))
+        self.assertTrue(v.verified, v.defects)
+        self.assertEqual(v.evidence["check"], "all")
+        self.assertEqual(v.evidence["surface"], ["add", "sub"])
+
+    def test_missing_interface_symbol_fails_completeness(self):
+        synth = self._synth("miss",
+                            "export function add(a: number, b: number): number { return a + b; }\n")
+        held = self._held("miss", synth, "assert.strictEqual(add(2, 3), 5);\n")
+        v = self._verify(synth, self._ir(held))
+        self.assertFalse(v.verified)
+        self.assertEqual(v.evidence["check"], "interface")
+        self.assertIn("sub", v.evidence["missing"])
+
+    def test_extra_surface_fails_losslessness(self):
+        synth = self._synth("extra", self.FAITHFUL
+                            + "export function leak(z: number): number { return z; }\n")
+        held = self._held("extra", synth,
+                          "assert.strictEqual(add(2, 3), 5);\n"
+                          "assert.strictEqual(sub(5, 2), 3);\n")
+        v = self._verify(synth, self._ir(held))
+        self.assertFalse(v.verified)
+        self.assertEqual(v.evidence["check"], "surface")
+        self.assertIn("leak", v.evidence["extra"])
+
+    def test_failing_held_out_fails_generalization(self):
+        # surface + signatures are faithful, but `add` multiplies -> held-out fails.
+        synth = self._synth("bad",
+                            "export function add(a: number, b: number): number { return a * b; }\n"
+                            "export function sub(a: number, b: number): number { return a - b; }\n")
+        held = self._held("bad", synth, "assert.strictEqual(add(2, 3), 5);\n")
+        v = self._verify(synth, self._ir(held))
+        self.assertFalse(v.verified)
+        self.assertEqual(v.evidence["check"], "held_out")
+        self.assertNotEqual(v.evidence["returncode"], 0)
+
+
+class TsMutationAdapterTest(unittest.TestCase):
+    """The Stryker-based TS mutation adequacy adapter — fake-proven, NO hard
+    @stryker-mutator dependency (the command is a controllable fake, as with
+    R2's mutation barrier). Verdict = mutation score >= threshold, else exit code."""
+
+    def test_unwired_without_threshold(self):
+        self.assertIsNone(R.ts_mutation_verifier("pnpm exec stryker run", None))
+
+    def test_score_above_threshold_passes(self):
+        v = R.ts_mutation_verifier("sh -c 'echo mutation score: 0.95'", 0.9)
+        self.assertTrue(v.verify(None, None, {}).verified)
+
+    def test_score_below_threshold_fails(self):
+        v = R.ts_mutation_verifier("sh -c 'echo 0.50'", 0.9)
+        self.assertFalse(v.verify(None, None, {}).verified)
+
+    def test_exit_code_verdict_when_no_score(self):
+        self.assertFalse(
+            R.ts_mutation_verifier("this-stryker-does-not-exist-xyz", 0.9)
+            .verify(None, None, {}).verified)
 
 
 if __name__ == "__main__":
