@@ -79,7 +79,7 @@ class ToolCallThroughTest(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
         (self.root / ".praxis").mkdir()
-        (self.root / ".praxis" / "config.md").write_text("language: python\n")
+        (self.root / ".praxis" / "config.json").write_text("{}\n")
         self.base = str(self.root)
         import mcp_server
         self.srv = mcp_server

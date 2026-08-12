@@ -48,15 +48,11 @@ def _parse_tasklist(tasks: str) -> tuple[list | None, str | None]:
 
 
 @mcp.tool()
-def init(language: str | None = None, framework: str | None = None, has_ui: str | None = None,
-         styling: str | None = None, package_manager: str | None = None,
-         search_base: str | None = None) -> str:
-    """Mark the current git repo (or folder) as a praxis root by writing `.praxis/config.md`, so the
-    gate and drive tools begin managing it. Pass whatever project-shape values you detected:
-    `language`, `framework`, `has_ui`, `styling`, `package_manager` (any left unset are omitted)."""
-    return json.dumps(conduct_engine.init_root(
-        root=search_base, language=language, framework=framework, has_ui=has_ui,
-        styling=styling, package_manager=package_manager), indent=2)
+def init(search_base: str | None = None) -> str:
+    """Mark the current git repo (or folder) as a praxis root by ensuring an empty
+    `.praxis/config.json`, so the gate and drive tools begin managing it. The file is a
+    namespaced store plugins persist their own config in; a fresh root starts clean (`{}`)."""
+    return json.dumps(conduct_engine.init_root(root=search_base), indent=2)
 
 
 @mcp.tool()

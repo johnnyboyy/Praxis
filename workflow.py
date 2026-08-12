@@ -17,7 +17,7 @@ GATES: dict[EdgeType, str] = {
     EdgeType.extract: "coverage-diff",
 }
 
-WHENS = ("pass", "fail", "always", "agent-choice", "feeds")
+WHENS = ("pass", "fail", "always", "agent-choice", "feeds", "fact")
 STANCES = ("divergent", "convergent", "neutral")
 DELIVERIES = ("inline", "spawn", "deterministic")
 
@@ -30,6 +30,7 @@ class Phase:
     intent: str = ""
     produces: str = ""
     delivery: str = "inline"
+    run: object | None = None  # Callable[(root, unit, composed)] -> evidence dict, for delivery=="deterministic"
 
 
 @dataclass
@@ -48,8 +49,19 @@ class Workflow:
         return self.phases[0]
 
 
+def edge_parts(edge) -> tuple:
+    """Normalize an edge to (frm, to, when, edge_type, predicate).
+
+    4-tuples (from,to,when,EdgeType) pad predicate=None — fully backward-compatible.
+    5-tuples (from,to,"fact",EdgeType,predicate) carry a Callable[[dict], bool]."""
+    frm, to, when, et = edge[0], edge[1], edge[2], edge[3]
+    predicate = edge[4] if len(edge) > 4 else None
+    return frm, to, when, et, predicate
+
+
 def next_phases(workflow: Workflow, from_phase: str, when: str) -> list:
-    targets = [t for (f, t, w, _et) in workflow.edges if f == from_phase and w == when]
+    targets = [t for (f, t, w, _et, _pred) in map(edge_parts, workflow.edges)
+               if f == from_phase and w == when]
     return [p for p in workflow.phases if p.name in targets]
 
 

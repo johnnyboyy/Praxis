@@ -25,7 +25,7 @@ class Situation:
     suggested_kind: str | None = None
     fit: str = "clean"
     phase: str = "none"
-    project_shape: dict = field(default_factory=dict)
+    phase_name: str | None = None
     root: str | None = None
     targets: list = field(default_factory=list)
     workflow: str | None = None
@@ -62,7 +62,7 @@ class Situation:
             "intent": self.intent,
             "subject": self.subject,
             "phase": self.phase,
-            "project_shape": self.project_shape,
+            "phase_name": self.phase_name,
             "root": self.root,
             "targets": self.targets,
             "workflow": self.workflow,

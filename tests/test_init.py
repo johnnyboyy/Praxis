@@ -27,27 +27,26 @@ class InitRootTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def test_writes_shape_to_git_root_from_subdir(self):
+    def test_marks_git_root_from_subdir_with_clean_config(self):
         self.assertIsNone(rt.resolve_root(self.sub))
-        out = conduct.init_root(root=self.sub, language="python", framework="none",
-                                has_ui="no", styling="none", package_manager="uv")
+        out = conduct.init_root(root=self.sub)
         self.assertEqual(out["status"], "initialized")
         self.assertEqual(Path(out["root"]), self.tmp)
+        self.assertTrue(out["created"])
         self.assertEqual(rt.resolve_root(self.sub), self.tmp)
-        self.assertEqual(C.read(self.tmp), {
-            "language": "python", "framework": "none", "has-ui": "no",
-            "styling": "none", "package-manager": "uv"})
+        self.assertEqual(C.read(self.tmp), {})
+        self.assertEqual(C.path(self.tmp).read_text(), "{}\n")
 
-    def test_only_non_none_values_written(self):
-        conduct.init_root(root=self.tmp, language="node", framework="next")
-        self.assertEqual(C.read(self.tmp), {"language": "node", "framework": "next"})
+    def test_idempotent_created_flag(self):
+        self.assertTrue(conduct.init_root(root=self.tmp)["created"])
+        self.assertFalse(conduct.init_root(root=self.tmp)["created"])
 
-    def test_no_git_writes_to_start_dir(self):
+    def test_no_git_marks_start_dir(self):
         plain = Path(tempfile.mkdtemp()).resolve()
         try:
-            out = conduct.init_root(root=plain, language="python")
+            out = conduct.init_root(root=plain)
             self.assertEqual(Path(out["root"]), plain)
-            self.assertEqual(C.read(plain), {"language": "python"})
+            self.assertEqual(C.read(plain), {})
         finally:
             shutil.rmtree(plain, ignore_errors=True)
 
@@ -63,7 +62,7 @@ class ManagedHelperTest(unittest.TestCase):
     def test_managed_false_before_true_after(self):
         import mcp_server
         self.assertFalse(mcp_server._managed(str(self.tmp)))
-        conduct.init_root(root=self.tmp, language="python")
+        conduct.init_root(root=self.tmp)
         self.assertTrue(mcp_server._managed(str(self.tmp)))
 
 

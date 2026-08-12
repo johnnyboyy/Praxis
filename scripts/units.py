@@ -7,7 +7,7 @@ declares *what that unit's work may touch*, so the edit gate can bounce the firs
 write.
 
 Declarations live in `<root>/.praxis/units.md` (legacy `praxis/units.md`), root-authored like
-`config.md` — process metadata, not judgment, so it is praxis-side even though the unit *names*
+`config.json` — process metadata, not judgment, so it is praxis-side even though the unit *names*
 are engine vocabulary. Format: one `## <unit-of-work>` section per unit, with `edit-surface:`
 (comma-separated glob patterns matched against the root-relative path; `*` crosses `/`, so fnmatch
 here and bash-`case` in the gate hook agree) and `output:` (prose — the deliverable). Everything

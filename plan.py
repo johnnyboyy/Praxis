@@ -21,7 +21,6 @@ class TaskSpec:
     fit: str = "clean"
     phase: str = "none"
     targets: list = field(default_factory=list)
-    project_shape: dict = field(default_factory=dict)
     workflow: str | None = None
     label: str | None = None
     depends_on: list = field(default_factory=list)
@@ -40,7 +39,6 @@ class TaskSpec:
                    subject=d.get("subject", "coding"), suggested_kind=d.get("suggested_kind"),
                    fit=d.get("fit", "clean"), phase=d.get("phase", "none"),
                    targets=list(d.get("targets", []) or []),
-                   project_shape=dict(d.get("project_shape", {}) or {}),
                    workflow=d.get("workflow"), label=d.get("label"),
                    depends_on=list(d.get("depends_on", []) or []))
 
@@ -48,14 +46,14 @@ class TaskSpec:
         return {"intent": self.intent, "id": self.id, "task_kind": self.task_kind,
                 "subject": self.subject, "suggested_kind": self.suggested_kind, "fit": self.fit,
                 "phase": self.phase, "targets": list(self.targets),
-                "project_shape": dict(self.project_shape), "workflow": self.workflow,
+                "workflow": self.workflow,
                 "label": self.label, "depends_on": list(self.depends_on)}
 
 
 def spec_to_unit(spec: TaskSpec, root: Path | None = None) -> Unit:
     sit = Situation(task_kind=spec.task_kind, intent=spec.intent, subject=spec.subject,
                     suggested_kind=spec.suggested_kind, fit=spec.fit, phase=spec.phase,
-                    project_shape=spec.project_shape, root=str(root) if root else None,
+                    root=str(root) if root else None,
                     targets=list(spec.targets), workflow=spec.workflow, label=spec.label)
     return Unit(id=spec.id, situation=sit, depends_on=list(spec.depends_on))
 
@@ -90,7 +88,7 @@ def plan_tasks(root: str | Path, specs: list[TaskSpec]) -> list[Unit]:
         s = TaskSpec(intent=u.situation.intent, id=u.id, task_kind=u.situation.task_kind,
                      subject=u.situation.subject, suggested_kind=u.situation.suggested_kind,
                      fit=u.situation.fit, phase=u.situation.phase,
-                     targets=list(u.situation.targets), project_shape=u.situation.project_shape,
+                     targets=list(u.situation.targets),
                      workflow=u.situation.workflow, label=u.situation.label,
                      depends_on=list(u.depends_on))
         specs_out.append(s.to_dict())

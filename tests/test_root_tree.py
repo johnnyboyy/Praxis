@@ -1,5 +1,6 @@
 """Tests for root_tree. Run with: python3 -m unittest discover -s praxis/tests -v"""
 
+import json
 import shutil
 import subprocess
 import sys
@@ -17,14 +18,12 @@ def git_init(path: Path) -> None:
                    capture_output=True)
 
 
-def mkroot(base: Path, rel: str, marker: str = "praxis/config.md", name: str | None = None) -> Path:
-    """Create a root dir at base/rel with a marker file, optionally carrying a `name:`."""
+def mkroot(base: Path, rel: str, marker: str = "praxis/config.json", name: str | None = None) -> Path:
+    """Create a root dir at base/rel with a marker file, optionally naming it (unnamed core scope)."""
     d = base / rel
     (d / Path(marker).parent).mkdir(parents=True, exist_ok=True)
-    body = "## project-shape\n"
-    if name:
-        body += f"name: {name}\n"
-    (d / marker).write_text(body)
+    body = {"": {"name": name}} if name else {}
+    (d / marker).write_text(json.dumps(body))
     return d
 
 
@@ -76,9 +75,9 @@ class RootTreeTests(unittest.TestCase):
                          (self.tmp / "app").resolve())
 
     def test_multiple_markers_are_recognized_generically(self):
-        markers = ["praxis/config.md", "engine/config.md"]
-        mkroot(self.tmp, "a", marker="praxis/config.md")
-        mkroot(self.tmp, "b", marker="engine/config.md")
+        markers = ["praxis/config.json", "engine/config.json"]
+        mkroot(self.tmp, "a", marker="praxis/config.json")
+        mkroot(self.tmp, "b", marker="engine/config.json")
         roots = rt.find_roots(self.tmp, markers)
         owners = {rt.root_name(r, markers): rt.which_marker(r, markers) for r in roots}
         self.assertEqual(owners, {"a": "praxis", "b": "engine"})
@@ -102,26 +101,26 @@ class PraxisDirTests(unittest.TestCase):
     def _mk(self, rel):
         p = self.tmp / rel
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text("name: t\n")
+        p.write_text("{}\n")
 
     def test_dotted_marker_resolves(self):
-        self._mk(".praxis/config.md")
+        self._mk(".praxis/config.json")
         self.assertEqual(rt.praxis_dir(self.tmp), self.tmp / ".praxis")
 
     def test_legacy_marker_resolves(self):
-        self._mk("praxis/config.md")
+        self._mk("praxis/config.json")
         self.assertEqual(rt.praxis_dir(self.tmp), self.tmp / "praxis")
 
     def test_dotted_wins_when_both_exist(self):
-        self._mk(".praxis/config.md")
-        self._mk("praxis/config.md")
+        self._mk(".praxis/config.json")
+        self._mk("praxis/config.json")
         self.assertEqual(rt.praxis_dir(self.tmp), self.tmp / ".praxis")
 
     def test_uninitialized_dir_lands_on_dotted(self):
         self.assertEqual(rt.praxis_dir(self.tmp), self.tmp / ".praxis")
 
     def test_find_roots_discovers_dotted_root(self):
-        self._mk("proj/.praxis/config.md")
+        self._mk("proj/.praxis/config.json")
         roots = rt.find_roots(self.tmp, rt.DEFAULT_MARKERS)
         self.assertIn(self.tmp / "proj", roots)
         self.assertEqual(rt.which_marker(self.tmp / "proj", rt.DEFAULT_MARKERS), ".praxis")
@@ -141,16 +140,16 @@ class GoverningRootAboveTests(unittest.TestCase):
     def _mk(self, rel):
         p = self.tmp / rel
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text("name: t\n")
+        p.write_text("{}\n")
 
     def test_found_at_depth(self):
-        self._mk("proj/.praxis/config.md")
+        self._mk("proj/.praxis/config.json")
         (self.tmp / "proj" / "src" / "deep").mkdir(parents=True)
         self.assertEqual(rt.governing_root_above(self.tmp / "proj" / "src" / "deep" / "x.ts"),
                          self.tmp / "proj")
 
     def test_found_at_path_itself(self):
-        self._mk("proj/.praxis/config.md")
+        self._mk("proj/.praxis/config.json")
         self.assertEqual(rt.governing_root_above(self.tmp / "proj"), self.tmp / "proj")
 
     def test_none_when_no_ancestor_is_a_root(self):
@@ -158,13 +157,13 @@ class GoverningRootAboveTests(unittest.TestCase):
         self.assertIsNone(rt.governing_root_above(self.tmp / "loose" / "x.ts"))
 
     def test_dotted_recognized_beside_legacy_on_the_same_dir(self):
-        self._mk("proj/.praxis/config.md")
-        self._mk("proj/praxis/config.md")
+        self._mk("proj/.praxis/config.json")
+        self._mk("proj/praxis/config.json")
         self.assertEqual(rt.governing_root_above(self.tmp / "proj" / "x.ts"), self.tmp / "proj")
 
     def test_stops_at_nearest_when_nested_roots_exist(self):
-        self._mk("outer/.praxis/config.md")
-        self._mk("outer/inner/.praxis/config.md")
+        self._mk("outer/.praxis/config.json")
+        self._mk("outer/inner/.praxis/config.json")
         self.assertEqual(rt.governing_root_above(self.tmp / "outer" / "inner" / "src" / "x.ts"),
                          self.tmp / "outer" / "inner")
 
@@ -182,19 +181,19 @@ class ResolveRootTests(unittest.TestCase):
     def _mk(self, rel):
         p = self.tmp / rel
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text("name: t\n")
+        p.write_text("{}\n")
 
     def test_nested_subdir_resolves_to_marked_repo_root(self):
         git_init(self.tmp)
-        self._mk(".praxis/config.md")
+        self._mk(".praxis/config.json")
         deep = self.tmp / "src" / "a" / "b"
         deep.mkdir(parents=True)
         self.assertEqual(rt.resolve_root(deep / "x.ts"), self.tmp)
 
     def test_marker_in_subdir_wins_over_repo_root(self):
         git_init(self.tmp)
-        self._mk(".praxis/config.md")
-        self._mk("svc/.praxis/config.md")
+        self._mk(".praxis/config.json")
+        self._mk("svc/.praxis/config.json")
         (self.tmp / "svc" / "src").mkdir(parents=True)
         self.assertEqual(rt.resolve_root(self.tmp / "svc" / "src" / "x.ts"), self.tmp / "svc")
 
@@ -205,13 +204,13 @@ class ResolveRootTests(unittest.TestCase):
 
     def test_non_git_dir_no_marker_is_none_and_never_escapes_start(self):
         # A parent dir carries a marker, but start is a non-git dir: the walk must NOT reach the parent.
-        self._mk(".praxis/config.md")
+        self._mk(".praxis/config.json")
         start = self.tmp / "loose"
         start.mkdir()
         self.assertIsNone(rt.resolve_root(start))
 
     def test_marker_at_non_git_start_dir_resolves_to_that_dir(self):
-        self._mk("proj/.praxis/config.md")
+        self._mk("proj/.praxis/config.json")
         self.assertEqual(rt.resolve_root(self.tmp / "proj"), self.tmp / "proj")
 
 

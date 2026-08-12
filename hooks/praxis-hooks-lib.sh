@@ -7,8 +7,8 @@
 # repo copy BEFORE dirname, or the sibling lib can't be found. See each hook's guarded source block.
 #
 # Each primitive transcribes a rule whose Python source of record lives in root_tree.py / server.py:
-#   praxis_walk_to_root  ← root_tree.resolve_root (nearest ancestor carrying .praxis/config.md, then
-#                          legacy praxis/config.md — `.praxis` wins; the same order as praxis_dir and
+#   praxis_walk_to_root  ← root_tree.resolve_root (nearest ancestor carrying .praxis/config.json, then
+#                          praxis/config.json — `.praxis` wins; the same order as praxis_dir and
 #                          DEFAULT_MARKERS), GIT-BOUNDED and opt-in: it never rises above the git root
 #                          (or, no repo, above the start dir), and returns 1 when nothing is marked.
 #   praxis_stamp_path    ← the session-stamp path server.py.work_status globs:
@@ -50,7 +50,7 @@ praxis_walk_to_root() {
   git_root=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)
   while [ "$dir" != "/" ] && [ -n "$dir" ]; do
     for p in .praxis praxis; do
-      if [ -f "$dir/$p/config.md" ]; then
+      if [ -f "$dir/$p/config.json" ]; then
         PRAXIS_ROOT_PATH="$dir"
         PRAXIS_DIR="$dir/$p"
         return 0

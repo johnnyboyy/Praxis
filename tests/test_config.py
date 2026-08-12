@@ -16,7 +16,7 @@ class ConfigTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_path(self):
-        self.assertEqual(C.path(self.root), self.root / ".praxis" / "config.md")
+        self.assertEqual(C.path(self.root), self.root / ".praxis" / "config.json")
 
     def test_read_absent_file(self):
         self.assertEqual(C.read(self.root), {})
@@ -37,6 +37,11 @@ class ConfigTest(unittest.TestCase):
         C.write(self.root, "plugin", {"mode": "fast", "level": "3"})
         self.assertEqual(C.read(self.root, "plugin"), {"mode": "fast", "level": "3"})
 
+    def test_stores_raw_typed_values(self):
+        C.write(self.root, "plugin", {"strict": True, "n": 3, "exclude": ["a", "b"]})
+        self.assertEqual(C.read(self.root, "plugin"),
+                         {"strict": True, "n": 3, "exclude": ["a", "b"]})
+
     def test_read_absent_section_when_file_exists(self):
         C.write(self.root, None, {"language": "python"})
         self.assertEqual(C.read(self.root, "nope"), {})
@@ -56,12 +61,17 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(C.read(self.root),
                          {"language": "python", "has-ui": "no"})
 
-    def test_ignores_blank_and_unparseable_lines(self):
+    def test_ensure_creates_empty_clean_root(self):
+        self.assertTrue(C.ensure(self.root))
+        self.assertEqual(C.path(self.root).read_text(), "{}\n")
+        self.assertEqual(C.read(self.root), {})
+        self.assertFalse(C.ensure(self.root))  # idempotent
+
+    def test_malformed_file_reads_as_empty(self):
         C.path(self.root).parent.mkdir(parents=True)
-        C.path(self.root).write_text(
-            "language: python\n\ngarbage line\n\n## plugin\n  \nmode: fast\n")
-        self.assertEqual(C.read(self.root), {"language": "python"})
-        self.assertEqual(C.read(self.root, "plugin"), {"mode": "fast"})
+        C.path(self.root).write_text("not json {")
+        self.assertEqual(C.read(self.root), {})
+        self.assertEqual(C.read(self.root, "plugin"), {})
 
 
 if __name__ == "__main__":

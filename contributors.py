@@ -54,6 +54,21 @@ def fire(contributors, step: str, ctx: HookContext) -> None:
             hook(ctx)
 
 
+def surface_for(contributors, situation: Situation) -> list[str] | None:
+    claimed: list[str] = []
+    for c in contributors:
+        provider = getattr(c, "surface", None)
+        if not callable(provider):
+            continue
+        try:
+            globs = provider(situation)
+        except Exception:
+            continue
+        if globs:
+            claimed.extend(globs)
+    return sorted(set(claimed)) or None
+
+
 def validate_contributor(obj) -> list[str]:
     problems: list[str] = []
     source = getattr(obj, "source", None)
@@ -63,6 +78,12 @@ def validate_contributor(obj) -> list[str]:
         problems.append("contribute must be callable")
     if hasattr(obj, "hooks") and not callable(getattr(obj, "hooks")):
         problems.append("hooks, when present, must be callable")
+    if hasattr(obj, "surface") and not callable(getattr(obj, "surface")):
+        problems.append("surface, when present, must be callable")
+    if hasattr(obj, "phases") and not callable(getattr(obj, "phases")):
+        problems.append("phases, when present, must be callable")
+    if hasattr(obj, "workflows") and not callable(getattr(obj, "workflows")):
+        problems.append("workflows, when present, must be callable")
     return problems
 
 

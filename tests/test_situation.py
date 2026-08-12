@@ -50,7 +50,7 @@ class SituationSchemaTest(unittest.TestCase):
                        targets=["a.py"], workflow="wf1")
         d = s.to_dict()
         self.assertEqual(set(d), {"task_kind", "suggested_kind", "fit", "intent", "subject",
-                                  "phase", "project_shape", "root", "targets", "workflow", "label"})
+                                  "phase", "phase_name", "root", "targets", "workflow", "label"})
         self.assertEqual(d["suggested_kind"], "refactor")
         self.assertEqual(d["targets"], ["a.py"])
 

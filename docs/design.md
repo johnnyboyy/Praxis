@@ -71,8 +71,7 @@ Two verification scopes: **local** (a unit's own new tests, fast, inside the uni
 ## Contributions per phase
 
 `gather` runs at each phase with the phase in the `Situation`; contributors return phase-appropriate
-sections. `uiux → plan` (reusable components, so the planner designs for reuse); `conventions →
-implement`; `law-checklist → extract`. Domain knowledge is a contributor.
+sections.
 
 ## Discovery over stone
 
@@ -183,3 +182,25 @@ Surfaced by *building* the runner:
   caller-provided replacement and re-run scoped via `resume=True`; escalations carry `failing_subdag`;
   the replacement is the caller's judgment (no auto-loop). `record_receipt(outcome="stall")` now covers
   the stalled/abandoned inline close.
+
+- 2026-08-11 (config retired to a plugin store; markdown→JSON): the project-shape fields
+  (`language`/`framework`/`has-ui`/`styling`/`package-manager`) were speculative infra with no
+  consumer — `init` detected them, they rode every `Situation`, and nothing read them. Retired
+  wholesale: `/praxis:init` no longer detects anything, `init_root`/`init` just `config.ensure` an
+  empty file, and `project_shape` is gone from `Situation`/`TaskSpec`/`plan`. With the human-authored
+  identity record gone, the store's role is now purely machine read/write by plugins, so `config.py`
+  moved from a bespoke flat-`key: value` markdown parser to JSON (`.praxis/config.json`): values are
+  raw, so plugins can persist lists/nested/typed config, not just strings. The marker (root
+  discovery, gate hooks) follows to `config.json`; a fresh root is a clean `{}`. Its *existence*,
+  not its contents, is still what marks a managed root — the only load-bearing part.
+
+- 2026-08-11 (unmatched-route guard): the phase walk silently fell through to the pass/always edge when
+  a phase emitted an `evidence['next']` that no outgoing `agent-choice` edge from the current phase
+  targeted — a typo'd or renamed route just vanished. Now `workflow_run` always journals
+  `phase.route_unmatched` at that point `{unit, phase, phase_index, next, kind, resolved}`, classifying
+  `kind` as `unknown` (the name is not in `resolve_phases(root)` — a bug) vs `unwired` (a registered
+  phase with no edge from here — possibly an intentional ignore); `resolved` is the fall-through target
+  phase name, or `"stall"`. An opt-in core/unnamed-scope flag `stall-on-unmatched-route` (string,
+  case-insensitive `"true"`; anything else/absent preserves today's fall-through) turns the fall-through
+  into a `phase.stalled` halt via the same mechanism the `max_phase_loops` guard uses. Scope is narrow:
+  no event when `next` is absent or an agent-choice edge matches.

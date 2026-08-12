@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """root_tree — deterministic discovery of the tree of concern-boundaries ("roots") in a source tree.
 
-A root is a directory carrying praxis's own config marker. `.praxis/config.md` is the standard
+A root is a directory carrying praxis's own config marker. `.praxis/config.json` is the standard
 (so a repo that SHIPS a praxis/ source tree can self-host without its source dir doubling as the
-marker); bare `praxis/config.md` stays recognized for existing roots. The marker set is
-configurable (`--marker`), so a project can add an engine's own config marker without any code
-change here.
+marker); bare `praxis/config.json` is also recognized. The marker set is configurable (`--marker`),
+so a project can add an engine's own config marker without any code change here.
 
 A *root* is a boundary of concern: a directory meant to be reasoned about in isolation from its siblings
 (FAMOUS app vs admin; motors circuit-builder vs marketing). Given a task (a path, or a set of touched
@@ -22,12 +21,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
 
-DEFAULT_MARKERS = [".praxis/config.md", "praxis/config.md"]
+DEFAULT_MARKERS = [".praxis/config.json", "praxis/config.json"]
 
 
 def split_files(files: str) -> list[str]:
@@ -37,7 +35,7 @@ def split_files(files: str) -> list[str]:
 def praxis_dir(root: Path) -> Path:
     root = Path(root)
     for name in (".praxis", "praxis"):
-        if (root / name / "config.md").is_file():
+        if (root / name / "config.json").is_file():
             return root / name
     return root / ".praxis"
 
@@ -46,9 +44,6 @@ SKIP_DIRS = {
     "coverage", ".venv", "venv", "__pycache__", "vendor", ".cache", ".parcel-cache",
     ".pytest_cache", "ios", "android", ".gradle", "Pods", ".claude",
 }
-
-NAME_RE = re.compile(r"^\s*name:\s*(.+?)\s*$", re.MULTILINE)
-
 
 def find_roots(base: Path, markers: list[str]) -> list[Path]:
     roots: set[Path] = set()
@@ -67,9 +62,14 @@ def root_name(root: Path, markers: list[str]) -> str:
     for marker in markers:
         cfg = root / marker
         if cfg.is_file():
-            m = NAME_RE.search(cfg.read_text(encoding="utf-8", errors="replace"))
-            if m:
-                return m.group(1)
+            try:
+                data = json.loads(cfg.read_text(encoding="utf-8", errors="replace"))
+            except (OSError, json.JSONDecodeError):
+                data = None
+            if isinstance(data, dict):
+                name = data.get("", {}).get("name")
+                if isinstance(name, str) and name.strip():
+                    return name.strip()
             break
     return root.name
 
@@ -117,8 +117,8 @@ def _git_toplevel(start: Path) -> Path | None:
 def resolve_root(start) -> Path | None:
     """The praxis root governing `start`, or None when nothing within the bound is marked.
 
-    Git-bounded and opt-in: walk up from `start` looking for `.praxis/config.md` (then legacy
-    `praxis/config.md`), but never above the git repo root — or, outside a git repo, never above
+    Git-bounded and opt-in: walk up from `start` looking for `.praxis/config.json` (then
+    `praxis/config.json`), but never above the git repo root — or, outside a git repo, never above
     `start`'s own directory. No marker within that bound ⇒ None: an unmarked repo is not managed.
     """
     start = Path(start).resolve()
@@ -126,7 +126,7 @@ def resolve_root(start) -> Path | None:
     floor = git_root if git_root is not None else (start if start.is_dir() else start.parent)
     for cur in (start, *start.parents):
         for name in (".praxis", "praxis"):
-            if (cur / name / "config.md").is_file():
+            if (cur / name / "config.json").is_file():
                 return cur
         if cur == floor:
             break
@@ -333,7 +333,7 @@ def main(argv: list[str]) -> int:
 
     t = sub.add_parser("tree", help="discover and print the root tree")
     t.add_argument("--from", default=".", help="directory to search from (default: cwd)")
-    t.add_argument("--marker", action="append", help="boundary marker (repeatable; default .praxis/config.md, legacy praxis/config.md)")
+    t.add_argument("--marker", action="append", help="boundary marker (repeatable; default .praxis/config.json, praxis/config.json)")
     t.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     t.set_defaults(func=cmd_tree)
 

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 import journal
-from contributors import HookContext, fire, gather
+from contributors import HookContext, fire, gather, surface_for
 from situation import Situation
 
 OUTCOMES = ("result", "stall")
@@ -162,10 +162,21 @@ def run_unit(root: Path, unit: Unit, contributors, executor: Executor,
     journal.append(root, "unit.proposed", unit=unit.id, unit_of_work=unit.unit_of_work,
                    situation=unit.situation.to_dict())
     composed = gather(contributors, unit.situation, root=root)
+    surface = surface_for(contributors, unit.situation) or (unit.situation.targets or None)
     journal.append(root, "unit.framed", unit=unit.id, unit_of_work=unit.unit_of_work,
                    routed_kind=composed.get("routed_kind"), gap_surfaced=composed.get("gap_surfaced"),
                    sources=composed.get("sources", []), stance=composed.get("stance"),
-                   note=composed.get("note"))
+                   surface=surface, note=composed.get("note"))
+
+    if unit.situation.workflow:
+        import registry
+        from workflow_run import run_workflow
+        wf = registry.resolve_workflows(root).get(unit.situation.workflow)
+        if wf is not None:
+            return run_workflow(root, unit, wf, contributors, executor, verifiers=None)
+        journal.append(root, "workflow.unresolved", unit=unit.id,
+                       workflow=unit.situation.workflow)
+        # fall through to single-dispatch
 
     def _result(outcome, status, receipt, verified, attempts, defects):
         return {"unit": unit.id, "unit_of_work": unit.unit_of_work, "outcome": outcome,
@@ -173,6 +184,13 @@ def run_unit(root: Path, unit: Unit, contributors, executor: Executor,
                 "gap_surfaced": composed.get("gap_surfaced"),
                 "routed_kind": composed.get("routed_kind"),
                 "receipt": receipt.to_dict() if receipt else None}
+
+    def _finish(outcome, status, receipt, verified, attempts, defects, verdict=None):
+        fire(contributors, "unit-close", HookContext(
+            root=root, step="unit-close", unit=unit,
+            receipt=receipt.to_dict() if receipt else None,
+            verdict=verdict))
+        return _result(outcome, status, receipt, verified, attempts, defects)
 
     feedback: list = []
     receipt = None
@@ -187,12 +205,12 @@ def run_unit(root: Path, unit: Unit, contributors, executor: Executor,
         if receipt.outcome == "stall":
             journal.append(root, "unit.stalled", unit=unit.id, outcome="stall",
                            status=receipt.status)
-            return _result("stall", receipt.status, receipt, None, attempt + 1, [])
+            return _finish("stall", receipt.status, receipt, None, attempt + 1, [])
 
         if verifier is None:
             journal.append(root, "unit.done", unit=unit.id, outcome="result",
                            status=receipt.status)
-            return _result("result", receipt.status, receipt, None, attempt + 1, [])
+            return _finish("result", receipt.status, receipt, None, attempt + 1, [])
 
         verdict = verifier.verify(unit, receipt, composed)
         if verdict.verified:
@@ -204,7 +222,9 @@ def run_unit(root: Path, unit: Unit, contributors, executor: Executor,
                          "evidence": verdict.evidence}))
             journal.append(root, "unit.done", unit=unit.id, outcome="result",
                            status=receipt.status)
-            return _result("result", receipt.status, receipt, True, attempt + 1, [])
+            return _finish("result", receipt.status, receipt, True, attempt + 1, [],
+                           verdict={"verified": True, "defects": verdict.defects,
+                                    "evidence": verdict.evidence})
 
         feedback = verdict.defects
         journal.append(root, "unit.note", unit=unit.id, kind="defect", attempt=attempt,
@@ -213,7 +233,7 @@ def run_unit(root: Path, unit: Unit, contributors, executor: Executor,
     journal.append(root, "unit.stalled", unit=unit.id, outcome="stall", status="blocked",
                    surfaced=feedback,
                    note=f"verification failed after {max_retries + 1} attempt(s)")
-    return _result("stall", "blocked", receipt, False, max_retries + 1, feedback)
+    return _finish("stall", "blocked", receipt, False, max_retries + 1, feedback)
 
 
 def run(plan: Plan, contributors, executor: Executor, root: Path,

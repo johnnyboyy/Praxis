@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import journal
-from contributors import gather
+from contributors import gather, surface_for
 from run import Unit
 
 
@@ -71,7 +71,9 @@ def pull(root: str | Path, units: list[Unit], contributors, brief: str | None = 
     journal.append(root, "unit.framed", unit=unit.id, unit_of_work=unit.unit_of_work,
                    routed_kind=composed.get("routed_kind"), gap_surfaced=composed.get("gap_surfaced"),
                    sources=composed.get("sources", []), stance=composed.get("stance"),
-                   delivery=delivery, surface=unit.situation.targets or None,
+                   delivery=delivery,
+                   surface=(surface_for(contributors, unit.situation)
+                            or (unit.situation.targets or None)),
                    note=composed.get("note"))
     journal.append(root, "unit.note", unit=unit.id, payload_read=True)
     journal.append(root, "handoff.pulled", unit=unit.id, overlay_bytes=ho["overlay_bytes"])

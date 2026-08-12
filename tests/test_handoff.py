@@ -14,7 +14,18 @@ import handoff as handoff_mod  # noqa: E402
 import journal  # noqa: E402
 from contributors import Contribution  # noqa: E402
 from plan import build_units, TaskSpec  # noqa: E402
+from run import Unit  # noqa: E402
 from situation import Situation  # noqa: E402
+
+
+class _DocsLeaseContributor:
+    source = "docs-lease"
+
+    def contribute(self, situation):
+        return []
+
+    def surface(self, situation):
+        return ["docs/**", "*.md"]
 
 
 class TempRoot:
@@ -112,6 +123,44 @@ class PullTest(unittest.TestCase):
                 journal.append(root, "unit.done", unit=uid, outcome="result", status="complete")
             out = handoff_mod.pull(root, units, [])
             self.assertEqual(out["status"], "complete")
+
+
+class LeaseSurfaceTest(unittest.TestCase):
+    def _unit(self):
+        sit = Situation(task_kind="change", intent="edit code", subject="coding",
+                        targets=["src/x.py"])
+        return Unit(id="u", situation=sit, unit_of_work="u")
+
+    def test_contributor_lease_overrides_targets_and_gate_enforces(self):
+        import gate
+        with TempRoot() as root:
+            out = handoff_mod.pull(root, [self._unit()], [_DocsLeaseContributor()],
+                                   delivery="inline")
+            self.assertEqual(out["status"], "ready")
+            rroot = root.resolve()
+            framed = journal.open_unit(rroot)["last"]
+            self.assertEqual(framed["surface"], ["*.md", "docs/**"])
+            # A source-file edit is outside the docs-only lease -> denied.
+            verdict, reason = gate.gate_decision(rroot, str(rroot / "src" / "x.py"))
+            self.assertEqual(verdict, "deny")
+            self.assertIn("lease surface", reason.lower())
+            # A docs edit is inside the lease -> allowed.
+            verdict, _ = gate.gate_decision(rroot, str(rroot / "docs" / "guide.md"))
+            self.assertEqual(verdict, "allow")
+
+    def test_fail_open_surface_derives_from_targets(self):
+        import gate
+        with TempRoot() as root:
+            out = handoff_mod.pull(root, [self._unit()], [], delivery="inline")
+            self.assertEqual(out["status"], "ready")
+            rroot = root.resolve()
+            framed = journal.open_unit(rroot)["last"]
+            self.assertEqual(framed["surface"], ["src/x.py"])
+            # No contributor claim: surface is exactly the situation targets.
+            verdict, _ = gate.gate_decision(rroot, str(rroot / "src" / "x.py"))
+            self.assertEqual(verdict, "allow")
+            verdict, _ = gate.gate_decision(rroot, str(rroot / "docs" / "guide.md"))
+            self.assertEqual(verdict, "deny")
 
 
 if __name__ == "__main__":

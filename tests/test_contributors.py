@@ -134,5 +134,54 @@ class GatherComposeTest(unittest.TestCase):
         self.assertIsNone(cb.gather([], _sit(phase="none"))["stance"])
 
 
+class _SurfaceContributor:
+    source = "leaseholder"
+
+    def __init__(self, globs):
+        self._globs = globs
+
+    def contribute(self, situation):
+        return []
+
+    def surface(self, situation):
+        return self._globs
+
+
+class SurfaceForTest(unittest.TestCase):
+    def test_claim_returns_sorted_union(self):
+        stub = _SurfaceContributor(["docs/**"])
+        self.assertEqual(cb.surface_for([stub], _sit()), ["docs/**"])
+
+    def test_contributor_without_surface_is_ignored(self):
+        plain = _StubContributor("s", "T", "B")
+        self.assertIsNone(cb.surface_for([plain], _sit()))
+
+    def test_multiple_contributors_union(self):
+        a = _SurfaceContributor(["docs/**"])
+        b = _SurfaceContributor(["*.md", "docs/**"])
+        self.assertEqual(cb.surface_for([a, b], _sit()), ["*.md", "docs/**"])
+
+    def test_empty_claim_returns_none(self):
+        self.assertIsNone(cb.surface_for([_SurfaceContributor([])], _sit()))
+
+    def test_validate_rejects_non_callable_surface(self):
+        class _BadSurface:
+            source = "s"
+            surface = "not callable"
+            def contribute(self, situation):
+                return []
+        self.assertTrue(cb.validate_contributor(_BadSurface()))
+
+    def test_raising_surface_is_skipped_fail_open(self):
+        class _Boom:
+            source = "boom"
+            def contribute(self, situation):
+                return []
+            def surface(self, situation):
+                raise RuntimeError("nope")
+        ok = _SurfaceContributor(["docs/**"])
+        self.assertEqual(cb.surface_for([_Boom(), ok], _sit()), ["docs/**"])
+
+
 if __name__ == "__main__":
     unittest.main()

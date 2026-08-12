@@ -21,4 +21,4 @@ Drive it through praxis with the Agent tool as the executor. praxis owns framing
 
 4. ESCALATE (stop and surface to the user; do not loop) when: a fan-out unit stalled, the fix loop exhausts its rounds, or a fix subagent reports the fix is a re-architecture, not a patch.
 
-5. CLOSE — report what ran, what the barrier showed, and any escalations. Tell the user they could drop out while the subagents ran.
+5. CLOSE — report what ran, what the barrier showed, and any escalations.

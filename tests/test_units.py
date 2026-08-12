@@ -36,7 +36,7 @@ output: a retrospective note
 
 def mkroot(base: Path, units_text: str | None = None) -> Path:
     (base / ".praxis").mkdir(parents=True, exist_ok=True)
-    (base / ".praxis" / "config.md").write_text("name: t\n")
+    (base / ".praxis" / "config.json").write_text("{}\n")
     if units_text is not None:
         (base / ".praxis" / "units.md").write_text(units_text)
     return base

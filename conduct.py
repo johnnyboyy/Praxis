@@ -18,25 +18,15 @@ from run import Receipt, Unit, run_unit, verifier_from_test_cmd
 from situation import Situation
 
 
-_SHAPE_KEYS = ("language", "framework", "has-ui", "styling", "package-manager")
-
-
-def project_shape_for(root: str | Path) -> dict:
-    cfg = config_mod.read(root)
-    return {key: cfg[key] for key in _SHAPE_KEYS if key in cfg}
-
-
-def init_root(root=None, language=None, framework=None, has_ui=None,
-              styling=None, package_manager=None) -> dict:
+def init_root(root=None) -> dict:
+    """Mark a directory a managed praxis root by ensuring an empty `.praxis/config.json` exists."""
     import root_tree
     start = Path(root).resolve() if root else Path.cwd()
     git_root = root_tree._git_toplevel(start)
     target = git_root if git_root is not None else start
-    shape = {"language": language, "framework": framework, "has-ui": has_ui,
-             "styling": styling, "package-manager": package_manager}
-    config_mod.write(target, None, {k: v for k, v in shape.items() if v is not None})
+    created = config_mod.ensure(target)
     return {"status": "initialized", "root": str(target),
-            "config": str(config_mod.path(target))}
+            "config": str(config_mod.path(target)), "created": created}
 
 
 class ClaudeExecutor:
@@ -117,14 +107,13 @@ def run_task(root: str | Path, *, intent: str, brief: str | None = None,
              task_kind: str = "change", subject: str = "coding",
              suggested_kind: str | None = None, fit: str = "clean", phase: str = "none",
              targets=(), label: str | None = None, workflow: str | None = None,
-             project_shape: dict | None = None, test_cmd: str | None = None,
+             test_cmd: str | None = None,
              model: str | None = None, max_retries: int | None = None,
              allow_edits: bool = False, dry_run: bool = False) -> dict:
     root = Path(root).resolve()
-    shape = project_shape if project_shape is not None else project_shape_for(root)
     situation = Situation(task_kind=task_kind, intent=intent, subject=subject,
                           suggested_kind=suggested_kind, fit=fit, phase=phase,
-                          project_shape=shape, root=str(root), targets=list(targets),
+                          root=str(root), targets=list(targets),
                           workflow=workflow, label=label)
     contributors = contributors_mod.contributors_for(root)
 
@@ -178,13 +167,7 @@ def run_tasklist(root: str | Path, tasks: list[dict], *, test_cmd: str | None = 
 
 def _specs_for(root: Path, tasks: list[dict]) -> list:
     import plan as plan_mod
-    shape = project_shape_for(root)
-    specs = []
-    for t in tasks:
-        d = dict(t)
-        d.setdefault("project_shape", shape)
-        specs.append(plan_mod.TaskSpec.from_dict(d))
-    return specs
+    return [plan_mod.TaskSpec.from_dict(dict(t)) for t in tasks]
 
 
 def run_tasklist_detached(root: str | Path, tasks: list[dict], *, test_cmd: str | None = None,

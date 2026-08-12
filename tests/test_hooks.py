@@ -136,6 +136,90 @@ class CloseHookTest(Base):
         self.assertEqual(c.fires["close"], 1)
 
 
+class _UnitCloseRecorder:
+    """Contributor whose only hook is unit-close; records (unit_id, receipt, verdict)."""
+
+    def __init__(self):
+        self.seen = []
+
+    def contribute(self, situation):
+        return [cb.Contribution(source="uc", title="t", body="b")]
+
+    def hooks(self):
+        return {"unit-close": self._on_unit_close}
+
+    def _on_unit_close(self, ctx):
+        self.seen.append((getattr(ctx.unit, "id", None), ctx.receipt, ctx.verdict))
+
+
+class _CloseOnlyRecorder:
+    """Contributor whose only hook is the batch close."""
+
+    def __init__(self):
+        self.seen = []
+
+    def contribute(self, situation):
+        return []
+
+    def hooks(self):
+        return {"close": self._on_close}
+
+    def _on_close(self, ctx):
+        self.seen.append((getattr(ctx.unit, "id", None), ctx.receipt))
+
+
+class UnitCloseHookTest(Base):
+    def test_fires_once_on_verified_pass_with_receipt_and_verdict(self):
+        rec = _UnitCloseRecorder()
+        R.run_unit(self.root, _u(), [rec], R.InlineExecutor(_ok),
+                   R.CallableVerifier(_verified))
+        self.assertEqual(len(rec.seen), 1)
+        uid, receipt, verdict = rec.seen[0]
+        self.assertEqual(uid, "u1")
+        self.assertEqual(receipt["outcome"], "result")
+        # canonical 6-key Receipt.to_dict shape, payload reachable via evidence
+        self.assertEqual(set(receipt),
+                         {"outcome", "status", "surfaced", "evidence", "cost", "tool_calls"})
+        self.assertTrue(verdict["verified"])
+
+    def test_fires_once_on_stall_with_none_verdict(self):
+        rec = _UnitCloseRecorder()
+        R.run_unit(self.root, _u(), [rec], R.InlineExecutor(_stall),
+                   R.CallableVerifier(_verified))
+        self.assertEqual(len(rec.seen), 1)
+        uid, receipt, verdict = rec.seen[0]
+        self.assertEqual(receipt["outcome"], "stall")
+        self.assertIsNone(verdict)
+
+    def test_fires_once_without_verifier(self):
+        rec = _UnitCloseRecorder()
+        R.run_unit(self.root, _u(), [rec], R.InlineExecutor(_ok), verifier=None)
+        self.assertEqual(len(rec.seen), 1)
+        self.assertEqual(rec.seen[0][1]["outcome"], "result")
+        self.assertIsNone(rec.seen[0][2])
+
+    def test_no_unit_close_hook_is_unaffected(self):
+        c = _CloseOnlyRecorder()
+        # a contributor lacking unit-close must not raise / not be invoked
+        R.run(R.Plan([_u()]), [c], R.InlineExecutor(_ok), self.root,
+              verifier=R.CallableVerifier(_verified))
+        self.assertEqual(len(c.seen), 1)  # only its close hook fired
+
+    def test_fires_once_per_unit_on_dag_path_and_close_once(self):
+        rec = _UnitCloseRecorder()
+        closer = _CloseOnlyRecorder()
+        plan = R.Plan([_u("u1"), R.Unit("u2", _sit(label="impl2"), depends_on=["u1"])])
+        S.run_dag(plan, [rec, closer], R.InlineExecutor(_ok), self.root,
+                  verifier=R.CallableVerifier(_verified))
+        # exactly-once per unit, no duplicates
+        self.assertEqual(sorted(uid for uid, _r, _v in rec.seen), ["u1", "u2"])
+        self.assertEqual(len(rec.seen), 2)
+        # batch close still fires exactly once per run
+        self.assertEqual(len(closer.seen), 1)
+        self.assertIsNone(closer.seen[0][0])   # empty context: no unit
+        self.assertIsNone(closer.seen[0][1])   # empty context: no receipt
+
+
 class FireNoOpTest(Base):
     def test_empty_contributors_is_noop(self):
         ctx = cb.HookContext(root=self.root, step="verify", unit=_u())

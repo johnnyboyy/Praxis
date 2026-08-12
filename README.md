@@ -30,8 +30,15 @@ claude --plugin-dir ./praxis
   from.
 - `/praxis:inline <task-or-question>` — do one small thing or answer a question in
   the current conversation: frame a single unit, work in-context, close it.
+- `/praxis:report [subcommand] [flags]` — view this repo's praxis journal, gap
+  candidates, and metrics/analytics inside Claude Code. It is a deterministic read
+  (a bundled `scripts/report.py` renders the append-only journal; no inference).
+  Subcommands: `summary` (default — a one-screen overview), `journal` (recent
+  entries; `--limit N`, `--unit UID`, `--event TYPE`), `gaps` (recurring vocabulary
+  gap candidates), `metrics` (per-phase / per-workflow runs, result/stall,
+  pass-rate). Every subcommand also takes `--json`.
 
-Both are explicit-only (they will not be auto-invoked by the model).
+All are explicit-only (they will not be auto-invoked by the model).
 
 ## Requirements
 

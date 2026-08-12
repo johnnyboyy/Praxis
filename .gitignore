@@ -3,7 +3,7 @@ __pycache__/
 .DS_Store
 
 # praxis per-root runtime state (journal fold, frames, markers) — generated, never committed
-# .praxis/config.md is committable; only the runtime state below is ignored
+# .praxis/config.json is committable; only the runtime state below is ignored
 .praxis/journal.jsonl
 .praxis/runtime-audit.log
 .praxis/trace.jsonl
