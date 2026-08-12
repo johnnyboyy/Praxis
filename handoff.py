@@ -41,18 +41,21 @@ def next_ready(root: str | Path, units: list[Unit]) -> Unit | None:
 def status(root: str | Path, units: list[Unit]) -> dict:
     root = Path(root).resolve()
     fold = journal.fold(root)
-    buckets = {"done": [], "in_flight": [], "stalled": [], "waiting": []}
+    buckets = {"done": [], "in_flight": [], "stalled": [], "escalated": [], "waiting": []}
     for u in units:
         st = _state_of(fold, u.id)
         if st == "done":
             buckets["done"].append(u.id)
+        elif st == "escalated":
+            buckets["escalated"].append(u.id)
         elif st == "stalled":
             buckets["stalled"].append(u.id)
         elif st in journal.IN_FLIGHT:
             buckets["in_flight"].append(u.id)
         else:
             buckets["waiting"].append(u.id)
-    complete = len(buckets["done"]) + len(buckets["stalled"]) == len(units)
+    complete = (len(buckets["done"]) + len(buckets["stalled"])
+                + len(buckets["escalated"]) == len(units))
     return {**buckets, "complete": complete, "total": len(units)}
 
 

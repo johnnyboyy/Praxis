@@ -20,11 +20,12 @@ STATE_EVENTS: dict[str, str] = {
     "unit.verified": "verified",
     "unit.done": "done",
     "unit.stalled": "stalled",
+    "unit.escalated": "escalated",
     "unit.closed": "closed",
 }
 
 IN_FLIGHT = {"framed", "dispatched", "running", "verifying", "verified"}
-CONCLUDED = {"done", "closed", "stalled"}
+CONCLUDED = {"done", "closed", "stalled", "escalated"}
 
 
 def _praxis_dir(root: Path) -> Path:

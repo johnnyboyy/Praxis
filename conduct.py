@@ -291,6 +291,34 @@ def _workflow_close_status(root: Path, unit_id: str) -> tuple[str, str | None] |
     return ("complete", None)
 
 
+def _escalated_reason(root: Path, unit_id: str) -> str | None:
+    """The reason a unit was escalated to a human, or None if it never was.
+
+    Escalation is a one-way terminal state (`unit.escalated`): distinct from a
+    retryable `stall`, it means the bounded fix loop is exhausted and a human is
+    required. Once journaled it BLOCKS close / receipt(result) — an escalated unit
+    can never be silently marked done, exactly like a halted workflow walk. Fail-soft:
+    a malformed journal reads as not-escalated rather than raising."""
+    reason: str | None = None
+    for e in journal.read(root):
+        if e.get("unit") == unit_id and e.get("event") == "unit.escalated":
+            reason = e.get("reason") or "unit escalated for human review"
+    return reason
+
+
+def escalate_unit(root: str | Path, unit_id: str, reason: str | None = None) -> dict:
+    """Record that a unit's bounded fix loop is exhausted and it NEEDS A HUMAN.
+
+    This is the explicit escalation terminal — a one-way state that is neither a
+    silent stall nor a retryable block. It journals `unit.escalated` (with `reason`)
+    so the unit surfaces in its own `escalated` bucket and can no longer be closed
+    or receipted `result` until a human intervenes."""
+    root = Path(root).resolve()
+    reason = (reason or "").strip() or "unit escalated for human review"
+    journal.append(root, "unit.escalated", unit=unit_id, status="escalated", reason=reason)
+    return {"status": "escalated", "unit": unit_id, "reason": reason}
+
+
 def close_unit(root: str | Path, unit_id: str | None = None, note: str | None = None) -> dict:
     root = Path(root).resolve()
     target = unit_id
@@ -299,6 +327,11 @@ def close_unit(root: str | Path, unit_id: str | None = None, note: str | None = 
         if open_u is None:
             return {"status": "no-open-unit"}
         target = open_u["unit"]
+    esc = _escalated_reason(root, target)
+    if esc is not None:
+        journal.append(root, "unit.note", unit=target, kind="close-rejected",
+                       reason=esc, escalated=True)
+        return {"status": "blocked", "unit": target, "reason": esc, "escalated": True}
     walk = _workflow_close_status(root, target)
     if walk is not None and walk[0] == "halted":
         journal.append(root, "unit.note", unit=target, kind="close-rejected",
@@ -312,6 +345,11 @@ def record_receipt(root: str | Path, unit_id: str, outcome: str = "result",
                    note: str | None = None) -> dict:
     root = Path(root).resolve()
     if outcome == "result":
+        esc = _escalated_reason(root, unit_id)
+        if esc is not None:
+            journal.append(root, "unit.note", unit=unit_id, kind="close-rejected",
+                           reason=esc, escalated=True)
+            return {"status": "blocked", "unit": unit_id, "reason": esc, "escalated": True}
         journal.append(root, "unit.done", unit=unit_id, outcome="result",
                        status="complete", note=note)
     elif outcome == "stall":

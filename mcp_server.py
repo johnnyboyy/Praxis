@@ -216,6 +216,18 @@ def record_receipt(unit_id: str, outcome: str = "result", note: str | None = Non
 
 
 @mcp.tool()
+def escalate_unit(unit_id: str, reason: str | None = None,
+                  search_base: str | None = None) -> str:
+    """Escalate a unit to a human: mark its bounded fix loop EXHAUSTED (needs-human). Use this
+    instead of `record_receipt(stall)` when a unit cannot progress on its own retries and requires
+    a person — it is a one-way terminal state. An escalated unit surfaces in its own `escalated`
+    bucket in `plan_status` (distinct from `stalled`) and can no longer be closed or receipted
+    `result` until a human intervenes."""
+    return json.dumps(conduct_engine.escalate_unit(_root(search_base), unit_id, reason=reason),
+                      indent=2)
+
+
+@mcp.tool()
 def conductor_status(search_base: str | None = None) -> str:
     """The journal fold for the governing root: the open unit (if any), the deliver-vs-stall summary
     by phase and workflow, and the cost rollup."""
