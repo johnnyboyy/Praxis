@@ -1,206 +1,235 @@
 # Praxis design — phases, typed edges, and workflows
 
-Praxis runs a **unit of work through a workflow** — a graph of **phases** — instead of a single
-dispatch. This document is the spec the implementation synthesizes from.
+**Snapshot as of 2026-08-11.** This is a point-in-time description; changes committed after this
+date may make it stale — check `git log` against this date. For the decision history that produced
+this state (the append-only discovery log), see [`docs/design-log.md`](design-log.md).
 
-## Primitives
+Praxis runs a **unit of work through a workflow** — a graph of **phases** — rather than a single
+dispatch. This document is both the conceptual model (the part that does not fall out of the code)
+and a map of what is actually wired today, with `file:line` anchors.
+
+---
+
+## Conceptual model
+
+### Primitives
 
 **Phase** — one atomic move an agent (or a deterministic step) makes.
 ```
-Phase = { name, stance, intent, produces, delivery, gate }
-  stance   : divergent | convergent | neutral        # secondary to the edge for context decisions
+Phase = { name, stance, intent, produces, delivery, run }
+  stance   : divergent | convergent | neutral   # secondary to the edge for context decisions
   produces : the result contract — what "done" looks like
   delivery : inline | spawn | deterministic
-  gate     : the preservation check to advance (see below)
+  run      : a Callable, used only when delivery == "deterministic"
 ```
 
-**Workflow** — a graph of phases with typed, possibly-conditional edges; a phase may expand into a
-sub-workflow.
+**Workflow** — a graph of phases with typed, possibly-conditional edges.
 ```
-Workflow = { name, phases[], edges[(from,to,when)], expand{phase: sub-workflow} }
-  when : pass | fail | always | agent-choice
+Workflow = { name, phases[], edges[(from,to,when,edge_type[,predicate])], expand }
+  when : pass | fail | always | agent-choice | feeds | fact
 ```
 
-**Unit** already carries `workflow` and `phase_index` in the journal schema (dormant until now). A
-phase run is a journal record like a unit run: `phase.entered` / `phase.exited` with `phase`,
-`phase_index`, `phase_fit`.
+There is deliberately **no phase-intrinsic `gate` field** — the preservation gate is a property of
+the incoming edge, not the phase (see below). The `expand` slot (phase → sub-workflow) exists on the
+dataclass but is not yet driven.
 
-## The context boundary is a property of the EDGE, not the phase
+### The context boundary is a property of the EDGE, not the phase
 
 Firmest seam in the system. An artifact in context is an **attractor**: instructions cannot reliably
-override it. So the edge into a phase is typed by what that phase does to the prior artifact:
+override it. So the edge into a phase is typed by what that phase does to the prior artifact, and the
+edge type — not the phase — selects the preservation gate:
 
-| edge     | did to the original | what's in context           | preservation gate      | question        |
-|----------|---------------------|-----------------------------|------------------------|-----------------|
-| create   | none existed        | the IR (prescriptive spec)  | new-behavior check     | *does it?*      |
-| carry    | perturbs it         | the original (it should anchor) | regression / suite | *didn't break?* |
-| extract  | rebuilds it         | the IR only (original dropped)  | coverage-diff       | *covered it?*   |
+| edge    | did to the original | what's in context               | preservation gate | question        |
+|---------|---------------------|---------------------------------|-------------------|-----------------|
+| create  | none existed        | the IR (prescriptive spec)      | `does-it`         | *does it?*      |
+| carry   | perturbs it         | the original (it should anchor) | `regression`      | *didn't break?* |
+| extract | rebuilds it         | the IR only (original dropped)  | `coverage-diff`   | *covered it?*   |
 
-**Every edge carries a preservation gate; its form is a function of what the edge did to the original.**
-Coverage-diff is not generic — it is the compensating control specific to the `extract` edge, the price
-of having dropped the original to escape its pull.
+**Every edge carries a preservation gate; its form is a function of what the edge did to the
+original.** Coverage-diff is not generic — it is the compensating control specific to the `extract`
+edge, the price of having dropped the original to escape its pull.
 
-## The rebuild triple (the `extract` edge, expanded)
+### The rebuild triple (the `extract` edge, expanded)
 
 A hard seam is never one phase:
 ```
-extract      original IN   — inventory / classify / define-interface → produces the IR (no synthesis)
+extract       original IN — inventory / classify / define-interface → produces the IR (no synthesis)
   ── drop the original ──
-synthesize   IR ONLY       — rebuild to the interface, free of the attractor
-coverage-diff both IN      — TWO directions: losslessness (IR covered?) + completeness (target spec met?)
+synthesize    IR ONLY     — rebuild to the interface, free of the attractor
+coverage-diff both IN     — TWO directions: losslessness (IR covered?) + completeness (spec met?)
 ```
 Who may hold the original is decided by what the phase emits: **restructures it → no; analyzes it →
 yes; compares it → both.** `plan` is itself an extraction (request → units/edges = the IR), so
-planning and re-architecture are the same move at different altitudes.
+planning and re-architecture are the same move at different altitudes. `coverage-diff` is
+two-input — it consumes *both* `extract`'s IR and `synthesize`'s artifact; the linear single-slot
+carry cannot feed it, which is why the runner threads a named-output map (below).
 
-## Two altitudes
+### Two altitudes
 
-**Orchestration** (across units) — where verification is DEFERRED to a barrier:
+**Orchestration** (across units) — verification is DEFERRED to a single barrier:
 ```
 plan → fan-out (units run isolated, in parallel) → ┃BARRIER┃ → verify(full suite, once)
                                                               ├ fail → fix units → re-verify
                                                               └ pass → close
 ```
-**Unit** (within a unit) — e.g. TDD:
+**Unit** (within a unit) — a phase-walked workflow, e.g. TDD:
 ```
 write-tests → implement → refactor → test-cleanup
 ```
-Two verification scopes: **local** (a unit's own new tests, fast, inside the unit workflow — what
-`implement` passes against) and **global** (the full suite, once, at the barrier).
+Two verification scopes: **local** (a unit's own new tests, fast, inside the unit workflow) and
+**global** (the full suite, once, at the barrier).
 
-## Contributions per phase
+### Discovery over stone
 
-`gather` runs at each phase with the phase in the `Situation`; contributors return phase-appropriate
-sections.
+Every phase exit reports `phase_fit` (clean|loose|none) + `suggested` (what the agent would call
+what it actually did) — the same mechanism as task-kind fit, lifted to process. `loose`/`none`
+writes a `phase.gap`; recurring gaps promote (via `accretion`) into new vocabulary. Seed the phase
+set small; grow it from where real work strains.
 
-## Discovery over stone
+---
 
-Every phase exit reports `phase_fit` (clean|loose|none) + `suggested` (what the agent would call what
-it actually did) — the same mechanism as task-kind fit, lifted to process. `loose`/`none` writes a
-`phase.gap`; recurring gaps promote (via `accretion`) into new phases or edges. A mis-typed edge
-surfaces as attractor-pull friction (an agent in a `synthesize` phase reaching for the original) — a
-`phase.gap` with a specific diagnosis. Seed the phase set small; grow it from where real work strains.
+## Current state (verified against code)
 
-## Definitions
+### Phase / workflow data model — `workflow.py`
 
-- **Planning** = extraction of an open request into structure (units, edges, per-unit workflow). Output
-  is an IR, not code. Where reuse is discovered.
-- **Implementation** = a *workflow*, not a phase. TDD is one; others (spike-first, code-first) compose
-  differently.
-- **Testing** = plural: `write-tests` (author intent), `verify` (run — local or global), `test-cleanup`
-  (editorial pruning). "Testing" as one word is itself a gap the fit-signal surfaces.
+- `EdgeType` = create / carry / extract (`workflow.py:8`); `GATES` maps each to its gate name
+  `does-it` / `regression` / `coverage-diff` (`workflow.py:14`).
+- `WHENS = (pass, fail, always, agent-choice, feeds, fact)` (`workflow.py:20`);
+  `STANCES` (`:21`), `DELIVERIES` (inline/spawn/deterministic, `:22`).
+- `Phase` dataclass carries `run` (a Callable for deterministic delivery); there is **no `gate`
+  field** (`workflow.py:25`). `Workflow` has `phases`, `edges`, optional `expand` (`:36`).
+- `edge_parts` normalizes 4-tuples (predicate padded `None`) and 5-tuples (`fact`,predicate)
+  interchangeably (`workflow.py:52`) — full backward compatibility.
+- Seed phases: `plan, write-tests, implement, refactor, test-cleanup, verify, fix, close, extract,
+  synthesize, coverage-diff` (`workflow.py:68-94`). `verify` and `coverage-diff` are
+  `delivery="deterministic"`.
+- Seed workflows (`workflow.py:97-130`): **tdd-unit** (write-tests→implement→refactor→test-cleanup,
+  all carry), **rebuild-triple** (extract→synthesize via *extract* edge; synthesize→coverage-diff
+  carry; extract→coverage-diff via **feeds**, wiring the two-input phase), **build-verify**
+  (implement→verify→close pass, verify→fix on **fail**, fix→verify — a bounded fix-loop).
 
-## Seed phase library
+### The phase-walking runner — `workflow_run.py`
 
-`plan`, `write-tests`, `implement`, `refactor`, `test-cleanup`, `verify`, `fix`, `close`; and the
-rebuild triple `extract`, `synthesize`, `coverage-diff`.
+`run_workflow` (`workflow_run.py:86`) walks phases from `start` (or `workflow.first`):
 
-## Build status
+- **Per-phase gather.** Each phase copies the unit `Situation`, sets `situation.phase` to the
+  stance (divergent/convergent, else "none") and `situation.phase_name` to the phase name, then
+  `gather`s contributors — passing `root` only on the first phase so the task-kind gap surfaces
+  **once**, not per phase (`workflow_run.py:112-116`).
+- **Delivery.** `delivery=="deterministic"` with a callable `run` executes in-process and builds a
+  `Receipt` from its evidence (`passed` → result/stall) (`:129-144`); otherwise `executor.run(unit,
+  composed)` (`:146`).
+- **Edge-derived gate + verifier.** The gate is `GATES[edge_in]` (create for the entry phase);
+  the matching verifier from `verifiers` runs, defaulting `verified=True` when none is supplied
+  (`:148-150`).
+- **Advance rule.** `passed = evidence["passed"]` (default: receipt outcome == result);
+  `advance = passed AND verified` — a failed preservation gate forces the non-advance path
+  (`:172-173`).
+- **`_choose_edge` routing** (`workflow_run.py:48`), in order: (1) if not advancing, the first
+  `fail`/`always` edge wins (failure short-circuits; forward branches are not consulted); (2)
+  advancing — `fact` predicate edges are tried in **declaration order**, first truthy predicate
+  wins (a raising predicate is fail-soft no-match); (3) `agent-choice` matching `evidence["next"]`;
+  (4) default `pass`/`always`.
+- **Named-output threading.** `outputs[phase]` records each phase's `produces`; a phase's `inputs`
+  are assembled from **all** incoming edges (`_incoming`, `:81`) — this is what lets `coverage-diff`
+  read both predecessors. `carry`/`ir` are also injected into `composed` by edge type
+  (carry→`composed["carry"]`, extract→`composed["ir"]`) (`:117-123`).
+- **`max_phase_loops` guard** (default 3): re-entering a phase beyond the budget emits
+  `phase.stalled` and halts (`:106-110`).
+- **Unmatched-route guard.** When a phase emits `evidence["next"]` that no outgoing agent-choice
+  edge targets, `run_workflow` always journals `phase.route_unmatched` with `kind` classified as
+  `unknown` (not in `resolve_phases` — a bug) vs `unwired` (registered but no edge here); a
+  facts-only phase where all predicates/default miss journals `kind="no-match"`. The opt-in
+  core-scope flag `stall-on-unmatched-route` (`_stall_on_unmatched`, `:21`; string case-insensitive
+  `"true"`) converts the fall-through into a `phase.stalled` halt (`:180-205`).
+- **`unit-close` hook** fires once at the end with the aggregated final receipt (`:220-222`); the
+  return carries `phases` walked, `phase_fits`, `gaps`, and `final`/`receipt`.
 
-Implemented (first cut): phase/workflow data model; a phase-walking runner recording `phase_fit`;
-per-edge preservation-gate dispatch; per-phase `gather`; `phase.gap` recording via accretion.
+### Orchestration altitude — `orchestrate.py`
 
-Discovered-next (grown, not pre-built): the deferred barrier-verify + fix-loop at the orchestration
-altitude; TDD as a wired unit workflow; agent-choice edges; and unit-completion for inline conductor
-runs (see the discovery log below).
+`run_orchestrated` (`orchestrate.py:44`):
 
-## Discovery log
+- **Fan-out** via `schedule.run_dag` (`:49`) — waves by dependency, `ThreadPoolExecutor` at
+  `concurrency`, `resume=True` skips already done/stalled units.
+- **Single barrier full-verify** (`:64-71`): a `() -> Verdict` callable, retried across
+  `fix_rounds`; `verdict.verified` → `orchestration.closed`, status `complete`.
+- **Bounded fix-loop** (`:72-84`): each barrier defect spawns a targeted **fix-unit** (a `change`
+  Situation from `defect_owner`, default `fix: <defect>`), run inline via `run_unit`; fix-units
+  patch in place (carry semantics).
+- **Three escalation triggers**, all `orchestration.escalated` + `status="escalated"`, never
+  auto-replanned: (1) a fan-out unit **stalled** — barrier skipped (`:51-56`); (2) a fix-unit
+  reports **structural misfit** (stall or `phase_fit` loose/none) (`:79-84`); (3) the fix-loop
+  **exhausts** `fix_rounds` (`:86-88`). Escalations carry `failing_subdag` (transitive dependents
+  of the failing seeds, `failing_subdag` at `:21`).
+- **`replan`** (`orchestrate.py:91`) is **caller-driven, not automatic**: it splices a
+  caller-supplied replacement into the surviving units and re-runs with `resume=True`. The engine
+  never picks the replacement — that is the caller's judgment.
 
-- 2026-08-10: the inline conductor path (`register_plan` + `next_handoff`) has no unit-completion
-  event, so a multi-unit inline DAG stalls at the first dependency (`next_ready` unlocks a unit only
-  when its deps are `done`, and nothing marks an inline unit `done`). Surfaced by trying to enact this
-  very build as a multi-unit inline plan. Needs an inline "phase/unit complete" close.
+### Registry — `registry.py`
 
-Surfaced by *building* the runner:
+`resolve_phases` / `resolve_workflows` (`registry.py:91`, `:114`) start from `SEED_PHASES` /
+`SEED_WORKFLOWS` and merge contributor-supplied objects from optional `phases()` / `workflows()`
+providers. Collision policy: **seed always wins**; plugin-vs-plugin **first loaded wins**; invalid
+objects / colliding names / a raising provider are skipped fail-soft (validation:
+`validate_phase` `:30`, `validate_workflow` `:43`, which also checks `fact` edges carry a callable).
 
-- **`coverage-diff` is a two-input phase the single-slot boundary can't feed** (highest priority). The
-  runner threads one `carry`/`ir` value between phases, but coverage-diff needs BOTH the original IR and
-  the newly-synthesized artifact ("both IN"). Fix: thread a small map of named phase outputs, not one
-  slot, so a phase can consume several prior outputs. This is the rebuild triple straining against the
-  linear model.
-- **`gather` re-surfaces the task-kind gap at every phase.** With a loose/none unit fit, each phase
-  re-emits a `conductor.gap`. The task-kind gap should surface once (at the first phase), not per phase.
-- **The phase-level `gate` field is unused** — gates are edge-derived (`GATES[edge_in]`). Either drop
-  the field or give it a distinct meaning (a phase-intrinsic check independent of its incoming edge).
-- **Traversal is linear** — only `pass`/`always` edges are walked; `fail`/`agent-choice` edges (the
-  fix-loop, dynamic routing) are defined-but-not-yet-driven. Expected for this cut.
-- **Starting mid-graph treats the first phase as `create`** — no incoming edge is honored on resume.
+### Unit dispatch — `run.py`
 
-- 2026-08-10 (later): **resolved discoveries 1–3.** `run_workflow` now threads a named-output map and
-  assembles each phase's `inputs` from ALL its incoming edges, with a new `feeds` (input-only) edge
-  type; `coverage-diff` now receives both `extract`'s IR and `synthesize`'s artifact end-to-end (the
-  rebuild triple is whole). The task-kind gap surfaces once (first phase only). The unused
-  `Phase.gate` field is dropped (gates are edge-derived). Still open: conditional-edge traversal
-  (`fail`/`agent-choice` — the fix-loop) and the orchestration altitude (fan-out → barrier → fix →
-  close), plus inline unit-completion.
+- `Receipt` (`run.py:16`): outcome ∈ {result, stall}, plus status, surfaced, evidence, cost,
+  tool_calls.
+- `run_unit` (`run.py:160`) frames the unit (`gather` + `surface_for`), then **routes on
+  `situation.workflow`**: if set and resolvable, it delegates to `run_workflow` (the workflow path,
+  `:171-176`); otherwise **single-dispatch** — an executor loop with up to `max_retries` retries,
+  a verifier gate, defect feedback threaded back into the next attempt, and a `unit-close` hook on
+  finish (`:181-236`).
 
-- 2026-08-10 (later still): **conditional-edge traversal done.** The runner routes on a phase outcome
-  (`evidence["passed"]`, defaulting to receipt success) rather than blindly following `pass`: a `fail`
-  edge routes to a repair phase, so `verify --fail--> fix --pass--> verify` forms a bounded fix-loop
-  (`max_loops` guard emits `phase.stalled` and halts). `agent-choice` edges follow `evidence["next"]`.
-  The composed dict now carries `phase` so executors are phase-aware. New `build-verify` seed workflow.
-  Note (new discovery): routing outcome (receipt/`passed`) is deliberately DECOUPLED from the
-  preservation gate (`verified`, recorded but not routing); unifying them — a failed gate forcing a
-  fail-route — is a future call. Still open: the orchestration altitude across units (fan-out →
-  barrier full-verify → fix units) and inline unit-completion.
+### Situation — `situation.py`
 
-- 2026-08-10 (orchestration altitude, first cut): `orchestrate.run_orchestrated` — fan-out via
-  `run_dag`, then a single **barrier full-verify** (a `() -> Verdict` callable), then a bounded
-  fix-loop that spawns targeted **fix-units** per defect (carry edge, patch in place) and re-verifies.
-  **Escalation to re-plan is triggered, not defaulted**, on three signals: a fan-out unit `stalled`
-  (barrier skipped — nothing to verify), the fix-loop exhausting `max_loops`, or a fix-unit reporting
-  structural misfit (stall or `phase_fit` loose/none — a perturbation that was secretly a rebuild).
-  The hook only records `orchestration.escalated` + returns `status="escalated"`; **re-plan machinery
-  is deliberately deferred** until a real run trips a trigger (grow it when the failure tells us its
-  shape). Rationale (agreed): fix-units are the standard because they're non-destructive (preserve the
-  passing units); re-plan is the expensive re-extraction reserved for structural failure.
-  Process note: this unit was built by SPAWN + verify (the model's default), correcting two prior
-  units done inline — inline is now a *declared* carry-edge exception, not a silent convenience.
+`Situation` (`situation.py:19`) splits **stance** (`phase` ∈ divergent/convergent/none, `:27`) from
+**identity** (`phase_name`, the phase's own name, `:28`). `project_shape` is **gone** as a
+concept/field (confirmed: `grep project_shape` finds nothing in the code), and
+`Situation`/`TaskSpec` no longer carry the old language/framework/has-ui shape fields.
 
-- 2026-08-10 (drive surface wired): the detached cascade (`plan` tool, dry_run=false) now flows
-  through `run_orchestrated` — a driven plan gets barrier-verify + fix-units + escalation, not just
-  fan-out (`barrier_from_test_cmd` builds the barrier; no `test_cmd` → trivial pass = prior behavior).
-  Added `close_unit` (`conduct` + MCP tool): records `unit.done` for the open/named inline unit, so
-  multi-unit inline DAGs advance past dependencies and the gate closes when a unit finishes — closing
-  the inline-completion gap. **Two entry points now exist:** the ORCHESTRATOR (`plan` → detached
-  spawn-per-unit; drop out, poll `plan_status`) and INLINE (`register_plan` → `next_handoff` →
-  `close_unit`; stay in-context — questions, small carry-edge work). New MCP tools are live only after
-  an MCP-server restart. Open: `max_loops` is derived from `max_retries` (overloaded — a dedicated
-  fix-loop budget later); `close_unit` only closes as `result` (no stalled/abandoned close yet).
+### Contributors — `contributors.py`
 
-- 2026-08-11 (git-based opt-in roots + bootstrap; SECOND real /praxis:orchestrate drive): root
-  discovery is now git-bounded and opt-in (`root_tree.resolve_root`: nearest `.praxis/config.md` up to
-  the git root, else `None` — unmarked repos ungated); `config.py` makes `.praxis/config.md` a
-  namespaced store; `/praxis:init` + `conduct.init_root` + `init` tool bootstrap a repo; the drive
-  tools surface "not-a-root". `.gitignore` narrowed so `config.md` is committed, runtime ignored.
+The `Contributor` contract is duck-typed: required `source` + `contribute(situation)`; optional
+`hooks()`, `surface()`, `phases()`, `workflows()` (`validate_contributor` `:72`). `gather`
+(`:113`) composes contributions (priority-sorted) plus routing metadata and surfaces the task-kind
+gap once. `fire` (`:48`) dispatches a `HookContext` to each contributor's `hooks()[step]` — the
+**`unit-close`** step is fired from both `run.py:189` (single-dispatch) and `workflow_run.py:220`
+(workflow path). `contributors_for` (`:90`) loads `module:factory` specs from the config
+`contributors` scope, fail-soft.
 
-- 2026-08-11 (three backlog items resolved, overnight): (1) **gate/routing unified** (`2d2fa57`) — a
-  phase advances only if `passed AND verified`; a failed preservation gate forces the fail-route.
-  (2) **loop budgets split** (`144da12`) — `max_retries` (per-unit) / `fix_rounds` (barrier fix-loop) /
-  `max_phase_loops` (phase re-entry guard) are now distinct; cascade no longer derives the fix-loop
-  from per-unit retries. (3) **re-plan scaffolding** (`e5de377`) — `failing_subdag` + `replan` splice a
-  caller-provided replacement and re-run scoped via `resume=True`; escalations carry `failing_subdag`;
-  the replacement is the caller's judgment (no auto-loop). `record_receipt(outcome="stall")` now covers
-  the stalled/abandoned inline close.
+### Config — `config.py`
 
-- 2026-08-11 (config retired to a plugin store; markdown→JSON): the project-shape fields
-  (`language`/`framework`/`has-ui`/`styling`/`package-manager`) were speculative infra with no
-  consumer — `init` detected them, they rode every `Situation`, and nothing read them. Retired
-  wholesale: `/praxis:init` no longer detects anything, `init_root`/`init` just `config.ensure` an
-  empty file, and `project_shape` is gone from `Situation`/`TaskSpec`/`plan`. With the human-authored
-  identity record gone, the store's role is now purely machine read/write by plugins, so `config.py`
-  moved from a bespoke flat-`key: value` markdown parser to JSON (`.praxis/config.json`): values are
-  raw, so plugins can persist lists/nested/typed config, not just strings. The marker (root
-  discovery, gate hooks) follows to `config.json`; a fresh root is a clean `{}`. Its *existence*,
-  not its contents, is still what marks a managed root — the only load-bearing part.
+A JSON store at `.praxis/config.json` (`config.py:15`), namespaced: the unnamed scope is
+praxis-core, each named scope is a plugin. `read`/`write` operate per scope (`:22`, `:26`);
+`ensure` (`:35`) creates an empty `{}` and returns whether it was created. **Existence, not
+contents, is the root marker** — a clean root is `{}`.
 
-- 2026-08-11 (unmatched-route guard): the phase walk silently fell through to the pass/always edge when
-  a phase emitted an `evidence['next']` that no outgoing `agent-choice` edge from the current phase
-  targeted — a typo'd or renamed route just vanished. Now `workflow_run` always journals
-  `phase.route_unmatched` at that point `{unit, phase, phase_index, next, kind, resolved}`, classifying
-  `kind` as `unknown` (the name is not in `resolve_phases(root)` — a bug) vs `unwired` (a registered
-  phase with no edge from here — possibly an intentional ignore); `resolved` is the fall-through target
-  phase name, or `"stall"`. An opt-in core/unnamed-scope flag `stall-on-unmatched-route` (string,
-  case-insensitive `"true"`; anything else/absent preserves today's fall-through) turns the fall-through
-  into a `phase.stalled` halt via the same mechanism the `max_phase_loops` guard uses. Scope is narrow:
-  no event when `next` is absent or an agent-choice edge matches.
+### Entry points — `conduct.py` + `mcp_server.py`
+
+The MCP server (`mcp_server.py`) is registered under the surface name **`px`** (`.mcp.json`); tools
+appear as `mcp__plugin_praxis_px__*`. Two paths:
+
+- **ORCHESTRATOR** — `plan` (`mcp_server.py:93`) → `conduct.run_tasklist_detached` → a **detached**
+  cascade (`cascade.launch_detached`) that spawns a **single** worker process which then runs the
+  whole DAG itself (`schedule.run_dag` — a ThreadPoolExecutor over dependency waves) with per-unit
+  isolation and resumability; returns
+  `running`, poll `plan_status`. `dry_run=True` (the default) previews without spawning.
+- **INLINE** — `register_plan` (`:138`, records the DAG, no spawn/gather) → `next_handoff` (`:157`,
+  pulls the next ready unit, frames it, opens the edit gate) → `close_unit` / `record_receipt`.
+  `close_unit` (`conduct.py:221`) journals `unit.done` (result only) for the open/named unit so an
+  inline DAG advances past its dependencies; `record_receipt(outcome="stall")` (`conduct.py:239`)
+  journals `unit.stalled` for the abandoned/blocked inline close (dependents stay waiting).
+
+`conduct` (single unit, `mcp_server.py:58`) and `init` (`:50`) round out the surface;
+`conductor_status` / `conductor_gaps` / `conductor_mint` expose the journal fold, promotable gaps,
+and the operator mint gate.
+
+### Support modules
+
+`journal.py` (append-only event log + `fold`), `accretion.py` (gap counting + `mint`/`is_known`),
+`handoff.py` (`assemble` overlay/brief, `next_ready`, `pull`), `policy.py` (per-root
+`max_retries`/`concurrency`/`verify_required`), `schedule.py` (`run_dag` wave scheduler with cycle
+detection and resume) back the two altitudes above.
