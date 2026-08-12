@@ -1,7 +1,6 @@
 ---
 id: coding-react
 subject: coding
-posture: convergent
 universal: false
 applies-when:
   - framework: react

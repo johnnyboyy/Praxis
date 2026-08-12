@@ -48,9 +48,12 @@ module — discovery is marker-driven and static (no import, no filename convent
 precedence (higher wins on a name collision):
 
 1. **bundled** — `plugins/` shipped with praxis (default plugins-root, derived from `__file__`).
-2. **global** — best-effort scan of the Claude Code plugins dir (`~/.claude/plugins`), so a
-   praxis plugin bundled inside a Claude Code plugin, installed globally, is discoverable in
-   every project. Fail-soft if absent.
+2. **global** — best-effort enumeration of Claude Code's *installed* plugins under `~/.claude`:
+   install paths read from `plugins/installed_plugins.json` (the authoritative v2 registry) plus
+   `skills/` symlink targets (skills-directory plugins Claude Code symlinks in), each scanned for
+   the marker. Plugin *source* does not live under `~/.claude/plugins/`, so that dir is never
+   scanned directly. This makes a praxis plugin shipped inside an installed Claude Code plugin
+   discoverable in every project. Fail-soft if the registry/skills dir is absent or malformed.
 3. **project** — `<root>/.praxis/plugins`.
 4. **explicit** — dirs listed in the root's top-level `plugins_search_paths` config key.
 

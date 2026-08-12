@@ -4,7 +4,6 @@ id: monorepo-coordination
 #   in the `monorepo` plugin's domains_dir -> owner: monorepo
 #   in root/.praxis/domains               -> owner: project
 subject: process
-posture: convergent
 universal: false
 applies-when: []
 workflows: [coordinate-work]

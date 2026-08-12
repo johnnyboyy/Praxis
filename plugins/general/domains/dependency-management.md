@@ -1,7 +1,6 @@
 ---
 id: dependency-management
 subject: coding
-posture: convergent
 universal: false
 applies-when: []
 labels: [dependency-management]

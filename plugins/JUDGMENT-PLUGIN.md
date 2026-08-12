@@ -150,7 +150,7 @@ the `contributors` namespace, pointing `"<name>"` at the `make` factory as
 ```json
 {
   "contributors": {
-    "corpora": "corpora.injector:make",
+    "corpora": "corpora.plugin:make",
     "<name>": "<name>_plugin:make"
   }
 }
@@ -204,7 +204,7 @@ sequences breaks the load.
 
 | Old element | New element | Rule |
 |---|---|---|
-| frontmatter `posture: guardrail` | `posture: convergent` | Map to the enum `convergent \| divergent \| neutral`. `guardrail` (encodes the well-trodden path) → `convergent`. A differentiation/identity domain → `divergent`. Purely factual/structural → `neutral`. |
+| frontmatter `posture: ...` | **DROP** | `posture` is retired — stance is a praxis phase concern now. The composer no longer reads it and the parser tolerates its absence; omit it entirely. |
 | frontmatter `units-of-work: [...]` | **DROP**, or fold into affinity tags | Not a schema field. Where it carries signal: implementation-ish units → `task-kinds: [create, change]`; a named process (e.g. `debug`, `tdd`) → `workflows: [...]`; a topical tag → `labels: [...]`. Otherwise omit entirely. |
 | frontmatter `subject` | `subject` | Keep unchanged (already compatible). |
 | frontmatter `universal` | `universal` | Keep unchanged. |
@@ -219,8 +219,9 @@ sequences breaks the load.
 
 ### Required-field checklist per file
 
-- **Frontmatter (required)**: `id`, `subject`, `posture`. (`applies-when`,
-  `universal`, `task-kinds`, `workflows`, `labels` are optional.)
+- **Frontmatter (required)**: `id`, `subject`. (`applies-when`,
+  `universal`, `task-kinds`, `workflows`, `labels` are optional; `posture` is
+  retired — omit it.)
 - **Each convention**: `id`, `rule`.
 - **Each principle**: `id`, `rule`, `condition`, `reason` — all four.
 - **Body**: valid YAML mapping; only `conventions:` and `principles:` at top
@@ -279,7 +280,7 @@ principles:
 killed:
 ```
 
-Problems: `posture: guardrail` is not in the enum; `units-of-work` is not a
+Problems: `posture` is retired (drop it); `units-of-work` is not a
 field; there is no `id` in frontmatter; the `# Domain:` header and the preamble
 prose sit in the body where `yaml.safe_load` chokes; `last-retrospective:` and
 `killed:` are stray body keys.
@@ -293,7 +294,6 @@ id: coding-general
 #   in the `general` plugin's domains_dir -> owner: general
 #   in root/.praxis/domains              -> owner: project
 subject: coding
-posture: convergent
 universal: false
 applies-when: []
 task-kinds: [create, change]

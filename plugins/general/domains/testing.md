@@ -1,7 +1,6 @@
 ---
 id: testing
 subject: coding
-posture: convergent
 universal: false
 applies-when: []
 workflows: [tdd, build-verify]

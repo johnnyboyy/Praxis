@@ -1,7 +1,6 @@
 ---
 id: css
 subject: coding
-posture: convergent
 universal: false
 applies-when:
   - styling: not-none

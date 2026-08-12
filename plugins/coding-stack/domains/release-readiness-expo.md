@@ -1,7 +1,6 @@
 ---
 id: release-readiness-expo
 subject: coding
-posture: convergent
 universal: false
 applies-when:
   - framework: expo

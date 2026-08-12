@@ -24,7 +24,7 @@ In the consuming root's `.praxis/config.json`:
 ```json
 {
   "contributors": {
-    "corpora": "corpora.injector:make",
+    "corpora": "corpora.plugin:make",
     "monorepo": "monorepo_plugin:make"
   }
 }

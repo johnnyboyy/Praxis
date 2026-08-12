@@ -1,7 +1,6 @@
 ---
 id: coding-expo
 subject: coding
-posture: convergent
 universal: false
 applies-when:
   - framework: expo

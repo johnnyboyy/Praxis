@@ -1,7 +1,6 @@
 ---
 id: debugging
 subject: coding
-posture: convergent
 universal: false
 applies-when: []
 workflows: [debug]

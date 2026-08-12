@@ -1,7 +1,6 @@
 ---
 id: validation-feedback
 subject: design
-posture: convergent
 applies-when:
   - has-ui: yes
 universal: false

@@ -1,7 +1,6 @@
 ---
 id: coding-ts
 subject: coding
-posture: convergent
 universal: false
 applies-when:
   - language: typescript

@@ -1,7 +1,6 @@
 ---
 id: architecture-health
 subject: coding
-posture: convergent
 universal: false
 applies-when: []
 labels: [architecture-scan]

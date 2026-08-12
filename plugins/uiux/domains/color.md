@@ -1,7 +1,6 @@
 ---
 id: color
 subject: design
-posture: divergent
 applies-when:
   - has-ui: yes
 universal: false

@@ -2,7 +2,7 @@
 
 A **high-level map** of the plugins, bundled with praxis under `praxis/plugins/<name>/`.
 Shallow by design (names + one job each). For how to build one, read `JUDGMENT-PLUGIN.md`;
-for the domain schema, `corpora/domain-file.md`.
+for the domain schema, the peer corpora repo (`~/jdev/skills/corpora`, package `corpora`).
 
 Two kinds of thing a plugin can carry (a plugin may do either or both):
 - **Judgment** — a `domains_dir` of `*.md` domain files that **corpora** discovers and composes.
@@ -27,9 +27,13 @@ precedence (higher layer wins on a name collision):
 
 ## The composer
 
+corpora is **no longer bundled here** — it lives as a **peer repo** (`~/jdev/skills/corpora`,
+package `corpora`) registered as `corpora.plugin:make` (discovered via the `~/.claude/skills`
+symlink or a `plugins_search_paths` entry). It is not one of the plugins under `praxis/plugins/`.
+
 | Plugin | Role |
 |---|---|
-| **corpora** | The **pure composer** — ships NO domains. Discovers every registered plugin's `domains_dir` + the project-local pool (`<root>/.praxis/domains`), merges under two-layer precedence (plugin < project), does a coarse subject/shape cut, and defers the fine "does this apply" call to the model. Also **harvests** proposals into an unratified `candidates.md` on `unit-close`. Modules: `injector.py` (compose), `discovery.py` (merge), `parser.py`, `weights.py`, `models.py`. |
+| **corpora** (peer) | The **pure composer** — ships NO domains. Discovers every registered plugin's `domains_dir` + the project-local pool (`<root>/.praxis/domains`), merges under two-layer precedence (plugin < project), does a coarse subject/shape cut, and defers the fine "does this apply" call to the model. Also **harvests** proposals into an unratified `candidates.md` on `unit-close`. Modules: `plugin.py` (`make`), `compose.py` (compose), `discovery.py` (merge), `parser.py`, `models.py`. |
 
 ## Judgment plugins (carry domains, composed by corpora)
 
@@ -51,8 +55,7 @@ precedence (higher layer wins on a name collision):
 ## Contracts (current, load-bearing)
 
 - `JUDGMENT-PLUGIN.md` — how to build a plugin + the old→new domain transform rules.
-- `corpora/domain-file.md` — the domain-file schema (frontmatter + conventions/principles).
-- `corpora/injector-design.md` — the composer's design (discovery, precedence, graduated disclosure).
+- the peer corpora repo (`~/jdev/skills/corpora`) — the domain-file schema and the composer's design (discovery, precedence, graduated disclosure) now live with the peer package.
 - `REGISTER-EXAMPLE.md` — a sample `.praxis/config.json` registration.
 - `<plugin>/history/` — historical build-time IRs where present (superseded by code + tests).
 

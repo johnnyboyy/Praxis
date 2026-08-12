@@ -3,13 +3,13 @@
 A consuming praxis root enables all three by listing them under the
 `contributors` namespace in its `.praxis/config.json`. Each value is a
 `module:make` factory string; praxis calls `factory(root)` to instantiate the
-contributor (`corpora.injector:make` for the composer, `*_plugin:make` for each
+contributor (`corpora.plugin:make` for the composer, `*_plugin:make` for each
 bare judgment plugin).
 
 ```json
 {
   "contributors": {
-    "corpora":  "corpora.injector:make",
+    "corpora":  "corpora.plugin:make",
     "uiux":     "uiux_plugin:make",
     "general":  "general_plugin:make"
   },

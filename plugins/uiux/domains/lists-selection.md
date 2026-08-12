@@ -1,7 +1,6 @@
 ---
 id: lists-selection
 subject: design
-posture: convergent
 applies-when:
   - has-ui: yes
 universal: false

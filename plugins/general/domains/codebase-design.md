@@ -1,7 +1,6 @@
 ---
 id: codebase-design
 subject: coding
-posture: convergent
 universal: false
 applies-when: []
 task-kinds: [create, change]

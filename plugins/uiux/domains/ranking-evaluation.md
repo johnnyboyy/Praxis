@@ -1,7 +1,6 @@
 ---
 id: ranking-evaluation
 subject: design
-posture: convergent
 applies-when:
   - has-ui: yes
 universal: false

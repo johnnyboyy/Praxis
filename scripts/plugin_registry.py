@@ -39,9 +39,16 @@ PLUGINS_SEARCH_PATHS_KEY = "plugins_search_paths"
 MARKER = "PRAXIS_PLUGIN"
 
 DEFAULT_PLUGINS_ROOT = str(Path(__file__).resolve().parent.parent / "plugins")
-# Where Claude Code installs its plugins; scanned best-effort so a praxis plugin bundled inside
-# a Claude Code plugin becomes discoverable. Overridable; absent → fail-soft (no entries).
-DEFAULT_GLOBAL_PLUGINS_ROOT = "~/.claude/plugins"
+# Claude Code's per-user config dir. The global layer enumerates INSTALLED plugins from here —
+# NOT by scanning it for markers directly. Plugin *source* does not live under `~/.claude/plugins/`;
+# Claude Code records install paths in `plugins/installed_plugins.json` and symlinks skills-directory
+# plugins into `skills/`. Overridable (tests inject a fake root); absent → fail-soft (no entries).
+DEFAULT_GLOBAL_ROOT = "~/.claude"
+# Where Claude Code records installed plugins (relative to the global root); v2 shape is
+# {"version":2,"plugins":{"<id>@<marketplace>":[{"scope","installPath",...}]}}.
+INSTALLED_PLUGINS_REL = ("plugins", "installed_plugins.json")
+# Where Claude Code symlinks skills-directory plugins (relative to the global root).
+GLOBAL_SKILLS_REL = ("skills",)
 # A root's project-local plugins dir (relative to the root).
 PROJECT_PLUGINS_REL = (".praxis", "plugins")
 
@@ -63,15 +70,17 @@ def discover(
 
     Layers, in LOW→HIGH precedence (higher wins on same-`name` collision):
       bundled  — the plugins shipped with praxis (`plugins_root`, default: the bundled dir)
-      global   — best-effort scan of the Claude Code plugins install dir (`global_root`,
-                 default `~/.claude/plugins`); fail-soft if absent. Pass `None` to skip.
+      global   — best-effort enumeration of Claude Code's INSTALLED plugins (`global_root`,
+                 default `~/.claude`): install paths from `plugins/installed_plugins.json`
+                 plus `skills/` symlink targets, each scanned for the marker. Fail-soft if
+                 absent. Pass `None` to skip.
       project  — `<root>/.praxis/plugins`                         (only when `root` is given)
       explicit — dirs from the root's top-level `plugins_search_paths` config
                                                                   (only when `root` is given)
 
     Each entry: `{name, source, spec ("module:make"), dir, description, origin, layer}`.
     `dir` is the directory that must be on `sys.path` for `spec`'s module to import (for a
-    package like `corpora.injector` that is the package parent, e.g. `.../corpora`).
+    package like `corpora.plugin` that is the package parent, e.g. `.../corpora`).
     """
     layers: list[tuple[str, list[dict]]] = []
 
@@ -79,10 +88,9 @@ def discover(
     layers.append(("bundled", _scan_tree(bundled_dir)))
 
     if global_root is _UNSET:
-        global_root = DEFAULT_GLOBAL_PLUGINS_ROOT
+        global_root = DEFAULT_GLOBAL_ROOT
     if global_root is not None:
-        gdir = Path(global_root).expanduser()
-        layers.append(("global", _scan_tree(gdir)))
+        layers.append(("global", _scan_global(Path(global_root).expanduser())))
 
     if root is not None:
         layers.append(("project", _scan_tree(Path(root).joinpath(*PROJECT_PLUGINS_REL))))
@@ -125,6 +133,68 @@ def _scan_tree(search_dir: Path) -> list[dict]:
     return entries
 
 
+def _scan_global(global_root: Path) -> list[dict]:
+    """Discover markered plugins among Claude Code's INSTALLED plugins under `global_root`.
+
+    Enumerates install paths (never scans `global_root` itself), then reuses `_scan_tree` — the
+    same marker-driven scan the bundled layer uses — on each. Fail-soft throughout: a missing or
+    malformed `installed_plugins.json` and a missing `skills/` dir both yield zero entries.
+    """
+    entries: list[dict] = []
+    for path in _global_install_paths(global_root):
+        entries.extend(_scan_tree(path))
+    return entries
+
+
+def _global_install_paths(global_root: Path) -> list[Path]:
+    """The source dirs of Claude Code's installed plugins under `global_root` (deduped, order-stable).
+
+    Two best-effort sources, unioned:
+      1. `plugins/installed_plugins.json` (v2) — the authoritative registry; every
+         `plugins[<id>][*].installPath`.
+      2. `skills/` symlink targets — skills-directory plugins Claude Code symlinks in; resolved
+         to their real source dirs.
+    Each source is independently fail-soft (absent/malformed → contributes nothing).
+    """
+    paths: list[Path] = []
+    seen: set[Path] = set()
+
+    def _add(p: Path) -> None:
+        if p not in seen:
+            seen.add(p)
+            paths.append(p)
+
+    # 1. installed_plugins.json — the source of truth.
+    manifest = global_root.joinpath(*INSTALLED_PLUGINS_REL)
+    try:
+        data = json.loads(manifest.read_text())
+    except (OSError, json.JSONDecodeError):
+        data = None
+    if isinstance(data, dict) and isinstance(data.get("plugins"), dict):
+        for installs in data["plugins"].values():
+            if not isinstance(installs, list):
+                continue
+            for install in installs:
+                if isinstance(install, dict):
+                    ip = install.get("installPath")
+                    if isinstance(ip, str) and ip:
+                        _add(Path(ip))
+
+    # 2. ~/.claude/skills symlink targets — resolved to their real source dirs.
+    skills = global_root.joinpath(*GLOBAL_SKILLS_REL)
+    try:
+        children = sorted(skills.iterdir())
+    except OSError:
+        children = []
+    for child in children:
+        try:
+            _add(child.resolve())
+        except OSError:
+            continue
+
+    return paths
+
+
 def _entry_for(py_file: Path) -> dict | None:
     module, plugin_dir = _module_and_dir(py_file)
     source = _plugin_source(py_file) or _fallback_source(module)
@@ -148,8 +218,8 @@ def _entry_for(py_file: Path) -> dict | None:
 def _module_and_dir(py_file: Path) -> tuple[str, str]:
     """Dotted import name for `py_file` + the dir that must be on sys.path for it to import.
 
-    Walks up through any `__init__.py`-bearing package dirs: `.../corpora/corpora/injector.py`
-    → (`corpora.injector`, `.../corpora`); a bare `.../general/general_plugin.py` →
+    Walks up through any `__init__.py`-bearing package dirs: `.../corpora/corpora/plugin.py`
+    → (`corpora.plugin`, `.../corpora`); a bare `.../general/general_plugin.py` →
     (`general_plugin`, `.../general`).
     """
     parts = [py_file.stem]
@@ -326,7 +396,8 @@ def main(argv=None) -> int:
     ap.add_argument("--plugins-root", default=None,
                     help="override the bundled plugins dir (default: praxis' own)")
     ap.add_argument("--global-root", default=None,
-                    help="override the Claude Code plugins install dir scanned as the global layer")
+                    help="override the Claude Code config dir (default ~/.claude) enumerated as "
+                         "the global layer via installed_plugins.json + skills/ symlinks")
     ap.add_argument("--list", action="store_true",
                     help="print discovered plugins + which are registered, as JSON")
     ap.add_argument("--set", metavar="a,b,c",

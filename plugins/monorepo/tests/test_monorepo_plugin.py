@@ -1,6 +1,6 @@
-"""Tests for the monorepo judgment plugin: the domain parses, the module exposes
-the source + domains_dir contract, and contribute injects coordination framing only
-for a cross-root / process situation."""
+"""Tests for the monorepo judgment plugin: the module exposes the source +
+domains_dir contract, and contribute injects coordination framing only for a
+cross-root / process situation. Domain discovery/parsing is corpora's job."""
 
 from pathlib import Path
 
@@ -8,32 +8,6 @@ import monorepo_plugin
 from situation import Situation
 
 DOMAIN = Path(__file__).resolve().parent.parent / "domains" / "monorepo-coordination.md"
-
-
-def _parse(owner="monorepo"):
-    import sys
-
-    corpora_root = str(Path(__file__).resolve().parents[2] / "corpora")
-    if corpora_root not in sys.path:
-        sys.path.insert(0, corpora_root)
-    from corpora.parser import parse_domain_file
-
-    return parse_domain_file(str(DOMAIN), owner=owner)
-
-
-def test_domain_parses_with_fq():
-    d = _parse()
-    assert d.fq == "monorepo/monorepo-coordination"
-    assert d.subject == "process"
-    assert d.posture == "convergent"
-    assert len(d.principles) == 2
-    ids = {p.id for p in d.principles}
-    assert ids == {
-        "root-config-describes-own-shape",
-        "coordination-pool-holds-only-composable-judgment",
-    }
-    # killed principle dropped, no stray body keys
-    assert "child-root-work-runs-childs-own-gate" not in ids
 
 
 def test_module_exposes_contract():

@@ -10,7 +10,7 @@ Everything here is driven through the real seams that just landed:
   * `Contributor.surface` produces the docs-only edit lease, journaled by
     `run_unit` at `unit.framed` and enforced by the real `gate.gate_decision`.
 
-Both `uiux` (uiux_plugin:make) and `corpora` (corpora.injector:make) are registered
+Both `uiux` (uiux_plugin:make) and `corpora` (corpora.plugin:make, the peer package) are registered
 as contributors on a throwaway praxis root, exactly as a real root would register
 them — via `.praxis/config.json` — and loaded through `contributors_for`.
 
@@ -27,7 +27,8 @@ from pathlib import Path
 _PRAXIS = str(Path(__file__).resolve().parents[3])
 _PRAXIS_SCRIPTS = _PRAXIS + "/scripts"
 _PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent)
-_CORPORA_PKG_PARENT = str(Path(__file__).resolve().parents[2] / "corpora")
+# corpora is now the PEER composer package (praxis' sibling), not a bundled plugin.
+_CORPORA_PKG_PARENT = str(Path(__file__).resolve().parents[4] / "corpora")
 for _p in (_PRAXIS, _PRAXIS_SCRIPTS, _PLUGIN_ROOT, _CORPORA_PKG_PARENT):
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -89,7 +90,7 @@ def _build_root(tmp_path, *, ui=False, ux=False, screenshots=False, drift=None) 
     config.ensure(root)
     # Register both process contributors exactly as a live root would.
     config.write(root, "contributors",
-                 {"uiux": "uiux_plugin:make", "corpora": "corpora.injector:make"})
+                 {"uiux": "uiux_plugin:make", "corpora": "corpora.plugin:make"})
     # uiux's own config scope: has_ui, no library files present by default.
     uiux_cfg = {"has_ui": "yes"}
     if drift is not None:

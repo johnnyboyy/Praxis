@@ -1,7 +1,6 @@
 ---
 id: code-review-reception
 subject: coding
-posture: convergent
 universal: false
 applies-when: []
 labels: [code-review]

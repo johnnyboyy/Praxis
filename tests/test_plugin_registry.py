@@ -62,6 +62,24 @@ def _write_unmarked(directory: Path, name: str, filename: str | None = None) -> 
     return f
 
 
+def _write_installed_plugins(global_root: Path, install_paths) -> None:
+    """Write a v2 installed_plugins.json under `global_root/plugins/` listing `install_paths`."""
+    manifest = global_root / "plugins" / "installed_plugins.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    plugins = {
+        f"pkg{i}@marketplace": [{"scope": "user", "installPath": str(p)}]
+        for i, p in enumerate(install_paths)
+    }
+    manifest.write_text(json.dumps({"version": 2, "plugins": plugins}))
+
+
+def _link_skill(global_root: Path, name: str, target: Path) -> None:
+    """Symlink `global_root/skills/<name>` -> target, as Claude Code does for skills plugins."""
+    skills = global_root / "skills"
+    skills.mkdir(parents=True, exist_ok=True)
+    (skills / name).symlink_to(target)
+
+
 class DiscoverTest(unittest.TestCase):
     def setUp(self):
         # global_root=None keeps the bundled layer hermetic (no dependence on ~/.claude/plugins).
@@ -71,15 +89,12 @@ class DiscoverTest(unittest.TestCase):
     def test_finds_all_known_plugins(self):
         self.assertEqual(
             set(self.by_name),
-            {"corpora", "general", "coding-stack", "uiux", "writing", "monorepo"},
+            {"general", "coding-stack", "uiux", "writing", "monorepo", "planner"},
         )
 
     def test_specs_and_dirs(self):
-        self.assertEqual(self.by_name["corpora"]["spec"], "corpora.injector:make")
         self.assertEqual(self.by_name["general"]["spec"], "general_plugin:make")
         self.assertEqual(self.by_name["coding-stack"]["spec"], "coding_stack_plugin:make")
-        # corpora dir is the package parent so `corpora.injector` imports
-        self.assertTrue(self.by_name["corpora"]["dir"].endswith("/corpora"))
         self.assertTrue(self.by_name["uiux"]["dir"].endswith("/uiux"))
 
     def test_all_bundled_are_origin_bundled(self):
@@ -88,7 +103,7 @@ class DiscoverTest(unittest.TestCase):
             self.assertEqual(e["layer"], "bundled")
 
     def test_descriptions_are_first_sentences(self):
-        self.assertIn("compose layer", self.by_name["corpora"]["description"])
+        self.assertIn("intake", self.by_name["planner"]["description"])
         self.assertTrue(self.by_name["general"]["description"].endswith("."))
         for e in self.entries:
             self.assertTrue(e["description"], f"{e['name']} has no description")
@@ -144,7 +159,7 @@ class ApplyTest(unittest.TestCase):
         self.assertEqual(summary["removed"], [])
         self.assertEqual(
             config.read(self.root, "contributors"),
-            {"corpora": "corpora.injector:make", "general": "general_plugin:make"},
+            {"corpora": "corpora.plugin:make", "general": "general_plugin:make"},
         )
         pp = config.read(self.root).get("plugins_path")
         self.assertEqual(len(pp), 2)
@@ -245,7 +260,7 @@ class LayeredDiscoveryTest(unittest.TestCase):
         self.assertIn("projonly", found)
         self.assertEqual(found["projonly"]["origin"], "project")
         # bundled still contributes the six alongside the project plugin.
-        self.assertIn("corpora", found)
+        self.assertIn("general", found)
 
     def test_explicit_search_path_discovered(self):
         ext = self.root / "elsewhere"
@@ -255,13 +270,41 @@ class LayeredDiscoveryTest(unittest.TestCase):
         self.assertIn("extra", found)
         self.assertEqual(found["extra"]["origin"], "explicit")
 
-    def test_global_layer_discovered(self):
-        cc = self.root / "cc_plugins"
-        # Nested arbitrarily deep, as a CC-packaged praxis plugin might be.
-        _write_markered(cc / "vendor" / "widget", "glob1")
-        found = {e["name"]: e for e in pr.discover(self.root, global_root=cc)}
+    def test_global_layer_discovered_via_installed_plugins(self):
+        # An installed plugin's source lives at its installPath, NOT under the global root itself.
+        gr = self.root / "dot_claude"
+        install = self.root / "cache" / "vendor" / "widget" / "1.0.0"
+        _write_markered(install, "glob1")
+        _write_installed_plugins(gr, [install])
+        found = {e["name"]: e for e in pr.discover(self.root, global_root=gr)}
         self.assertIn("glob1", found)
         self.assertEqual(found["glob1"]["origin"], "global")
+
+    def test_global_layer_discovered_via_skills_symlink(self):
+        # Claude Code symlinks skills-directory plugins into ~/.claude/skills.
+        gr = self.root / "dot_claude"
+        src = self.root / "elsewhere" / "myplugin"
+        _write_markered(src, "glob2")
+        _link_skill(gr, "myplugin", src)
+        found = {e["name"]: e for e in pr.discover(self.root, global_root=gr)}
+        self.assertIn("glob2", found)
+        self.assertEqual(found["glob2"]["origin"], "global")
+
+    def test_global_root_itself_is_not_scanned(self):
+        # A marker sitting loose under the global root (not an install path / skill) is ignored:
+        # the global layer enumerates INSTALLED plugins, it does not scan the root.
+        gr = self.root / "dot_claude"
+        _write_markered(gr / "plugins" / "stray", "notreal")
+        found = {e["name"]: e for e in pr.discover(self.root, global_root=gr)}
+        self.assertNotIn("notreal", found)
+
+    def test_malformed_installed_plugins_is_fail_soft(self):
+        gr = self.root / "dot_claude"
+        manifest = gr / "plugins" / "installed_plugins.json"
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text("{ this is not json")
+        found = pr.discover(plugins_root=str(self.root / "empty"), global_root=gr)
+        self.assertEqual(found, [])
 
     def test_absent_global_root_is_fail_soft(self):
         # A non-existent global dir must not raise and must add nothing.
@@ -305,12 +348,26 @@ class PrecedenceTest(unittest.TestCase):
     def test_global_beats_bundled(self):
         bundled = self.root / "bundled"
         _write_markered(bundled, "dup")
-        cc = self.root / "cc"
-        _write_markered(cc, "dup")
+        gr = self.root / "dot_claude"
+        install = self.root / "cache" / "dup" / "1.0.0"
+        _write_markered(install, "dup")
+        _write_installed_plugins(gr, [install])
         found = {e["name"]: e for e in
-                 pr.discover(plugins_root=bundled, global_root=cc)}
+                 pr.discover(plugins_root=bundled, global_root=gr)}
         self.assertEqual(found["dup"]["origin"], "global")
-        self.assertEqual(found["dup"]["dir"], str(cc.resolve()))
+        self.assertEqual(found["dup"]["dir"], str(install.resolve()))
+
+    def test_project_beats_global(self):
+        gr = self.root / "dot_claude"
+        install = self.root / "cache" / "dup" / "1.0.0"
+        _write_markered(install, "dup")
+        _write_installed_plugins(gr, [install])
+        proj = self.root / ".praxis" / "plugins"
+        _write_markered(proj, "dup")
+        found = {e["name"]: e for e in
+                 pr.discover(self.root, plugins_root=str(self.root / "empty"), global_root=gr)}
+        self.assertEqual(found["dup"]["origin"], "project")
+        self.assertEqual(found["dup"]["dir"], str(proj.resolve()))
 
 
 if __name__ == "__main__":

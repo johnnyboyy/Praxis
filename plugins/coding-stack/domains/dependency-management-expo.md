@@ -1,7 +1,6 @@
 ---
 id: dependency-management-expo
 subject: coding
-posture: convergent
 universal: false
 applies-when:
   - framework: expo
