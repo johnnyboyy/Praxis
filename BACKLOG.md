@@ -131,3 +131,11 @@ the details decide whether it works in practice.
    gate. Mutation is the defense but runs once at the end, so gamed coverage survives all of fan-out
    before being caught. A coarse, diff-scoped per-unit mutation smoke check catches hollow tests
    during fan-out. Pairs with "mutation scope = plan blast radius."
+
+## record_phase MCP evidence arg accepts only a JSON string (2026-08-12)
+
+The `record_phase` MCP tool types `evidence` as a string it `json.loads`es, but the harness
+serializes a JSON object argument as a dict (rejected by the string type) and a quoted string as a
+double-encoded string (loads to a str, not an object). Small usability fix: accept a dict OR a JSON
+string for `evidence` (coerce dict-or-string), like other tools do. Found driving the live rebuild
+walk; the conduct/phase_walk functions themselves take a dict fine.
