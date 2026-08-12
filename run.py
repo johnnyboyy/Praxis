@@ -421,9 +421,18 @@ def adequacy_verifier(coverage: "Verifier | None" = None) -> "Verifier":
 
 def _rebuild_triple_verifiers(coverage: "Verifier | None" = None) -> dict:
     """Gate map for a rebuild-triple walk: does-it -> adequacy (extract-exit),
-    coverage-diff -> preservation (synthesize-exit). Both read from disk only."""
+    coverage-diff -> preservation (synthesize-exit). Both read from disk only.
+
+    The synthesize-exit gate is COMPOSED (R3b): the copy-detection tripwire runs
+    FIRST (a read outside the synth worktree = a copy attempt = fail, regardless
+    of behavior), then the R3a `coverage_diff_verifier` preservation gate. This
+    keeps the walk's single `coverage-diff` gate at that edge (routing unchanged)
+    while making a silent absolute-path copy un-passable. The read-log SOURCE is
+    an input for now (composed/receipt); wiring it to a real dispatched subagent's
+    log is the B lap."""
+    import isolation
     return {"does-it": adequacy_verifier(coverage),
-            "coverage-diff": coverage_diff_verifier()}
+            "coverage-diff": isolation.synthesize_exit_gate(coverage_diff_verifier())}
 
 
 def _root_config(root: Path) -> dict:

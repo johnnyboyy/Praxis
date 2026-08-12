@@ -46,6 +46,26 @@ merge back, and how the praxis edit gate + journal (already per-root) interact w
 unit. Observed live in the corpora Lap-1 build, where cx-composer and cx-tests saw each other and
 converged (the pin held, but it was luck-adjacent).
 
+## OS-level capability sandboxing for the rebuild seam (queued 2026-08-12)
+
+**What.** R3b (`isolation.py`) makes rebuild isolation best-effort: an IR-only seeded worktree
+(attractor-reduction), a copy-detection tripwire (`scan_tripwire`, a detector), and dependency
+hygiene (`dep_hygiene_ok`). What it explicitly does NOT do is make the original *unreadable*: a
+`claude -p` synth subagent can still `Read` the original by absolute path. The residual risk — a
+faithful copy through an absolute-path read — is named, not closed.
+
+**Why parked.** Real capability isolation needs OS mechanism: a container, a mount namespace, or a
+read-only bind mount that excludes the original tree, plus (optionally) moving the original aside
+for the run so a naive absolute-path read fails. That is heavy machinery relative to this lap; the
+critique's pragmatic honest bar is best-effort isolation + a tripwire + strong held-out adequacy
+(R3a), which at least guarantees a copy is behavior-preserving even if it did not escape the
+attractor. So OS sandboxing is deferred, not pretended.
+
+**Candidate home.** The Agent/subagent dispatch step (where the synth runs), paired with the
+worktree-isolation entry above. Prerequisite for wiring `scan_tripwire` to a REAL tool-call log (the
+B lap): capture the synth subagent's filesystem reads and feed them to the tripwire gate as
+`composed["synth_tool_log"]`.
+
 ## Corpora owns domain discovery + validation (queued 2026-08-11)
 
 **What.** Corpora should discover a root's domains the same way praxis's `plugin_registry`
@@ -75,3 +95,32 @@ final barrier tractable on a large codebase. Wire: the mutation barrier verifier
 plan's touched paths (from the journal/plan), not the entire tree. Applies to R2's mutation barrier
 and R3's extract-seam adequacy. (Surfaced from the "would an architecture shift be blocked?"
 question — answer: no, mutation measures TEST strength, not churn; but scope it to the blast radius.)
+
+## Refinements from an independent design review (2026-08-12)
+
+Five points from an outside review of the spine. The skeleton (contract-first, cheap inner-loop
+gates, expensive outer-loop gate, close only through passed gates) was affirmed; these are where
+the details decide whether it works in practice.
+
+1. **Integration-contract tests are an explicit BARRIER deliverable** (lands in: planner). Per-unit
+   acceptance tests can all pass while units disagree about interfaces / shared state / ordering.
+   The final barrier only catches this if the up-front barrier includes genuine cross-unit
+   integration tests. Make "author integration contract tests" a named planner/barrier deliverable,
+   not something hoped to fall out of the full suite. (Complements planner's
+   verify-interface-consistency-across-tasks + open-questions-are-explicit.)
+2. **Cross-cutting fixes owned by a dedicated fixer with GLOBAL context** (lands in: B fix loop). A
+   mutation survivor / integration failure often implicates two units jointly; re-dispatching to the
+   original isolated implementers (each lacking the whole picture) works worse than one fixer agent
+   with global context. Decide fix ownership up front.
+3. **Barrier is append-only during implementation** (lands in: planner + B). Implementers may
+   propose ADDITIONS (never modifications) when they discover unhandled edge cases, subject to
+   planner approval. Preserves the contract property without freezing the planner's blind spots
+   (acceptance tests written before any implementation tend to under-specify edges).
+4. **Explicit escalation-to-human terminal on fix-loop exhaustion** (lands in: B / engine). Today
+   the bounded fix loop's exhaustion is prose (orchestrate ESCALATE), not an engine state — make it
+   a real terminal so the workflow can't stall silently.
+5. **Per-unit mutation SMOKE on the diff** (lands in: R2 extension + the mutation-scope note).
+   Coverage invites Goodharting — agents write line-touching, assertion-free tests to clear the
+   gate. Mutation is the defense but runs once at the end, so gamed coverage survives all of fan-out
+   before being caught. A coarse, diff-scoped per-unit mutation smoke check catches hollow tests
+   during fan-out. Pairs with "mutation scope = plan blast radius."
