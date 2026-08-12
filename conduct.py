@@ -218,6 +218,34 @@ def next_handoff(root: str | Path, brief: str | None = None) -> dict:
     return handoff_mod.pull(root, units, contributors_mod.contributors_for(root), brief=brief)
 
 
+def _workflow_close_status(root: Path, unit_id: str) -> tuple[str, str | None] | None:
+    """Certify a workflow-driven unit's walk for close, by pure fold over the journal.
+
+    Returns None when the unit is NOT workflow-driven (no phase events) — close is
+    ungated, preserving single-dispatch behavior. Otherwise returns ("complete", None)
+    when the walk reached a terminal phase with every gate verified, or
+    ("halted", reason) when the walk stalled or any gate failed to verify. The signal
+    is the engine-run gate's `verified` flag on `phase.exited` (from a command's exit
+    code) — never model-supplied evidence."""
+    events = [e for e in journal.read(root) if e.get("unit") == unit_id]
+    exited = [e for e in events if e.get("event") == "phase.exited"]
+    entered = [e for e in events if e.get("event") == "phase.entered"]
+    if not exited and not entered:
+        return None  # not a workflow walk
+    stalled = [e for e in events if e.get("event") == "phase.stalled"]
+    if stalled:
+        phase = stalled[-1].get("phase")
+        return ("halted", f"workflow walk stalled at phase {phase!r}")
+    if not exited:
+        return ("halted", "workflow walk produced no completed phase")
+    unverified = [e for e in exited if not e.get("verified")]
+    if unverified:
+        e = unverified[-1]
+        return ("halted",
+                f"gate {e.get('gate')!r} did not verify at phase {e.get('phase')!r}")
+    return ("complete", None)
+
+
 def close_unit(root: str | Path, unit_id: str | None = None, note: str | None = None) -> dict:
     root = Path(root).resolve()
     target = unit_id
@@ -226,6 +254,11 @@ def close_unit(root: str | Path, unit_id: str | None = None, note: str | None = 
         if open_u is None:
             return {"status": "no-open-unit"}
         target = open_u["unit"]
+    walk = _workflow_close_status(root, target)
+    if walk is not None and walk[0] == "halted":
+        journal.append(root, "unit.note", unit=target, kind="close-rejected",
+                       reason=walk[1])
+        return {"status": "blocked", "unit": target, "reason": walk[1]}
     journal.append(root, "unit.done", unit=target, outcome="result", status="complete", note=note)
     return {"status": "closed", "unit": target}
 

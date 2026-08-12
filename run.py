@@ -157,8 +157,23 @@ def verifier_from_test_cmd(test_cmd: str | None) -> "Verifier | None":
     return CommandVerifier(lambda unit, receipt, composed, _argv=argv: _argv)
 
 
+def _workflow_verifiers(verifier: "Verifier | None") -> dict:
+    """Map workflow gate names to real Verifiers.
+
+    The `create`→does-it and `carry`→regression gates run the project's test
+    command (the `verifier`, built by `verifier_from_test_cmd`). When no test
+    command is configured the verifier is None and those gates map to nothing —
+    absent key = the walk treats that gate as verified (current no-op behavior),
+    NOT a fabricated passing verifier. `extract`→coverage-diff is left UNWIRED
+    (R2). Gates read only the command's exit code, never model-supplied evidence."""
+    if verifier is None:
+        return {}
+    return {"regression": verifier, "does-it": verifier}
+
+
 def run_unit(root: Path, unit: Unit, contributors, executor: Executor,
-             verifier: Verifier | None = None, max_retries: int = 2) -> dict:
+             verifier: Verifier | None = None, max_retries: int = 2,
+             verifiers: dict | None = None) -> dict:
     journal.append(root, "unit.proposed", unit=unit.id, unit_of_work=unit.unit_of_work,
                    situation=unit.situation.to_dict())
     composed = gather(contributors, unit.situation, root=root)
@@ -173,7 +188,10 @@ def run_unit(root: Path, unit: Unit, contributors, executor: Executor,
         from workflow_run import run_workflow
         wf = registry.resolve_workflows(root).get(unit.situation.workflow)
         if wf is not None:
-            return run_workflow(root, unit, wf, contributors, executor, verifiers=None)
+            wf_verifiers = verifiers if verifiers is not None \
+                else _workflow_verifiers(verifier)
+            return run_workflow(root, unit, wf, contributors, executor,
+                                verifiers=wf_verifiers)
         journal.append(root, "workflow.unresolved", unit=unit.id,
                        workflow=unit.situation.workflow)
         # fall through to single-dispatch
