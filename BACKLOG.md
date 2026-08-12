@@ -62,9 +62,16 @@ critique's pragmatic honest bar is best-effort isolation + a tripwire + strong h
 attractor. So OS sandboxing is deferred, not pretended.
 
 **Candidate home.** The Agent/subagent dispatch step (where the synth runs), paired with the
-worktree-isolation entry above. Prerequisite for wiring `scan_tripwire` to a REAL tool-call log (the
-B lap): capture the synth subagent's filesystem reads and feed them to the tripwire gate as
-`composed["synth_tool_log"]`.
+worktree-isolation entry above.
+
+**Status (B lap done, 2026-08-12).** Tool-log capture is now built: the `tripwire_log.sh`
+PreToolUse hook logs each dispatched subagent's tool call keyed on its `agent_id`, and
+`isolation.read_tool_log` replays the synth subagent's reads into the tripwire gate as
+`tool_log`. The tripwire covers Read-tool reads (`Read`/`Grep`/`Glob`) plus shell reads
+(`cat`/`sed`/`head`/`tail`/`less`/`grep`/`find`) seen in `Bash` commands. **The residual, still
+open here:** a raw filesystem syscall (e.g. Python `open()`) bypasses the PreToolUse hook and is
+NOT captured — only the OS-level sandboxing below closes it. Capture is also only active when the
+hook is installed in settings (`hooks/hooks.json`).
 
 ## Corpora owns domain discovery + validation (queued 2026-08-11)
 

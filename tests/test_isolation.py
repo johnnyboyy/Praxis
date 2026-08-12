@@ -313,5 +313,164 @@ class RebuildWalkTripwireTest(unittest.TestCase):
         self.assertTrue(exited["synthesize"]["verified"])
 
 
+# --- 5. read_tool_log — parse the PreToolUse hook log (spine B3b) ------------
+
+class ReadToolLogTest(unittest.TestCase):
+    """The hook log is `<agent_id>\\t<tool_name>\\t<path-or-command>`. Replaying it
+    must isolate ONE subagent's reads (by agent_id), recover a `cat` file arg, and
+    EXCLUDE the parent orchestrator's lines (which carry no agent_id)."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _log(self, lines):
+        p = self.dir / "tripwire.log"
+        p.write_text("".join(l + "\n" for l in lines))
+        return p
+
+    def test_filters_to_agent_and_extracts_cat_and_excludes_parent(self):
+        # Two subagents + one parent line (empty agent_id field).
+        log = self._log([
+            "agentA\tRead\t/repo/original/calc.py",
+            "agentB\tBash\tcat /repo/original/secret.py",
+            "\tRead\t/parent/only.py",                 # parent — no agent_id
+            "agentA\tBash\ttail /repo/original/calc.py",
+        ])
+        # agentA: the Read path + the tail file arg, and NOTHING from agentB/parent.
+        got_a = isolation.read_tool_log(log, agent_id="agentA")
+        self.assertEqual(got_a, ["/repo/original/calc.py",
+                                 "/repo/original/calc.py"])
+        # agentB: the cat file arg is recovered from the Bash command.
+        got_b = isolation.read_tool_log(log, agent_id="agentB")
+        self.assertEqual(got_b, ["/repo/original/secret.py"])
+        # The parent's line never appears for any real agent_id.
+        self.assertNotIn("/parent/only.py", got_a)
+        self.assertNotIn("/parent/only.py", got_b)
+
+    def test_no_agent_filter_returns_all_reads(self):
+        log = self._log([
+            "agentA\tRead\t/x/a.py",
+            "agentB\tBash\tcat /x/b.py",
+        ])
+        self.assertEqual(isolation.read_tool_log(log),
+                         ["/x/a.py", "/x/b.py"])
+
+    def test_missing_log_is_fail_soft(self):
+        self.assertEqual(isolation.read_tool_log(self.dir / "nope.log"), [])
+
+    def test_grep_and_find_shell_reads_extracted(self):
+        log = self._log([
+            "agentA\tBash\tgrep -n needle /repo/original/calc.py",
+            "agentA\tBash\tfind /repo/original -name '*.py'",
+        ])
+        got = isolation.read_tool_log(log, agent_id="agentA")
+        self.assertIn("/repo/original/calc.py", got)
+        self.assertIn("/repo/original", got)
+
+
+class ReadToolLogEndToEndTest(unittest.TestCase):
+    """Mechanical end-to-end: read_tool_log's output feeds scan_tripwire and an
+    out-of-worktree read (via Bash cat) is flagged; an in-worktree-only log passes."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name)
+        self.wt = self.base / "synth"
+        self.wt.mkdir()
+        (self.wt / "calc.py").write_text(FAITHFUL_IMPL)
+        self.original = self.base / "original" / "calc.py"
+        self.original.parent.mkdir()
+        self.original.write_text(FAITHFUL_IMPL)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _log(self, lines):
+        p = self.base / "tripwire.log"
+        p.write_text("".join(l + "\n" for l in lines))
+        return p
+
+    def test_out_of_worktree_bash_read_flagged(self):
+        log = self._log([
+            f"agentZ\tRead\t{self.wt / 'calc.py'}",
+            f"agentZ\tBash\tcat {self.original}",
+        ])
+        reads = isolation.read_tool_log(log, agent_id="agentZ")
+        violations = isolation.scan_tripwire(reads, self.wt)
+        self.assertEqual(len(violations), 1)
+        self.assertEqual(Path(violations[0]["resolved"]),
+                         self.original.resolve())
+
+    def test_in_worktree_only_log_passes(self):
+        log = self._log([f"agentZ\tRead\t{self.wt / 'calc.py'}"])
+        reads = isolation.read_tool_log(log, agent_id="agentZ")
+        self.assertEqual(isolation.scan_tripwire(reads, self.wt), [])
+
+
+# --- 6. tripwire_log.sh — the PreToolUse hook (subprocess, mechanical) -------
+
+class TripwireHookScriptTest(unittest.TestCase):
+    """Pipe a subagent Read JSON and a parent JSON into the hook and assert ONLY
+    the subagent line is logged. Runs with or without jq (the script has a
+    tolerant fallback parse), and always exits 0 (a logging hook never blocks)."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.log = self.dir / "tripwire.log"
+        self.hook = (Path(__file__).resolve().parents[1] / "hooks"
+                     / "tripwire_log.sh")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _run(self, payload):
+        import json
+        import subprocess
+        env = dict(os.environ, PRAXIS_TRIPWIRE_LOG=str(self.log))
+        proc = subprocess.run(
+            ["bash", str(self.hook)], input=json.dumps(payload),
+            capture_output=True, text=True, env=env)
+        return proc
+
+    def test_only_subagent_read_is_logged(self):
+        # Subagent Read → logged; parent Read (no agent_id) → not logged.
+        p1 = self._run({"agent_id": "sub-1", "agent_type": "synth",
+                        "tool_name": "Read",
+                        "tool_input": {"file_path": "/repo/original/calc.py"}})
+        p2 = self._run({"tool_name": "Read",
+                        "tool_input": {"file_path": "/parent/only.py"}})
+        self.assertEqual(p1.returncode, 0)  # never blocks
+        self.assertEqual(p2.returncode, 0)
+        self.assertTrue(self.log.is_file())
+        contents = self.log.read_text()
+        self.assertIn("sub-1\tRead\t/repo/original/calc.py", contents)
+        self.assertNotIn("/parent/only.py", contents)
+        # Exactly one line captured.
+        self.assertEqual(len([l for l in contents.splitlines() if l.strip()]), 1)
+
+    def test_subagent_bash_command_is_logged(self):
+        p = self._run({"agent_id": "sub-2", "agent_type": "synth",
+                       "tool_name": "Bash",
+                       "tool_input": {"command": "cat /repo/original/calc.py"}})
+        self.assertEqual(p.returncode, 0)
+        contents = self.log.read_text()
+        self.assertIn("sub-2\tBash\tcat /repo/original/calc.py", contents)
+
+    def test_replay_of_hook_output_feeds_tripwire(self):
+        # The hook writes it; read_tool_log replays it; scan_tripwire flags it.
+        self._run({"agent_id": "sub-3", "tool_name": "Bash",
+                   "tool_input": {"command": "cat /outside/original.py"}})
+        reads = isolation.read_tool_log(self.log, agent_id="sub-3")
+        self.assertEqual(reads, ["/outside/original.py"])
+
+
 if __name__ == "__main__":
     unittest.main()

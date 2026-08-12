@@ -26,6 +26,7 @@ the BACKLOG, not this lap.
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 from pathlib import Path
 
@@ -160,6 +161,104 @@ def dep_hygiene_ok(worktree, original_root, env=None, package=None):
                 f"(an installed/original copy) — coverage-diff would bind to it")
 
     return (not problems), problems
+
+
+# --- 3a. read the PreToolUse hook log into a tripwire tool_log ---------------
+
+# Shell verbs whose FILE arguments are reads we care about. `tripwire_log.sh`
+# logs the raw Bash command; we recover the file paths it touched, best-effort.
+_READ_SHELL_VERBS = {"cat", "sed", "head", "tail", "less", "more", "grep", "find"}
+
+
+def _bash_read_paths(command: str) -> list[str]:
+    """Best-effort: extract file arguments from a read-shaped shell command.
+
+    Recognizes `cat`/`sed`/`head`/`tail`/`less`/`more`/`grep`/`find <path>`.
+    Splits on `;`, `&&`, `||`, and `|` so each segment is judged on its own verb,
+    then takes non-flag, non-option tokens as candidate paths. Deliberately
+    conservative — an unparseable command yields nothing rather than guessing."""
+    paths: list[str] = []
+    # Normalize the pipeline/sequence separators to a single delimiter.
+    normalized = command
+    for sep in ("&&", "||", ";", "|"):
+        normalized = normalized.replace(sep, "\n")
+    for segment in normalized.split("\n"):
+        segment = segment.strip()
+        if not segment:
+            continue
+        try:
+            tokens = shlex.split(segment)
+        except ValueError:
+            tokens = segment.split()
+        if not tokens:
+            continue
+        verb = os.path.basename(tokens[0])
+        if verb not in _READ_SHELL_VERBS:
+            continue
+        for tok in tokens[1:]:
+            # Skip flags/options and shell operators.
+            if tok.startswith("-"):
+                continue
+            if tok in {"(", ")", "{", "}"}:
+                continue
+            # `find <path> -name ...` — stop at the first predicate flag; the
+            # loop above already skips flags, so plain path tokens survive.
+            paths.append(tok)
+    return paths
+
+
+def read_tool_log(log_path, agent_id=None) -> list[str]:
+    """Parse the `tripwire_log.sh` hook log into the read-path list the tripwire
+    consumes.
+
+    The log is tab-separated `<agent_id>\\t<tool_name>\\t<path-or-command>` lines.
+    When `agent_id` is given, only that subagent's lines are considered (so a
+    single dispatched synth subagent's reads are isolated from the parent and
+    from other subagents). Returns file paths, in log order:
+      * `Read`/`Grep`/`Glob` → the recorded path directly;
+      * `Bash` → the file arguments extracted from read-shaped commands
+        (`cat`/`sed`/`head`/`tail`/`less`/`grep`/`find`), best-effort.
+
+    Fail-soft: a missing/unreadable log or malformed line yields no paths for
+    that line rather than raising. The result feeds `scan_tripwire(log, worktree)`
+    unchanged."""
+    path = Path(log_path)
+    try:
+        raw = path.read_text()
+    except (OSError, ValueError):
+        return []
+
+    reads: list[str] = []
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        line_agent, tool_name, payload = parts[0], parts[1], parts[2]
+        if agent_id is not None and line_agent != agent_id:
+            continue
+        if tool_name == "Bash":
+            reads.extend(_bash_read_paths(payload))
+        elif tool_name in ("Read", "Grep", "Glob"):
+            if payload:
+                reads.append(payload)
+    return reads
+
+
+def default_tripwire_log(root) -> Path:
+    """The default hook log location the orchestrator reads after dispatch:
+    `<root>/.praxis/tripwire.log` — the same path `tripwire_log.sh` writes when
+    `$PRAXIS_TRIPWIRE_LOG` is unset."""
+    return Path(root) / ".praxis" / "tripwire.log"
+
+
+def synth_tool_log(root, agent_id) -> list[str]:
+    """End-to-end convenience: after the orchestrator dispatches the synthesize
+    subagent and gets its `agent_id`, this replays that subagent's reads from the
+    default tripwire log so they can be passed as `record_phase(..., tool_log=...)`.
+    Equivalent to `read_tool_log(default_tripwire_log(root), agent_id)`."""
+    return read_tool_log(default_tripwire_log(root), agent_id)
 
 
 # --- 3. copy-detection tripwire (a detector, not a preventer) ---------------

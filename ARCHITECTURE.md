@@ -89,6 +89,14 @@ therefore three honest, best-effort layers, not a sandbox:
   original source is never seeded, so a synth agent that stays in its lane never meets it.
 - **A copy-detection tripwire** — `scan_tripwire` flags any read that resolves outside the
   worktree; a tripped wire fails the unit at synthesize-exit. It is a DETECTOR, not a preventer.
+  Its input is captured live: the `tripwire_log.sh` PreToolUse hook logs every dispatched
+  subagent's tool call (keyed on the subagent's `agent_id`), and `isolation.read_tool_log`
+  replays the synth subagent's reads — `Read`/`Grep`/`Glob` tool reads plus shell reads
+  (`cat`/`sed`/`head`/`tail`/`less`/`grep`/`find`) visible in `Bash` commands — into the
+  tripwire. **Honest blind spot:** a raw filesystem syscall (e.g. Python `open()`) bypasses the
+  hook entirely and is NOT captured; only OS-level sandboxing (BACKLOG) closes that. The hook
+  must be installed in settings (`hooks/hooks.json`, matcher `Read|Grep|Glob|Bash`) for capture
+  to be active at all.
 - **Dependency hygiene** — `dep_hygiene_ok` verifies the synth's tests bind to the synth's
   code with the original off the import path, closing the silent killer where coverage-diff
   passes against an installed copy of the original.
