@@ -4,7 +4,9 @@ disable-model-invocation: true
 ---
 
 Call the praxis `init` tool. It ensures an empty `.praxis/config.json` at the git root (or the
-current folder outside a repo), which marks the repo a managed praxis root.
+current folder outside a repo), which marks the repo a managed praxis root. In a git repo it also
+ensures `.gitignore` ignores the rebuild-triple scratch dir (`.rebuild/`), so extract→synthesize
+working files are never committed.
 
 `.praxis/config.json` is a namespaced config store: plugins persist their own settings under their
 own section, and any praxis-core needs live in the unnamed top-level scope. A fresh root starts

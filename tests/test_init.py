@@ -47,8 +47,29 @@ class InitRootTest(unittest.TestCase):
             out = conduct.init_root(root=plain)
             self.assertEqual(Path(out["root"]), plain)
             self.assertEqual(C.read(plain), {})
+            # no git root -> no .gitignore is written
+            self.assertFalse(out["gitignore_updated"])
+            self.assertFalse((plain / ".gitignore").exists())
         finally:
             shutil.rmtree(plain, ignore_errors=True)
+
+    def test_ignores_rebuild_scratch_idempotently(self):
+        out = conduct.init_root(root=self.sub)
+        self.assertTrue(out["gitignore_updated"])
+        gitignore = self.tmp / ".gitignore"
+        self.assertIn(".rebuild/", gitignore.read_text().splitlines())
+        # second init does not re-append the entry
+        again = conduct.init_root(root=self.tmp)
+        self.assertFalse(again["gitignore_updated"])
+        self.assertEqual(gitignore.read_text().count(".rebuild/"), 1)
+
+    def test_preserves_existing_gitignore_content(self):
+        gitignore = self.tmp / ".gitignore"
+        gitignore.write_text("node_modules/\ndist/\n", encoding="utf-8")
+        conduct.init_root(root=self.tmp)
+        text = gitignore.read_text()
+        self.assertIn("node_modules/", text)  # existing entries untouched
+        self.assertIn(".rebuild/", text.splitlines())
 
 
 class ManagedHelperTest(unittest.TestCase):

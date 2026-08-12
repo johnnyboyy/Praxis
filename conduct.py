@@ -18,15 +18,45 @@ from run import Receipt, Unit, run_unit, verifier_from_test_cmd
 from situation import Situation
 
 
+_REBUILD_IGNORE = ".rebuild/"
+_REBUILD_IGNORE_COMMENT = (
+    "# praxis rebuild-triple scratch (extract→synthesize working dir) — never committed"
+)
+
+
+def _ensure_rebuild_gitignore(git_root: Path) -> bool:
+    """Ensure the repo's `.gitignore` ignores the rebuild-triple scratch dir.
+
+    Idempotent: a no-op if any line already ignores `.rebuild/`. A bare pattern
+    (no leading slash) matches at any depth, so it covers `apps/*/.rebuild/` in a
+    monorepo too. Returns True when it appended the entry.
+    """
+    gitignore = Path(git_root) / ".gitignore"
+    existing = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
+    if any(line.strip() == _REBUILD_IGNORE for line in existing.splitlines()):
+        return False
+    prefix = existing.rstrip() + "\n\n" if existing.strip() else ""
+    gitignore.write_text(
+        f"{prefix}{_REBUILD_IGNORE_COMMENT}\n{_REBUILD_IGNORE}\n", encoding="utf-8")
+    return True
+
+
 def init_root(root=None) -> dict:
-    """Mark a directory a managed praxis root by ensuring an empty `.praxis/config.json` exists."""
+    """Mark a directory a managed praxis root by ensuring an empty `.praxis/config.json` exists.
+
+    In a git repo it also ensures `.gitignore` ignores the rebuild-triple scratch
+    dir (`.rebuild/`), so extract→synthesize working files never get committed.
+    """
     import root_tree
     start = Path(root).resolve() if root else Path.cwd()
     git_root = root_tree._git_toplevel(start)
     target = git_root if git_root is not None else start
     created = config_mod.ensure(target)
+    gitignore_updated = (
+        _ensure_rebuild_gitignore(git_root) if git_root is not None else False)
     return {"status": "initialized", "root": str(target),
-            "config": str(config_mod.path(target)), "created": created}
+            "config": str(config_mod.path(target)), "created": created,
+            "gitignore_updated": gitignore_updated}
 
 
 class ClaudeExecutor:
