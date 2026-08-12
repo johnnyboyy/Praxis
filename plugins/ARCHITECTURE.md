@@ -19,9 +19,11 @@ filename and without importing. Plugins are unioned across a layered search path
 precedence (higher layer wins on a name collision):
 
 1. **bundled** — `praxis/plugins/` (the default plugins-root, derived from `__file__`).
-2. **global** — best-effort scan of the Claude Code plugins dir (`~/.claude/plugins`), so a
-   praxis plugin bundled inside a globally-installed Claude Code plugin is discoverable in
-   every project.
+2. **global** — best-effort enumeration of Claude Code's *installed* plugins under `~/.claude`:
+   install paths read from `plugins/installed_plugins.json` (the authoritative v2 registry) plus
+   `skills/` symlink targets, each scanned for the marker. Plugin *source* does not live under
+   `~/.claude/plugins/`, so that dir is never scanned directly. This makes a praxis plugin bundled
+   inside a globally-installed Claude Code plugin discoverable in every project.
 3. **project** — `<root>/.praxis/plugins`.
 4. **explicit** — dirs in the root's top-level `plugins_search_paths` config key.
 
@@ -33,7 +35,7 @@ symlink or a `plugins_search_paths` entry). It is not one of the plugins under `
 
 | Plugin | Role |
 |---|---|
-| **corpora** (peer) | The **pure composer** — ships NO domains. Discovers every registered plugin's `domains_dir` + the project-local pool (`<root>/.praxis/domains`), merges under two-layer precedence (plugin < project), does a coarse subject/shape cut, and defers the fine "does this apply" call to the model. Also **harvests** proposals into an unratified `candidates.md` on `unit-close`. Modules: `plugin.py` (`make`), `compose.py` (compose), `discovery.py` (merge), `parser.py`, `models.py`. |
+| **corpora** (peer) | The **pure composer** — ships NO domains. Discovers every registered plugin's `domains_dir` + the project-local pool (`<root>/.praxis/domains`), merges under two-layer precedence (plugin < project), does a coarse subject + applies-when cut, and defers the fine "does this apply" call to the model. (See the peer corpora repo for the composer's internals.) Also **harvests** proposals into an unratified `candidates.md` on `unit-close`. Modules: `plugin.py` (`make`), `compose.py` (compose), `discovery.py` (merge), `parser.py`, `models.py`. |
 
 ## Judgment plugins (carry domains, composed by corpora)
 

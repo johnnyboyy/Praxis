@@ -53,7 +53,7 @@ real `contribute` later without touching a single domain file.
 ## The contributor contract
 
 Praxis validates every contributor with
-[`validate_contributor`](file:///Users/johnzdanis/.claude/skills/praxis/contributors.py),
+[`validate_contributor`](../contributors.py),
 which requires exactly two things: a non-empty string `source`, and a callable
 `contribute`. Corpora adds the `domains_dir` convention on top. So the full
 member set a judgment plugin needs is:
@@ -204,7 +204,6 @@ sequences breaks the load.
 
 | Old element | New element | Rule |
 |---|---|---|
-| frontmatter `posture: ...` | **DROP** | `posture` is retired — stance is a praxis phase concern now. The composer no longer reads it and the parser tolerates its absence; omit it entirely. |
 | frontmatter `units-of-work: [...]` | **DROP**, or fold into affinity tags | Not a schema field. Where it carries signal: implementation-ish units → `task-kinds: [create, change]`; a named process (e.g. `debug`, `tdd`) → `workflows: [...]`; a topical tag → `labels: [...]`. Otherwise omit entirely. |
 | frontmatter `subject` | `subject` | Keep unchanged (already compatible). |
 | frontmatter `universal` | `universal` | Keep unchanged. |
@@ -220,8 +219,7 @@ sequences breaks the load.
 ### Required-field checklist per file
 
 - **Frontmatter (required)**: `id`, `subject`. (`applies-when`,
-  `universal`, `task-kinds`, `workflows`, `labels` are optional; `posture` is
-  retired — omit it.)
+  `universal`, `task-kinds`, `workflows`, `labels` are optional.)
 - **Each convention**: `id`, `rule`.
 - **Each principle**: `id`, `rule`, `condition`, `reason` — all four.
 - **Body**: valid YAML mapping; only `conventions:` and `principles:` at top
@@ -236,7 +234,6 @@ sequences breaks the load.
 ```markdown
 ---
 subject: coding
-posture: guardrail
 units-of-work: [implement-feature, debug-issue]
 universal: false
 ---
@@ -280,7 +277,7 @@ principles:
 killed:
 ```
 
-Problems: `posture` is retired (drop it); `units-of-work` is not a
+Problems: `units-of-work` is not a
 field; there is no `id` in frontmatter; the `# Domain:` header and the preamble
 prose sit in the body where `yaml.safe_load` chokes; `last-retrospective:` and
 `killed:` are stray body keys.
@@ -318,7 +315,7 @@ principles:
     reason: A standalone function implies reuse. A single-callsite helper adds a named concept with no benefit; keeping the resolution local is more honest about its scope.
 ```
 
-What changed: `guardrail → convergent`; `units-of-work` dropped, its
+What changed: `units-of-work` dropped, its
 implementation signal folded into `task-kinds: [create, change]`; `id` promoted
 into frontmatter; `owner` left underived; the preamble bullets became terse
 `conventions:` entries with the rationale prose stripped; the principles kept all

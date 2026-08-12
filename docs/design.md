@@ -1,8 +1,7 @@
 # Praxis design — phases, typed edges, and workflows
 
 **Snapshot as of 2026-08-11.** This is a point-in-time description; changes committed after this
-date may make it stale — check `git log` against this date. For the decision history that produced
-this state (the append-only discovery log), see [`docs/design-log.md`](design-log.md).
+date may make it stale — check `git log` against this date.
 
 Praxis runs a **unit of work through a workflow** — a graph of **phases** — rather than a single
 dispatch. This document is both the conceptual model (the part that does not fall out of the code)

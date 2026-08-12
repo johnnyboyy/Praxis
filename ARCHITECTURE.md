@@ -30,7 +30,7 @@ turns on the ones it wants.
 | `workflow_run.py` | `run_workflow` — the phase walker: edge routing (`_choose_edge`), deterministic delivery, the aggregate receipt, `phase_fit`/`phase.route_unmatched` recording. |
 | `registry.py` | `resolve_phases` / `resolve_workflows` — merge seed phases/workflows with contributor-provided ones (seed wins, first-plugin wins; fail-soft). |
 | `run.py` | `run_unit` — the live drive: single-dispatch or resolve+run a named workflow; fires `verify` / `unit-close` / `close` hooks (`_finish`). |
-| `situation.py` | `Situation` — the framing a Contributor sees (`task_kind`, `subject`, `phase`=stance, `phase_name`, `project_shape`, `targets`, `workflow`, `label`). |
+| `situation.py` | `Situation` — the framing a Contributor sees (`task_kind`, `subject`, `phase`=stance, `phase_name`, `workflow`, `label`, `targets`, `intent`). Project-shape is not a Situation field — corpora detects it and stores it in its own config namespace. |
 | `orchestrate.py` / `cascade.py` | Orchestration altitude: fan-out → barrier full-verify → bounded fix-loop → escalation. |
 | `conduct.py` / `plan.py` / `handoff.py` | The inline drive: `register_plan` → `next_handoff` → `close_unit`; plan DAG bookkeeping; handoff assembly. |
 | `scripts/gate.py`, `scripts/units.py`, `hooks/` | The **edit-lease gate**: a PreToolUse hook denies out-of-lease edits via a pure function over the journal (glob `surface_allows`). |

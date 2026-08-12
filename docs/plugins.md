@@ -20,6 +20,18 @@ A Contributor is any object with:
   single-dispatch").
 - `hooks(self) -> dict[str, StepHook]` — **optional.** Maps step names to callbacks.
   Absent is fine; when present it must be callable.
+- `surface(situation) -> list[str] | None` — **optional.** Returns the edit-lease
+  globs this contributor claims for the unit (the paths the gate lets edits touch).
+  Absent is fine; when present it must be callable.
+- `phases(self) -> list[Phase]` — **optional.** Contributes phases to the phase
+  library (merged by `registry.resolve_phases`, seed-wins). When present it must be
+  callable.
+- `workflows(self) -> list[Workflow]` — **optional.** Contributes workflows to the
+  workflow library (merged by `registry.resolve_workflows`, seed-wins). When present
+  it must be callable.
+- `domains_dir` — **optional attribute** (not callable). Absolute path to a `domains/`
+  directory of `*.md` judgment files that **corpora** discovers and composes; a plugin
+  that carries no judgment omits it.
 
 ```python
 @dataclass
@@ -129,6 +141,6 @@ config.write(root, "house", {"strict": True, "exclude": ["vendor", "build"]})
 
 `validate_contributor(obj) -> list[str]` returns a list of human-readable problems
 (`[]` means it conforms). It is structural — it never calls `contribute`. It flags a
-missing/blank `source`, a non-callable `contribute`, and a `hooks` attribute that is
-present but not callable. `contributors_for(root)` runs it on every loaded object and
+missing/blank `source`, a non-callable `contribute`, and any of `hooks` / `surface` /
+`phases` / `workflows` that is present but not callable. `contributors_for(root)` runs it on every loaded object and
 skips any with problems.
