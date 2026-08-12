@@ -19,7 +19,9 @@ Drive it through praxis with the Agent tool as the executor. praxis owns framing
    - When a subagent returns: call `record_receipt` with `outcome=result` if it finished (unlocks dependents), or `outcome=stall` with the blocker as `note` if it could not (dependents stay blocked).
    - Loop until `next_handoff` reports `complete`.
 
-3. BARRIER — once the units are done, verify against the barrier you defined in INTAKE, run once yourself (for code, the acceptance tests / project test command, via Bash).
+3. BARRIER — two deterministic, engine-run adequacy gates at their altitudes; every verdict is a command exit code / score, never model evidence.
+   - PER-UNIT (fast, in-progress): a unit is "done" only when its acceptance tests pass AT the coverage threshold — the `does-it`/`regression` gate is the coverage verifier (`coverage-cmd --cov-fail-under=<coverage-threshold>`, exit code IS the verdict), so a unit's walk only advances when coverage holds. This gate re-runs after any `test-cleanup` phase, so pruning scaffolding cannot drop coverage below threshold.
+   - FINAL BARRIER (slow, once): after all units complete and BEFORE close, the engine runs the full suite plus the MUTATION signal once (`mutation-cmd` vs `mutation-threshold`). A failing mutation barrier BLOCKS close — the `close` hook does not fire and the run surfaces a blocked result.
    - Pass → go to CLOSE.
    - Fail → FIX LOOP: for each defect, dispatch a fix subagent via the Agent tool (the code exists — a carry-edge patch) targeting it; `record_receipt` each; re-run the barrier. Bound to 3 rounds.
 

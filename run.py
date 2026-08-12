@@ -157,18 +157,126 @@ def verifier_from_test_cmd(test_cmd: str | None) -> "Verifier | None":
     return CommandVerifier(lambda unit, receipt, composed, _argv=argv: _argv)
 
 
-def _workflow_verifiers(verifier: "Verifier | None") -> dict:
+def coverage_verifier(test_cmd: str | None, threshold, target: str | None = None,
+                      timeout: int = 300) -> "Verifier | None":
+    """The fast, per-unit COVERAGE gate — deterministic, exit-code only (R2).
+
+    Runs the acceptance suite WITH coverage enforcement so the process EXIT CODE
+    is the verdict: e.g. `pytest --cov=<target> --cov-fail-under=<threshold>`,
+    which pytest-cov exits non-zero on when coverage is under the threshold. We
+    never parse stdout for the pass/fail — the exit code alone decides. Absent
+    config (no threshold, and neither a test command nor a target) => return None
+    so the gate is simply unwired; we never fabricate a passing verifier."""
+    if threshold is None or (not test_cmd and not target):
+        return None
+    import shlex
+    argv = list(shlex.split(test_cmd)) if test_cmd else ["pytest"]
+    if target:
+        argv.append(f"--cov={target}")
+    argv.append(f"--cov-fail-under={threshold}")
+    return CommandVerifier(lambda unit, receipt, composed, _argv=argv: _argv,
+                           timeout=timeout)
+
+
+def _parse_mutation_score(text: str | None) -> float | None:
+    """Robustly pull a numeric mutation score out of command output (last number
+    wins), or None when nothing numeric is present. Fail-closed callers treat
+    None as 'unparseable'."""
+    import re
+    nums = re.findall(r"[-+]?\d*\.?\d+", text or "")
+    if not nums:
+        return None
+    try:
+        return float(nums[-1])
+    except ValueError:
+        return None
+
+
+def mutation_verifier(mutation_cmd, threshold, timeout: int = 600) -> "Verifier | None":
+    """The slow, plan-level MUTATION barrier — deterministic (R2).
+
+    Runs a CONFIGURABLE `mutation_cmd` (argv or a shell string) once and passes
+    iff the mutation score >= threshold. Two signalling modes, both exit/score
+    based (never model evidence):
+      * the command prints a score  -> that score is authoritative (score >= th),
+      * the command prints nothing  -> its EXIT CODE is the verdict (0 == pass).
+    Fail-closed: a command that cannot run, or emits output with no parseable
+    score, is a FAIL. There is NO hard mutmut/cosmic-ray dependency here — the
+    command is whatever config names (fixtures use a controllable fake)."""
+    if not mutation_cmd or threshold is None:
+        return None
+    import shlex
+    argv = shlex.split(mutation_cmd) if isinstance(mutation_cmd, str) else list(mutation_cmd)
+
+    def _handler(unit, receipt, composed):
+        import subprocess
+        try:
+            p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        except (subprocess.SubprocessError, OSError) as e:
+            return Verdict(verified=False, defects=[f"mutation barrier could not run: {e}"])
+        score = _parse_mutation_score(p.stdout)
+        if score is not None:
+            ok = score >= float(threshold)
+            return Verdict(verified=ok,
+                           defects=[] if ok else
+                           [f"mutation score {score} < threshold {threshold}"],
+                           evidence={"score": score, "threshold": float(threshold),
+                                     "returncode": p.returncode})
+        if p.stdout.strip():
+            # Non-empty output we could not read a score from — fail closed.
+            return Verdict(verified=False, defects=["mutation score unparseable"],
+                           evidence={"stdout": p.stdout.strip()[-1000:]})
+        ok = p.returncode == 0
+        return Verdict(verified=ok,
+                       defects=[] if ok else [f"mutation barrier exit {p.returncode}"],
+                       evidence={"returncode": p.returncode})
+
+    return CallableVerifier(_handler)
+
+
+def _root_config(root: Path) -> dict:
+    """Read the core/unnamed-scope config for this root (fail-soft, like the walk)."""
+    try:
+        import config
+        return config.read(root)
+    except Exception:
+        return {}
+
+
+def coverage_verifier_from_config(root: Path) -> "Verifier | None":
+    """Build the per-unit coverage gate from policy/config, or None when unwired.
+
+    Keys (unnamed scope): `coverage-threshold`, `coverage-target`, `coverage-cmd`
+    (the suite command; falls back to pytest inside `coverage_verifier`)."""
+    cfg = _root_config(root)
+    return coverage_verifier(cfg.get("coverage-cmd"), cfg.get("coverage-threshold"),
+                             cfg.get("coverage-target"))
+
+
+def mutation_verifier_from_config(root: Path) -> "Verifier | None":
+    """Build the plan-level mutation barrier from policy/config, or None when unwired.
+
+    Keys (unnamed scope): `mutation-cmd`, `mutation-threshold`. Absent => no barrier."""
+    cfg = _root_config(root)
+    return mutation_verifier(cfg.get("mutation-cmd"), cfg.get("mutation-threshold"))
+
+
+def _workflow_verifiers(verifier: "Verifier | None",
+                        coverage: "Verifier | None" = None) -> dict:
     """Map workflow gate names to real Verifiers.
 
-    The `create`→does-it and `carry`→regression gates run the project's test
-    command (the `verifier`, built by `verifier_from_test_cmd`). When no test
-    command is configured the verifier is None and those gates map to nothing —
-    absent key = the walk treats that gate as verified (current no-op behavior),
-    NOT a fabricated passing verifier. `extract`→coverage-diff is left UNWIRED
-    (R2). Gates read only the command's exit code, never model-supplied evidence."""
-    if verifier is None:
+    The `create`→does-it and `carry`→regression gates run the per-unit adequacy
+    gate. When a COVERAGE gate is configured for the root it IS that gate (R2):
+    the walk only advances when the suite passes AT the coverage threshold, not
+    on a bare test run. Otherwise the gate is the project's test command (the
+    `verifier`, built by `verifier_from_test_cmd`). When neither is configured
+    the map is empty — absent key = the walk treats that gate as verified
+    (no-op), NOT a fabricated passing verifier. `extract`→coverage-diff is left
+    UNWIRED. Gates read only exit codes/scores, never model-supplied evidence."""
+    gate = coverage or verifier
+    if gate is None:
         return {}
-    return {"regression": verifier, "does-it": verifier}
+    return {"regression": gate, "does-it": gate}
 
 
 def run_unit(root: Path, unit: Unit, contributors, executor: Executor,
@@ -189,7 +297,7 @@ def run_unit(root: Path, unit: Unit, contributors, executor: Executor,
         wf = registry.resolve_workflows(root).get(unit.situation.workflow)
         if wf is not None:
             wf_verifiers = verifiers if verifiers is not None \
-                else _workflow_verifiers(verifier)
+                else _workflow_verifiers(verifier, coverage_verifier_from_config(root))
             return run_workflow(root, unit, wf, contributors, executor,
                                 verifiers=wf_verifiers)
         journal.append(root, "workflow.unresolved", unit=unit.id,
@@ -256,7 +364,7 @@ def run_unit(root: Path, unit: Unit, contributors, executor: Executor,
 
 def run(plan: Plan, contributors, executor: Executor, root: Path,
         verifier: Verifier | None = None, max_retries: int | None = None,
-        policy=None) -> dict:
+        policy=None, barrier_verifier: Verifier | None = None) -> dict:
     import views
     import policy as policy_mod
     pol = policy or policy_mod.load_policy(root)
@@ -265,6 +373,26 @@ def run(plan: Plan, contributors, executor: Executor, root: Path,
     retries = pol.max_retries if max_retries is None else max_retries
     results = [run_unit(root, unit, contributors, executor, verifier, retries)
                for unit in plan.units]
+
+    # Plan-level FINAL BARRIER (R2): the slow mutation signal, run ONCE after all
+    # units, BEFORE close. A failing barrier BLOCKS close (the hook never fires).
+    # Deterministic, exit-code/score based — never model evidence. Absent config
+    # => no barrier is built and close proceeds exactly as before.
+    barrier = barrier_verifier if barrier_verifier is not None \
+        else mutation_verifier_from_config(root)
+    barrier_info = None
+    if barrier is not None:
+        verdict = barrier.verify(None, None, {})
+        barrier_info = {"verified": verdict.verified, "defects": verdict.defects,
+                        "evidence": verdict.evidence}
+        journal.append(root, "barrier.verified" if verdict.verified else "barrier.blocked",
+                       verified=verdict.verified, defects=verdict.defects,
+                       evidence=verdict.evidence)
+        if not verdict.verified:
+            return {"results": results, "barrier": barrier_info, "closed": False,
+                    "status": "blocked", "summary": journal.fold(root)["summary"],
+                    "cost": views.cost(root)}
+
     fire(contributors, "close", HookContext(root=root, step="close"))
-    return {"results": results, "summary": journal.fold(root)["summary"],
-            "cost": views.cost(root)}
+    return {"results": results, "barrier": barrier_info, "closed": True,
+            "summary": journal.fold(root)["summary"], "cost": views.cost(root)}
