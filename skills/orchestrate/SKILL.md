@@ -1,30 +1,31 @@
 ---
-description: Drive complex, multi-step work through praxis end to end — interview it to a barrier, decompose into a DAG, fan each unit out as a fresh subagent, verify against that barrier, and fix on failure. The complex path; use `inline` for simple, single-context work.
+description: Drive complex, multi-step work through praxis end to end — interview it to a barrier, decompose into a gated DAG, and walk each unit through the engine's phase gates with subagents as the executor, so "done" is defined by passed gates, not self-report. The complex path; use `inline` for simple, single-context work.
 disable-model-invocation: true
 ---
 
 The task to drive is: $ARGUMENTS
 
-Drive it through praxis with the Agent tool as the executor. praxis owns framing, the unit DAG, the journal, and the edit gate; you interview the work into a plan, then dispatch each unit as a fresh subagent and hold the result to the barrier you defined.
+Drive it through praxis with the Agent tool as the executor. praxis owns framing, the unit DAG, the workflow gates, the journal, and the edit gate; you interview the work into a barrier, then walk each unit through its gated workflow, dispatching each phase as a fresh subagent. The engine runs the gates from disk and refuses to advance a unit past a failed gate — you cannot self-certify a unit to done.
 
-1. INTAKE — drive the planner's `intake` workflow (`interview -> frontier -> barrier -> plan`) to turn the request into a plannable DAG. This settles the decisions the work hinges on before slicing it, instead of decomposing blind.
-   - INTERVIEW — surface the decisions the work actually hinges on, following the `interviewing` discipline: ask **one question at a time**; when there is one clear direction, **name it and ask for confirmation** rather than manufacturing a choice; **frame each question for a cheap answer**. Record every surfaced decision into `<root>/.praxis/planner/frontier.md` as a checklist item — `- [ ] <decision>` while open, `- [x]` once answered. A fully-specified task surfaces few or no open decisions and clears at once — do not manufacture questions to justify the step.
+1. INTAKE — drive the planner's `intake` workflow (`interview -> frontier -> barrier -> plan`) to turn the request into a plannable DAG, settling the decisions the work hinges on before slicing it.
+   - INTERVIEW — surface the decisions the work actually hinges on, following the `interviewing` discipline: ask **one question at a time**; when there is one clear direction, **name it and ask for confirmation** rather than manufacturing a choice; **frame each question for a cheap answer**. Record every surfaced decision into `<root>/.praxis/planner/frontier.md` (`- [ ] <decision>` open, `- [x]` answered). A fully-specified task surfaces few or no open decisions and clears at once — do not manufacture questions.
    - FRONTIER — the deterministic check reads that artifact: `open` while any item is unanswered (or none surfaced yet), `clear` only when at least one item exists and all are answered. Loop INTERVIEW -> FRONTIER until `clear`.
-   - BARRIER — define the contract the work must satisfy: the observable behavior/interface a fresh agent can synthesize against (for code, the tests / acceptance conditions), stated as what must be true, not how to build it. This is the EXTRACT step of the rebuild triple (`docs/design.md`) — keep it; step 3 verifies against it.
-   - PLAN — emit a sequenced tasklist (each unit: `intent`, `task_kind` create|change|explore, `subject`, `fit` honestly, `depends_on`; sequenced by output dependency; each unit points at the barrier item(s) it must satisfy), then call `register_plan` (praxis) to record the DAG.
+   - BARRIER — define the contract the work must satisfy: the observable behavior/interface a fresh agent can synthesize against (for code, the acceptance tests + the coverage threshold), stated as what must be true, not how to build it. This is the EXTRACT step of the rebuild triple (`docs/design.md`).
+     - Author **integration-contract tests** here, not only per-unit acceptance tests: name the shared interfaces / runtime state / ordering the units will straddle, and write cross-unit tests for them — so integration is somebody's job, not hoped-for out of the full suite.
+     - The barrier is **append-only during implementation**: an implementer that discovers an unhandled case may propose an ADDITION (never a modification), which you approve and append. The contract only grows; it never bends to fit an implementation.
+   - PLAN — emit a sequenced tasklist. Each unit: `intent`, `task_kind` (create|change|explore), `subject`, `fit` honestly, `depends_on`, and a `workflow` **when the work fits one** — `rebuild-triple` for a re-architecture/rewrite, `tdd-unit`/`build-verify` for a feature, left unset for a simple single-dispatch unit. Sequence by output dependency; each unit points at the barrier item(s) it must satisfy. Call `register_plan`.
 
-2. FAN OUT — repeat:
-   - Call `next_handoff`. On `complete`/`waiting` with nothing ready, stop the loop.
-   - It returns a ready unit with `unit`, `brief`, and `overlay`. Dispatch it as a fresh subagent via the Agent tool (subagent_type general-purpose): prompt = the `brief`, plus the `overlay` as guidance if non-empty, plus "Work only in this repo. Report what you changed, or the blocker if you cannot finish." Run several in parallel (run_in_background) when the DAG has multiple ready units.
-   - When a subagent returns: call `record_receipt` with `outcome=result` if it finished (unlocks dependents), or `outcome=stall` with the blocker as `note` if it could not (dependents stay blocked).
-   - Loop until `next_handoff` reports `complete`.
+2. FAN OUT — repeat: call `next_handoff`; on `complete`/`waiting` with nothing ready, stop the loop. For each ready unit, run independent ones in parallel (`run_in_background`):
+   - **No workflow** → dispatch ONE fresh subagent (prompt = `brief` + `overlay` as guidance + "Work only in this repo. Report what you changed, or the blocker."); `record_receipt` `result` (unlocks dependents) or `stall` (blocker as `note`).
+   - **Has a workflow** → WALK it through the engine's gates:
+     a. `next_phase(unit)` → the phase to run now + its `gate`, the `inputs`/`ir` to inject, and an `isolation` directive when present. On `complete`, every gate passed — `record_receipt` `result` and move on.
+     b. Dispatch a fresh subagent for **that phase**: prompt = the phase intent + the injected `inputs`/`ir` + "Work only in <the phase's tree>. Report the artifact you produced (the path)." If `isolation` is set (the extract→synthesize seam), dispatch INTO the seeded worktree it names — the subagent sees the IR, **not** the original — and capture the subagent's file reads to pass as `tool_log` (the tripwire).
+     c. `record_phase(unit, phase, {produces, tool_log, facts})` — the engine runs the phase's gate FROM DISK (coverage / held-out + surface / tripwire) and journals the verdict. If it does NOT advance (re-hands the same phase), the gate failed: dispatch a fix subagent for that phase and re-record, bounded to 3 rounds, then ESCALATE.
+     Loop a–c until `next_phase` → `complete`.
+   The per-unit coverage gate fires here, during the walk — a unit only advances when its acceptance tests pass at threshold; it re-runs after any `test-cleanup` phase so pruning scaffolding cannot drop coverage.
 
-3. BARRIER — two deterministic, engine-run adequacy gates at their altitudes; every verdict is a command exit code / score, never model evidence.
-   - PER-UNIT (fast, in-progress): a unit is "done" only when its acceptance tests pass AT the coverage threshold — the `does-it`/`regression` gate is the coverage verifier (`coverage-cmd --cov-fail-under=<coverage-threshold>`, exit code IS the verdict), so a unit's walk only advances when coverage holds. This gate re-runs after any `test-cleanup` phase, so pruning scaffolding cannot drop coverage below threshold.
-   - FINAL BARRIER (slow, once): after all units complete and BEFORE close, the engine runs the full suite plus the MUTATION signal once (`mutation-cmd` vs `mutation-threshold`). A failing mutation barrier BLOCKS close — the `close` hook does not fire and the run surfaces a blocked result.
-   - Pass → go to CLOSE.
-   - Fail → FIX LOOP: for each defect, dispatch a fix subagent via the Agent tool (the code exists — a carry-edge patch) targeting it; `record_receipt` each; re-run the barrier. Bound to 3 rounds.
+3. FINAL BARRIER — once every unit is done, the engine runs the full suite + the MUTATION signal once (scoped to the plan's changed files) before close. A failing mutation barrier BLOCKS close. On failure, route the defect to a SINGLE fixer subagent with GLOBAL context (the whole diff + the barrier) — not back to the isolated implementers, who each lack the whole picture. Re-run the barrier, bounded to 3 rounds.
 
-4. ESCALATE (stop and surface to the user; do not loop) when: a fan-out unit stalled, the fix loop exhausts its rounds, or a fix subagent reports the fix is a re-architecture, not a patch.
+4. ESCALATE — an explicit stop surfaced to the user, never a silent stall — when: a fan-out unit stalled, a phase gate stayed red past its fix budget, the final barrier's fix loop exhausted its rounds, or a fix subagent reports the fix is a re-architecture, not a patch.
 
-5. CLOSE — report what ran, whether the barrier held, and any escalations.
+5. CLOSE — report what ran, which gates held, and any escalations. Close is reachable only through passed gates.
