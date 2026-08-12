@@ -65,3 +65,13 @@ pool; a `validate_domains(root) -> problems` surface; one corpora test over a fi
 couple of plugins registered. Possibly unify by having `discover` reuse praxis's marker/layered
 discovery for locating `domains_dir`s. Land with Lap 2 (ratify/retrospective), which is corpora's
 next build.
+
+## Mutation scope = plan blast radius (queued 2026-08-12)
+
+The mutation adequacy signal's THRESHOLD is an absolute policy constant, but its SCOPE should be
+the files the plan/units actually changed (the blast radius), not the whole repo. Mutation is
+expensive (re-runs the suite once per injected mutant), so scoping it to changed code keeps the
+final barrier tractable on a large codebase. Wire: the mutation barrier verifier targets only the
+plan's touched paths (from the journal/plan), not the entire tree. Applies to R2's mutation barrier
+and R3's extract-seam adequacy. (Surfaced from the "would an architecture shift be blocked?"
+question — answer: no, mutation measures TEST strength, not churn; but scope it to the blast radius.)

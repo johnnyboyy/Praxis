@@ -20,7 +20,7 @@ def _sit(**over):
 class SeedLibraryTest(unittest.TestCase):
     def test_seed_phases_present(self):
         for name in ("plan", "write-tests", "implement", "refactor", "test-cleanup",
-                     "verify", "fix", "close", "extract", "synthesize", "coverage-diff"):
+                     "verify", "fix", "close", "extract", "synthesize"):
             self.assertIn(name, W.SEED_PHASES)
             self.assertIn(W.SEED_PHASES[name].stance, W.STANCES)
 
@@ -41,10 +41,13 @@ class SeedLibraryTest(unittest.TestCase):
 
     def test_rebuild_triple_extract_edge(self):
         wf = W.REBUILD_TRIPLE
-        self.assertEqual([p.name for p in wf.phases],
-                         ["extract", "synthesize", "coverage-diff"])
+        # R3a: 2-phase, synthesize terminal. The preservation gate is the
+        # synthesize-exit edge-verifier keyed `coverage-diff`, not a phase.
+        self.assertEqual([p.name for p in wf.phases], ["extract", "synthesize"])
         et = next(et for (f, t, w, et) in wf.edges if f == "extract" and t == "synthesize")
         self.assertEqual(et, W.EdgeType.extract)
+        self.assertEqual(W.next_phases(wf, "synthesize", "pass"), [])  # terminal
+        self.assertEqual(W.GATES[W.EdgeType.extract], "coverage-diff")  # gate unchanged
 
 
 class _Capture:
@@ -91,17 +94,12 @@ class WalkTest(unittest.TestCase):
     def test_extract_edge_puts_ir_not_carry(self):
         cap = _Capture()
         run_workflow(self.root, R.Unit("u1", _sit()), W.REBUILD_TRIPLE, [], cap)
+        # 2-phase now: extract -> synthesize (terminal). The extract edge threads
+        # the IR into composed["ir"] at synthesize, never as "carry".
+        self.assertEqual(len(cap.seen), 2)
         synth = cap.seen[1]
         self.assertEqual(synth["ir"], "art-1")
         self.assertNotIn("carry", synth)
-        coverage = cap.seen[2]
-        self.assertEqual(coverage["carry"], "art-2")
-
-    def test_coverage_diff_sees_both_ir_and_synthesis(self):
-        cap = _Capture()
-        run_workflow(self.root, R.Unit("u1", _sit()), W.REBUILD_TRIPLE, [], cap)
-        coverage = cap.seen[2]
-        self.assertEqual(coverage["inputs"], {"extract": "art-1", "synthesize": "art-2"})
 
     def test_task_kind_gap_surfaces_once_not_per_phase(self):
         run_workflow(self.root, R.Unit("u1", _sit(fit="none", suggested_kind="provision")),
@@ -111,7 +109,7 @@ class WalkTest(unittest.TestCase):
     def test_edge_in_recorded_on_entry(self):
         run_workflow(self.root, R.Unit("u1", _sit()), W.REBUILD_TRIPLE, [], _Capture())
         entered = self._phase_events("phase.entered")
-        self.assertEqual([e["edge_in"] for e in entered], ["create", "extract", "carry"])
+        self.assertEqual([e["edge_in"] for e in entered], ["create", "extract"])
 
     def test_loose_fit_records_phase_gap(self):
         def handler(unit, composed):

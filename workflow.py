@@ -84,13 +84,10 @@ EXTRACT = Phase("extract", stance="divergent",
                 intent="inventory/classify the original into an IR", produces="ir")
 SYNTHESIZE = Phase("synthesize", stance="convergent",
                    intent="rebuild to the interface, free of the attractor", produces="code")
-COVERAGE_DIFF = Phase("coverage-diff", stance="neutral",
-                      intent="losslessness + completeness, both directions",
-                      produces="diff", delivery="deterministic")
 
 SEED_PHASES: dict[str, Phase] = {
     p.name: p for p in (PLAN, WRITE_TESTS, IMPLEMENT, REFACTOR, TEST_CLEANUP,
-                        VERIFY, FIX, CLOSE, EXTRACT, SYNTHESIZE, COVERAGE_DIFF)
+                        VERIFY, FIX, CLOSE, EXTRACT, SYNTHESIZE)
 }
 
 
@@ -106,11 +103,14 @@ TDD_UNIT = Workflow(
 
 REBUILD_TRIPLE = Workflow(
     name="rebuild-triple",
-    phases=[EXTRACT, SYNTHESIZE, COVERAGE_DIFF],
+    # SYNTHESIZE is terminal. The preservation gate is the edge-verifier keyed
+    # `coverage-diff` (GATES[extract]) that fires at synthesize-exit — the IR is
+    # already threaded into composed["ir"] via the extract edge, so no separate
+    # coverage-diff phase is needed. The does-it gate at extract-exit is the
+    # adequacy gate (extracted tests vs the ORIGINAL + IR split-enforcement).
+    phases=[EXTRACT, SYNTHESIZE],
     edges=[
         ("extract", "synthesize", "pass", EdgeType.extract),
-        ("synthesize", "coverage-diff", "pass", EdgeType.carry),
-        ("extract", "coverage-diff", "feeds", EdgeType.carry),
     ],
 )
 
