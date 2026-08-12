@@ -87,11 +87,33 @@ def validate_contributor(obj) -> list[str]:
     return problems
 
 
+def _prepend_plugins_path(root: str | Path) -> None:
+    """Prepend any root-registered `plugins_path` dirs to sys.path (dedup).
+
+    An OPTIONAL top-level (unnamed-scope) `plugins_path` list of directory strings lets a root
+    make its registered `module:make` specs importable without the user exporting PYTHONPATH.
+    Absent or malformed → no-op, so behavior is unchanged for roots that never registered any.
+    """
+    import sys
+
+    import config
+
+    dirs = config.read(root).get("plugins_path")
+    if not isinstance(dirs, list):
+        return
+    for entry in dirs:
+        if not isinstance(entry, str) or not entry:
+            continue
+        if entry not in sys.path:
+            sys.path.insert(0, entry)
+
+
 def contributors_for(root: str | Path) -> list[Contributor]:
     import importlib
 
     import config
 
+    _prepend_plugins_path(root)
     specs = config.read(root, "contributors")
     loaded: list[Contributor] = []
     for name, spec in specs.items():
