@@ -164,6 +164,39 @@ def next_handoff(brief: str | None = None, search_base: str | None = None) -> st
 
 
 @mcp.tool()
+def next_phase(unit_id: str, search_base: str | None = None) -> str:
+    """PULL the next PHASE of a workflow-driven unit's gated walk into this context — the
+    phase-level twin of `next_handoff`. Folds the unit's phase events in the journal (a pure read,
+    no mutation) and returns the phase to execute now: its `delivery`/`stance`, the incoming edge's
+    `gate`, the `inputs`/`carry`/`ir` to inject, and an `isolation` directive when the phase must run
+    in a seeded worktree (the extract->synthesize seam). Returns `complete` when the walk has reached
+    a terminal, `no-workflow` when the unit isn't workflow-driven, or `no-plan`/`unknown-unit`. Idempotent:
+    calling it again without `record_phase` re-hands the same phase."""
+    return json.dumps(conduct_engine.next_phase(_root(search_base), unit_id), indent=2)
+
+
+@mcp.tool()
+def record_phase(unit_id: str, phase: str, evidence: str | None = None,
+                 test_cmd: str | None = None, search_base: str | None = None) -> str:
+    """Record one PHASE's result and advance the journal cursor — the phase-level twin of
+    `record_receipt`. `evidence` is a JSON object of the phase's output (`produces`, `facts`,
+    `tool_log`, and `passed`); the incoming edge's gate verifier is run FROM DISK against it (for a
+    rebuild unit's synthesize-exit, the copy-tripwire + coverage-diff preservation gate). The cursor
+    NEVER advances past a failed gate — the next `next_phase` re-hands the same phase (or the
+    workflow's fail/halt route), never the successor. Then call `next_phase` again for the next step."""
+    parsed: dict = {}
+    if evidence:
+        try:
+            parsed = json.loads(evidence)
+        except json.JSONDecodeError as e:
+            return json.dumps({"error": f"evidence must be a JSON object: {e}"}, indent=2)
+        if not isinstance(parsed, dict):
+            return json.dumps({"error": "evidence must be a JSON object"}, indent=2)
+    return json.dumps(conduct_engine.record_phase(_root(search_base), unit_id, phase,
+                                                  evidence=parsed, test_cmd=test_cmd), indent=2)
+
+
+@mcp.tool()
 def close_unit(unit_id: str | None = None, note: str | None = None,
                search_base: str | None = None) -> str:
     """Mark the current inline unit done so its dependents unlock and the edit gate closes; call it

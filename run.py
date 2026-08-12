@@ -480,6 +480,18 @@ def _workflow_verifiers(verifier: "Verifier | None",
     return {"regression": gate, "does-it": gate}
 
 
+def verifiers_for_workflow(root: Path, wf, verifier: "Verifier | None" = None) -> dict:
+    """Build the gate map for a workflow walk from policy/config (single source).
+
+    Used by BOTH the synchronous `run_unit` path and the resumable phase-walk
+    surface so the two never gate on a different verifier set. `rebuild-triple`
+    gets the R3a/R3b triple gates; every other workflow gets the per-unit
+    coverage/regression gate (coverage if configured, else the `verifier`)."""
+    if wf.name == "rebuild-triple":
+        return _rebuild_triple_verifiers(coverage_verifier_from_config(root))
+    return _workflow_verifiers(verifier, coverage_verifier_from_config(root))
+
+
 def run_unit(root: Path, unit: Unit, contributors, executor: Executor,
              verifier: Verifier | None = None, max_retries: int = 2,
              verifiers: dict | None = None) -> dict:
@@ -497,15 +509,8 @@ def run_unit(root: Path, unit: Unit, contributors, executor: Executor,
         from workflow_run import run_workflow
         wf = registry.resolve_workflows(root).get(unit.situation.workflow)
         if wf is not None:
-            if verifiers is not None:
-                wf_verifiers = verifiers
-            elif wf.name == "rebuild-triple":
-                # Rebuild-triple gets the R3a gates: does-it -> adequacy (extracted
-                # tests vs the ORIGINAL, via the R2 coverage verifier + IR split),
-                # coverage-diff -> preservation (held-out + surface set-diff).
-                wf_verifiers = _rebuild_triple_verifiers(coverage_verifier_from_config(root))
-            else:
-                wf_verifiers = _workflow_verifiers(verifier, coverage_verifier_from_config(root))
+            wf_verifiers = verifiers if verifiers is not None \
+                else verifiers_for_workflow(root, wf, verifier)
             return run_workflow(root, unit, wf, contributors, executor,
                                 verifiers=wf_verifiers)
         journal.append(root, "workflow.unresolved", unit=unit.id,

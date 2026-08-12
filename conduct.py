@@ -218,6 +218,51 @@ def next_handoff(root: str | Path, brief: str | None = None) -> dict:
     return handoff_mod.pull(root, units, contributors_mod.contributors_for(root), brief=brief)
 
 
+def _find_unit(root: Path, unit_id: str):
+    """Reconstruct the planned units and return the one named `unit_id`, or None."""
+    import plan as plan_mod
+    units = plan_mod.reconstruct_units(root)
+    if units is None:
+        return None
+    return next((u for u in units if u.id == unit_id), None)
+
+
+def next_phase(root: str | Path, unit_id: str) -> dict:
+    """The resumable phase-walk read: the phase to execute now for `unit_id`.
+
+    Mirrors `next_handoff` at the phase level — a pure fold over the journal, no
+    mutation. `no-plan` when nothing is planned, `unknown-unit` when the id isn't
+    in the plan."""
+    import phase_walk
+    root = Path(root).resolve()
+    unit = _find_unit(root, unit_id)
+    if unit is None:
+        import plan as plan_mod
+        if plan_mod.reconstruct_units(root) is None:
+            return {"status": "no-plan",
+                    "note": "no tasklist has been planned for this root yet"}
+        return {"status": "unknown-unit", "unit": unit_id}
+    return phase_walk.next_phase(root, unit)
+
+
+def record_phase(root: str | Path, unit_id: str, phase: str, evidence: dict | None = None,
+                 test_cmd: str | None = None) -> dict:
+    """Record one phase's result and advance the journal cursor — mirrors
+    `record_receipt` at the phase level. The incoming edge's gate is run FROM DISK
+    against `evidence`; the cursor never advances past a failed gate."""
+    import phase_walk
+    root = Path(root).resolve()
+    unit = _find_unit(root, unit_id)
+    if unit is None:
+        import plan as plan_mod
+        if plan_mod.reconstruct_units(root) is None:
+            return {"status": "no-plan",
+                    "note": "no tasklist has been planned for this root yet"}
+        return {"status": "unknown-unit", "unit": unit_id}
+    return phase_walk.record_phase(root, unit, phase, evidence or {},
+                                   verifier=verifier_from_test_cmd(test_cmd))
+
+
 def _workflow_close_status(root: Path, unit_id: str) -> tuple[str, str | None] | None:
     """Certify a workflow-driven unit's walk for close, by pure fold over the journal.
 
