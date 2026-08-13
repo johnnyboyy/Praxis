@@ -2,7 +2,6 @@
   "": {
     "plugins_path": [
       "/Users/johnzdanis/jdev/skills/corpora",
-      "/Users/johnzdanis/jdev/skills/praxis/plugins/general",
       "/Users/johnzdanis/jdev/skills/praxis/plugins/planner"
     ],
     "plugins_search_paths": [
@@ -11,7 +10,6 @@
   },
   "contributors": {
     "corpora": "corpora.plugin:make",
-    "general": "general_plugin:make",
     "planner": "planner_plugin:make"
   },
   "corpora": {
@@ -21,11 +19,11 @@
     },
     "sources": [
       {
-        "dir": "/Users/johnzdanis/jdev/skills/praxis/plugins/general/domains",
+        "dir": "/Users/johnzdanis/jdev/skills/domains/general",
         "owner": "general"
       },
       {
-        "dir": "/Users/johnzdanis/jdev/skills/praxis/plugins/planner/domains",
+        "dir": "/Users/johnzdanis/jdev/skills/domains/planner",
         "owner": "planner"
       }
     ]
