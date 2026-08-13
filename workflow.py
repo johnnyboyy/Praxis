@@ -15,7 +15,7 @@ GATES: dict[EdgeType, str] = {
     EdgeType.extract: "coverage-diff",
 }
 
-WHENS = ("pass", "fail", "always", "agent-choice", "feeds", "fact")
+WHENS = ("pass", "fail", "always", "feeds", "fact")
 STANCES = ("divergent", "convergent", "neutral")
 DELIVERIES = ("inline", "spawn", "deterministic")
 
@@ -35,7 +35,6 @@ class Workflow:
     name: str
     phases: list
     edges: list
-    expand: dict | None = None
     verifiers: object | None = None  # optional factory: (root) -> {gate-name: Verifier}
 
     def phase(self, name: str) -> Phase | None:

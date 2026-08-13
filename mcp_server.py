@@ -9,7 +9,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "scripts"))
 
-import accretion  # noqa: E402
 import conduct as conduct_engine  # noqa: E402
 import journal  # noqa: E402
 import root_tree  # noqa: E402
@@ -93,8 +92,9 @@ def next_handoff(brief: str | None = None, search_base: str | None = None) -> st
 def next_phase(unit_id: str, search_base: str | None = None) -> str:
     """PULL the next PHASE of a workflow-driven unit's gated walk into this context — the
     phase-level twin of `next_handoff`. Folds the unit's phase events in the journal (a pure read,
-    no mutation) and returns the phase to execute now: its `delivery`/`stance`, the incoming edge's
-    `gate`, the `inputs`/`carry`/`spec` to inject, and an `isolation` directive when the phase must run
+    no mutation) and returns the phase to execute now: its `delivery`, the incoming edge's
+    `gate`, the `inputs`/`carry`/`spec` to inject, a per-phase `overlay` composed from the
+    registered contributors (when any speak for this phase), and an `isolation` directive when the phase must run
     in a seeded worktree (the extract->synthesize seam). Returns `complete` when the walk has reached
     a terminal, `no-workflow` when the unit isn't workflow-driven, or `no-plan`/`unknown-unit`. Idempotent:
     calling it again without `record_phase` re-hands the same phase."""
@@ -156,23 +156,6 @@ def conductor_status(search_base: str | None = None) -> str:
     f = journal.fold(root)
     return json.dumps({"root": str(root), "open_unit": journal.open_unit(root),
                        "summary": f["summary"], "cost": views.cost(root)}, indent=2)
-
-@mcp.tool()
-def conductor_gaps(search_base: str | None = None, min_count: int = 2) -> str:
-    """Recurring vocabulary gaps ready to promote: suggestions the model has offered `min_count`+
-    times that aren't yet known vocabulary — the mint candidates (the conductor's ratify gate)."""
-    root = _root(search_base)
-    return json.dumps({"root": str(root), "promotable": accretion.promotable(root, min_count),
-                       "recent_gaps": journal.gaps(root)[-8:]}, indent=2)
-
-@mcp.tool()
-def conductor_mint(vocabulary: str, term: str, search_base: str | None = None) -> str:
-    """Promote a recurring suggestion into real vocabulary (operator action). `vocabulary` is one of
-    task_kind | subject | phase | workflow | unit; `term` is the suggestion to mint. Idempotent."""
-    root = _root(search_base)
-    ev = accretion.mint(root, vocabulary, term)
-    return json.dumps({"minted": ev is not None, "vocabulary": vocabulary, "term": term,
-                       "known_now": accretion.is_known(root, vocabulary, term)}, indent=2)
 
 if __name__ == "__main__":
     mcp.run()

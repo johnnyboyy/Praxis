@@ -88,7 +88,20 @@ def next_phase(root: str | Path, unit_id: str) -> dict:
             return {"status": "no-plan",
                     "note": "no tasklist has been planned for this root yet"}
         return {"status": "unknown-unit", "unit": unit_id}
-    return phase_walk.next_phase(root, unit)
+    out = phase_walk.next_phase(root, unit)
+    if out.get("status") == "phase":
+        import copy
+
+        import handoff as handoff_mod
+        situation = copy.copy(unit.situation)
+        situation.phase_name = out["phase"]
+        composed = contributors_mod.gather(
+            contributors_mod.contributors_for(root), situation)
+        ho = handoff_mod.assemble(situation.intent, composed)
+        if ho["overlay"]:
+            out["overlay"] = ho["overlay"]
+            out["sources"] = ho["sources"]
+    return out
 
 def record_phase(root: str | Path, unit_id: str, phase: str, evidence: dict | None = None,
                  test_cmd: str | None = None) -> dict:

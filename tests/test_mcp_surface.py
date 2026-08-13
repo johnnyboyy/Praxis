@@ -51,8 +51,7 @@ class ShadowGuardTest(unittest.TestCase):
         tools, _ = _tools_and_imports(MCP_SERVER_PY.read_text())
         for expected in ("init", "plan_status", "register_plan", "next_handoff",
                          "next_phase", "record_phase", "close_unit", "record_receipt",
-                         "escalate_unit", "conductor_status", "conductor_gaps",
-                         "conductor_mint"):
+                         "escalate_unit", "conductor_status"):
             self.assertIn(expected, tools)
 
     def test_the_engine_tools_are_gone(self):
@@ -101,14 +100,14 @@ class ToolCallThroughTest(unittest.TestCase):
         self.assertEqual(out["status"], "open")
         self.assertIn("a", out["progress"]["waiting"])
 
-    def test_status_gaps_mint_resolve_their_modules(self):
+    def test_status_resolves_its_modules(self):
         st = self._json(self.srv.conductor_status(search_base=self.base))
         self.assertIn("summary", st)
-        gaps = self._json(self.srv.conductor_gaps(search_base=self.base))
-        self.assertIn("promotable", gaps)
-        minted = self._json(self.srv.conductor_mint("task_kind", "provision-infra",
-                                                    search_base=self.base))
-        self.assertTrue(minted["known_now"])
+
+    def test_gaps_and_mint_tools_are_gone(self):
+        tools, _ = _tools_and_imports(MCP_SERVER_PY.read_text())
+        self.assertNotIn("conductor_gaps", tools)
+        self.assertNotIn("conductor_mint", tools)
 
     def test_bad_json_is_reported_not_raised(self):
         out = self._json(self.srv.register_plan("{not json", search_base=self.base))

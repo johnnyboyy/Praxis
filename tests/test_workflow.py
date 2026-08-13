@@ -104,26 +104,8 @@ class GateSelectionTest(unittest.TestCase):
         self.assertEqual(d["next"], ("implement", W.EdgeType.carry))
 
 class EdgeRoutingTest(unittest.TestCase):
-    def _pick_wf(self):
-        return W.Workflow("pick", [W.PLAN, W.IMPLEMENT, W.FIX], edges=[
-            ("plan", "implement", "agent-choice", W.EdgeType.carry),
-            ("plan", "fix", "agent-choice", W.EdgeType.carry),
-        ])
-
-    def test_agent_choice_follows_receipt_next(self):
-        d = _decide(self._pick_wf(), "plan", _receipt(next="fix"))
-        self.assertEqual(d["next"], ("fix", W.EdgeType.carry))
-
-    def test_failed_gate_overrides_agent_choice_next(self):
-        wf = W.Workflow("gated-pick", [W.PLAN, W.IMPLEMENT, W.FIX], edges=[
-            ("plan", "implement", "agent-choice", W.EdgeType.carry),
-            ("plan", "fix", "fail", W.EdgeType.carry),
-        ])
-        failing = R.CallableVerifier(
-            lambda unit, receipt, composed: R.Verdict(verified=False, defects=["gate"]))
-        d = _decide(wf, "plan", _receipt(next="implement"),
-                    verifiers={"does-it": failing})
-        self.assertEqual(d["next"], ("fix", W.EdgeType.carry))
+    def test_agent_choice_is_no_longer_a_when(self):
+        self.assertNotIn("agent-choice", W.WHENS)
 
     def test_terminal_phase_has_no_next(self):
         d = _decide(coding_process_plugin.TDD_UNIT, "test-cleanup", _receipt(), edge_in=W.EdgeType.carry)
@@ -164,21 +146,13 @@ class PredicateEdgeTest(unittest.TestCase):
         d = _decide(wf, "route", _receipt(facts={"k": {"go_b": True}}))
         self.assertEqual(d["next"], ("b", W.EdgeType.carry))
 
-    def test_predicate_tier_beats_agent_choice(self):
+    def test_predicate_ignores_emitted_next(self):
         wf = self._facts_wf(edges=[
             ("route", "b", "fact", W.EdgeType.carry, lambda ev: ev["facts"]["k"]["go_b"]),
-            ("route", "c", "agent-choice", W.EdgeType.carry),
+            ("route", "c", "pass", W.EdgeType.carry),
         ])
         d = _decide(wf, "route", _receipt(next="c", facts={"k": {"go_b": True}}))
         self.assertEqual(d["next"], ("b", W.EdgeType.carry))
-
-    def test_agent_choice_used_when_no_predicate_matches(self):
-        wf = self._facts_wf(edges=[
-            ("route", "b", "fact", W.EdgeType.carry, lambda ev: ev["facts"]["k"]["go_b"]),
-            ("route", "c", "agent-choice", W.EdgeType.carry),
-        ])
-        d = _decide(wf, "route", _receipt(next="c", facts={"k": {"go_b": False}}))
-        self.assertEqual(d["next"], ("c", W.EdgeType.carry))
 
     def test_fail_route_overrides_predicate(self):
         route = W.Phase("route", stance="neutral", delivery="deterministic")

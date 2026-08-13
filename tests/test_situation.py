@@ -14,13 +14,13 @@ class SituationSchemaTest(unittest.TestCase):
         return sit.Situation(**kw)
 
     def test_valid_construction(self):
-        s = self._base(suggested_kind="refactor", fit="loose", phase="convergent")
+        s = self._base(suggested_kind="refactor", fit="loose")
         self.assertEqual(s.task_kind, "change")
         self.assertEqual(s.suggested_kind, "refactor")
 
     def test_rejects_bad_enum_values(self):
         for bad in (dict(task_kind="frobnicate"), dict(subject="cooking"),
-                    dict(phase="sideways"), dict(fit="perfect")):
+                    dict(fit="perfect")):
             with self.assertRaises(ValueError):
                 self._base(**bad)
 
@@ -49,7 +49,7 @@ class SituationSchemaTest(unittest.TestCase):
                        targets=["a.py"], workflow="wf1")
         d = s.to_dict()
         self.assertEqual(set(d), {"task_kind", "suggested_kind", "fit", "intent", "subject",
-                                  "phase", "phase_name", "root", "targets", "workflow", "label"})
+                                  "phase_name", "root", "targets", "workflow", "label"})
         self.assertEqual(d["suggested_kind"], "refactor")
         self.assertEqual(d["targets"], ["a.py"])
 

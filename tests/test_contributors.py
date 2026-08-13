@@ -123,9 +123,8 @@ class GatherComposeTest(unittest.TestCase):
         r = cb.gather(contribs, _sit(fit="clean"))
         self.assertEqual(r["sources"], ["first", "second"])
 
-    def test_stance_derived_from_phase(self):
-        self.assertEqual(cb.gather([], _sit(phase="divergent"))["stance"], "divergent")
-        self.assertIsNone(cb.gather([], _sit(phase="none"))["stance"])
+    def test_gather_carries_no_stance_channel(self):
+        self.assertNotIn("stance", cb.gather([], _sit()))
 
 class _SurfaceContributor:
     source = "leaseholder"

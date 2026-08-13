@@ -8,10 +8,7 @@ import journal
 
 TASK_KINDS = ("create", "change", "explore")
 SUBJECTS = ("coding", "design", "process", "prose")
-PHASES = ("divergent", "convergent", "none")
 FITS = ("clean", "loose", "none")
-
-VOCABULARIES = ("task_kind", "subject", "phase", "workflow", "unit")
 
 UNCLASSIFIED = "unclassified"
 
@@ -23,7 +20,6 @@ class Situation:
     subject: str
     suggested_kind: str | None = None
     fit: str = "clean"
-    phase: str = "none"
     phase_name: str | None = None
     root: str | None = None
     targets: list = field(default_factory=list)
@@ -33,7 +29,6 @@ class Situation:
     def __post_init__(self):
         self._check("task_kind", self.task_kind, TASK_KINDS)
         self._check("subject", self.subject, SUBJECTS)
-        self._check("phase", self.phase, PHASES)
         self._check("fit", self.fit, FITS)
 
     @staticmethod
@@ -60,7 +55,6 @@ class Situation:
             "fit": self.fit,
             "intent": self.intent,
             "subject": self.subject,
-            "phase": self.phase,
             "phase_name": self.phase_name,
             "root": self.root,
             "targets": self.targets,

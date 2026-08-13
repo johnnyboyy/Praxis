@@ -68,7 +68,7 @@ def pull(root: str | Path, units: list[Unit], contributors, brief: str | None = 
                    situation=unit.situation.to_dict())
     journal.append(root, "unit.framed", unit=unit.id, unit_of_work=unit.unit_of_work,
                    routed_kind=composed.get("routed_kind"), gap_surfaced=composed.get("gap_surfaced"),
-                   sources=composed.get("sources", []), stance=composed.get("stance"),
+                   sources=composed.get("sources", []),
                    delivery=delivery,
                    surface=(surface_for(contributors, unit.situation)
                             or (unit.situation.targets or None)),

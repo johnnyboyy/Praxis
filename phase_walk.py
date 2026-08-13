@@ -7,7 +7,7 @@ import journal
 from run import Receipt, verifiers_for_workflow
 from workflow import GATES, EdgeType, Workflow, edge_parts
 
-def _choose_edge(workflow: Workflow, from_phase: str, passed: bool, choice=None,
+def _choose_edge(workflow: Workflow, from_phase: str, passed: bool,
                  evidence=None):
     edges = [(t, when, et, pred)
              for (f, t, when, et, pred) in map(edge_parts, workflow.edges)
@@ -27,11 +27,6 @@ def _choose_edge(workflow: Workflow, from_phase: str, passed: bool, choice=None,
                         return t, et
                 except Exception:
                     continue
-
-    if choice is not None:
-        for (t, when, et, pred) in edges:
-            if when == "agent-choice" and t == choice:
-                return t, et
 
     for (t, when, et, pred) in edges:
         if when in ("pass", "always"):
@@ -54,10 +49,9 @@ def decide_step(workflow: Workflow, unit, name: str, edge_in, receipt,
     evidence = receipt.evidence or {}
     passed = evidence.get("passed", receipt.outcome == "result")
     advance = passed and verified
-    choice = evidence.get("next") if advance else None
-    nxt = _choose_edge(workflow, name, advance, choice, evidence)
+    nxt = _choose_edge(workflow, name, advance, evidence)
     return {"gate": gate, "verified": verified, "verdict": verdict, "evidence": evidence,
-            "passed": passed, "advance": advance, "choice": choice, "next": nxt}
+            "passed": passed, "advance": advance, "next": nxt}
 
 def _resolve_workflow(root: Path, unit, workflow=None):
     if workflow is not None:
@@ -70,9 +64,6 @@ def _resolve_workflow(root: Path, unit, workflow=None):
         return registry.resolve_workflows(root).get(name)
     except Exception:
         return None
-
-def _stance_of(phase) -> str:
-    return phase.stance if phase.stance in ("divergent", "convergent") else "none"
 
 def _edge_type(value):
     if value in (None, "create"):
@@ -144,7 +135,6 @@ def next_phase(root, unit, workflow=None) -> dict:
         "phase": name,
         "phase_index": cur["phase_index"],
         "delivery": phase.delivery,
-        "stance": _stance_of(phase),
         "edge_in": edge_in.value if edge_in else "create",
         "gate": gate_for(edge_in),
         "isolation": None,

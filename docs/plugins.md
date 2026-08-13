@@ -12,7 +12,8 @@ A praxis plugin provides one or more **Contributors**: objects that inject conte
 - `hooks() -> dict[str, StepHook]` — optional. Step name → callback.
 - `surface(situation) -> list[str] | None` — optional. Edit-lease globs the unit may touch.
 - `phases() -> list[Phase]` / `workflows() -> list[Workflow]` — optional. Merged into the seed
-  library (seed wins).
+  library (seed wins). A `Workflow` may carry a `verifiers` factory (`(root) -> {gate-name:
+  Verifier}`) — the gate's form travels with the workflow that needs it (see `plugins/rebuild/`).
 - `domains_dir` — optional attribute. Path to a `domains/*.md` directory corpora composes.
 
 ```python
@@ -25,16 +26,16 @@ class Contribution:
 StepHook = Callable[[HookContext], None]
 ```
 
-`Situation` carries the unit's framing (`task_kind`, `intent`, `subject`, `phase`, `phase_name`,
-`root`, `targets`, `workflow`, `label`). `phase` is always a **stance**; `phase_name` is the named
-phase, or `None` outside a workflow run.
+`Situation` carries the unit's framing (`task_kind`, `intent`, `subject`, `phase_name`, `root`,
+`targets`, `workflow`, `label`). `phase_name` is the named phase driving the current step, or
+`None` outside a workflow walk — it is the only per-phase channel `contribute` should branch on.
 
 ## Steps praxis fires (via `hooks()`)
 
-- `verify` — after a unit verifies as passing. Context: `unit`, `receipt`, `verdict`.
-- `unit-close` — once per unit as it finishes, on every dispatch path. Context: `unit`, final
-  `receipt`. The general per-unit seam.
-- `close` — once at end of run. Empty context. Run-level rollups only.
+- `unit-close` — once per unit as it closes (`close_unit` / `record_receipt`, whatever the
+  outcome). Context: `unit`, final `receipt`. The general per-unit seam.
+
+(`fire` dispatches any step name, but `unit-close` is the only step core fires today.)
 
 `HookContext(root, step, unit=None, receipt=None, verdict=None)` also exposes
 `add_note(source, body, **extra)` and `notes(unit=None)`.

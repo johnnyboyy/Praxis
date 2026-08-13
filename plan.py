@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import journal
 from run import Unit
-from situation import FITS, PHASES, SUBJECTS, TASK_KINDS, Situation
+from situation import FITS, SUBJECTS, TASK_KINDS, Situation
 
 @dataclass
 class TaskSpec:
@@ -17,7 +17,6 @@ class TaskSpec:
     subject: str = "coding"
     suggested_kind: str | None = None
     fit: str = "clean"
-    phase: str = "none"
     targets: list = field(default_factory=list)
     workflow: str | None = None
     label: str | None = None
@@ -26,7 +25,6 @@ class TaskSpec:
     def __post_init__(self):
         for name, value, allowed in (("task_kind", self.task_kind, TASK_KINDS),
                                      ("subject", self.subject, SUBJECTS),
-                                     ("phase", self.phase, PHASES),
                                      ("fit", self.fit, FITS)):
             if value not in allowed:
                 raise ValueError(f"{name} must be one of {allowed}, got {value!r}")
@@ -35,7 +33,7 @@ class TaskSpec:
     def from_dict(cls, d: dict) -> "TaskSpec":
         return cls(intent=d["intent"], id=d.get("id"), task_kind=d.get("task_kind", "change"),
                    subject=d.get("subject", "coding"), suggested_kind=d.get("suggested_kind"),
-                   fit=d.get("fit", "clean"), phase=d.get("phase", "none"),
+                   fit=d.get("fit", "clean"),
                    targets=list(d.get("targets", []) or []),
                    workflow=d.get("workflow"), label=d.get("label"),
                    depends_on=list(d.get("depends_on", []) or []))
@@ -43,13 +41,13 @@ class TaskSpec:
     def to_dict(self) -> dict:
         return {"intent": self.intent, "id": self.id, "task_kind": self.task_kind,
                 "subject": self.subject, "suggested_kind": self.suggested_kind, "fit": self.fit,
-                "phase": self.phase, "targets": list(self.targets),
+                "targets": list(self.targets),
                 "workflow": self.workflow,
                 "label": self.label, "depends_on": list(self.depends_on)}
 
 def spec_to_unit(spec: TaskSpec, root: Path | None = None) -> Unit:
     sit = Situation(task_kind=spec.task_kind, intent=spec.intent, subject=spec.subject,
-                    suggested_kind=spec.suggested_kind, fit=spec.fit, phase=spec.phase,
+                    suggested_kind=spec.suggested_kind, fit=spec.fit,
                     root=str(root) if root else None,
                     targets=list(spec.targets), workflow=spec.workflow, label=spec.label)
     return Unit(id=spec.id, situation=sit, depends_on=list(spec.depends_on))
@@ -81,7 +79,7 @@ def plan_tasks(root: str | Path, specs: list[TaskSpec]) -> list[Unit]:
     for u in units:
         s = TaskSpec(intent=u.situation.intent, id=u.id, task_kind=u.situation.task_kind,
                      subject=u.situation.subject, suggested_kind=u.situation.suggested_kind,
-                     fit=u.situation.fit, phase=u.situation.phase,
+                     fit=u.situation.fit,
                      targets=list(u.situation.targets),
                      workflow=u.situation.workflow, label=u.situation.label,
                      depends_on=list(u.depends_on))

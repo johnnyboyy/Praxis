@@ -125,11 +125,9 @@ def gather(contributors, situation: Situation, root: Path | None = None,
     for c in contributors:
         contributions.extend(c.contribute(situation) or [])
     contributions.sort(key=lambda c: c.priority)
-    stance = situation.phase if situation.phase in ("divergent", "convergent") else None
     return {
         "contributions": contributions,
         "sources": [c.source for c in contributions],
-        "stance": stance,
         "routed_kind": situation.routed_kind,
         "gap_surfaced": gap is not None,
         "note": "ok",
