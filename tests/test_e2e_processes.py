@@ -30,7 +30,8 @@ class TempRoot:
 def _wait_worker_done(root, timeout=20):
     t0 = time.time()
     while time.time() - t0 < timeout:
-        if cascade.is_running(root) is None and conduct_engine.plan_status(root)["status"] != "idle":
+        status = conduct_engine.plan_status(root)["status"]
+        if status in ("complete", "escalated", "error") and cascade.is_running(root) is None:
             return True
         time.sleep(0.02)
     return False
