@@ -1,24 +1,4 @@
 #!/usr/bin/env python3
-"""gate — the edit-gate decision as a pure function of the conductor journal.
-
-Consults `conductor.journal.open_unit(root)` — the most recent in-flight unit for a root — instead
-of the tmp session-stamp files. No freshness window: a unit is open until `close_work` (or a stall)
-concludes it, not until a clock runs out.
-
-Returns one of three verdicts, distinguished so the shell hook can fall back to the legacy
-marker/stamp check when the journal has nothing to say (a root whose frames predate the bridge, or
-that has never called begin_work through it):
-  - "no_unit" — no open unit in the journal for this root. The caller decides what "no data" means
-    (deny outright once the journal is the sole source of truth; fall back to the legacy check
-    during the transition).
-  - "allow"   — an open unit exists and authorizes this edit.
-  - "deny"    — an open unit exists but does not authorize this edit (out of surface, or its
-    payload has not been read yet), with a reason.
-
-Fail-open discipline matches the existing hooks: any import/lookup error here must never be the
-reason a legitimate edit is blocked, so callers should treat an exception from this module as
-"no_unit" (fall through), not as a hard deny.
-"""
 from __future__ import annotations
 
 import argparse
@@ -32,13 +12,11 @@ import units  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import journal  # noqa: E402
 
-
 def _rel(root: Path, abs_file: str) -> str | None:
     try:
         return str(Path(abs_file).resolve().relative_to(root))
     except ValueError:
         return None
-
 
 def gate_decision(root: Path, abs_file: str) -> tuple[str, str | None]:
     try:
@@ -77,14 +55,12 @@ def gate_decision(root: Path, abs_file: str) -> tuple[str, str | None]:
 
     return "allow", None
 
-
 def mark_payload_read(root: Path) -> bool:
     unit = journal.open_unit(root)
     if unit is None:
         return False
     journal.append(root, "unit.note", unit=unit["unit"], payload_read=True)
     return True
-
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="gate", description=__doc__,
@@ -112,7 +88,6 @@ def main(argv: list[str]) -> int:
         return 0
 
     return 1
-
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

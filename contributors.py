@@ -8,7 +8,6 @@ from typing import Callable, Protocol, runtime_checkable
 import journal
 from situation import Situation, surface_task_kind_gap
 
-
 @dataclass
 class Contribution:
 
@@ -18,12 +17,10 @@ class Contribution:
     priority: int = 0
     meta: dict | None = None
 
-
 @runtime_checkable
 class Contributor(Protocol):
 
     def contribute(self, situation: Situation) -> list[Contribution]: ...
-
 
 @dataclass
 class HookContext:
@@ -41,9 +38,7 @@ class HookContext:
     def notes(self, unit: str | None = None) -> list[dict]:
         return journal.notes(self.root, unit=unit)
 
-
 StepHook = Callable[[HookContext], None]
-
 
 def fire(contributors, step: str, ctx: HookContext) -> None:
     for c in contributors:
@@ -52,7 +47,6 @@ def fire(contributors, step: str, ctx: HookContext) -> None:
         hook = (table or {}).get(step)
         if hook is not None:
             hook(ctx)
-
 
 def surface_for(contributors, situation: Situation) -> list[str] | None:
     claimed: list[str] = []
@@ -67,7 +61,6 @@ def surface_for(contributors, situation: Situation) -> list[str] | None:
         if globs:
             claimed.extend(globs)
     return sorted(set(claimed)) or None
-
 
 def validate_contributor(obj) -> list[str]:
     problems: list[str] = []
@@ -86,14 +79,7 @@ def validate_contributor(obj) -> list[str]:
         problems.append("workflows, when present, must be callable")
     return problems
 
-
 def _prepend_plugins_path(root: str | Path) -> None:
-    """Prepend any root-registered `plugins_path` dirs to sys.path (dedup).
-
-    An OPTIONAL top-level (unnamed-scope) `plugins_path` list of directory strings lets a root
-    make its registered `module:make` specs importable without the user exporting PYTHONPATH.
-    Absent or malformed → no-op, so behavior is unchanged for roots that never registered any.
-    """
     import sys
 
     import config
@@ -106,7 +92,6 @@ def _prepend_plugins_path(root: str | Path) -> None:
             continue
         if entry not in sys.path:
             sys.path.insert(0, entry)
-
 
 def contributors_for(root: str | Path) -> list[Contributor]:
     import importlib
@@ -130,7 +115,6 @@ def contributors_for(root: str | Path) -> list[Contributor]:
             continue
         loaded.append(contributor)
     return loaded
-
 
 def gather(contributors, situation: Situation, root: Path | None = None,
            note: str | None = None) -> dict:

@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-"""Contributor-extensible phase/workflow registry.
-
-Merges the hardcoded SEED_PHASES / SEED_WORKFLOWS (the seed layer) with
-Phase / Workflow objects supplied by contributors via their optional
-``phases()`` / ``workflows()`` providers.
-
-Collision policy:
-  - seed always wins (a contributor cannot override a seed name)
-  - plugin-vs-plugin: first loaded wins (a later duplicate name is skipped)
-  - invalid objects, colliding names, or a provider that raises are skipped
-    fail-soft; the registry always returns at least the seed layer.
-"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -26,7 +14,6 @@ from workflow import (
     Workflow,
 )
 
-
 def validate_phase(obj) -> list[str]:
     problems: list[str] = []
     if not isinstance(obj, Phase):
@@ -38,7 +25,6 @@ def validate_phase(obj) -> list[str]:
     if obj.delivery not in DELIVERIES:
         problems.append(f"delivery must be one of {DELIVERIES}")
     return problems
-
 
 def validate_workflow(obj, phases: dict[str, Phase]) -> list[str]:
     problems: list[str] = []
@@ -69,13 +55,11 @@ def validate_workflow(obj, phases: dict[str, Phase]) -> list[str]:
                     f"predicate edge {frm!r}->{to!r} must carry a callable predicate")
     return problems
 
-
 def _log_collision(root, kind: str, name: str, what: str) -> None:
     try:
         journal.append(root, f"{what}.collision", kind=kind, name=name)
     except Exception:
         pass
-
 
 def _provider(c, method: str):
     provider = getattr(c, method, None)
@@ -86,7 +70,6 @@ def _provider(c, method: str):
     except Exception:
         return None
     return items or []
-
 
 def resolve_phases(root, contributors=None) -> dict[str, Phase]:
     if contributors is None:
@@ -109,7 +92,6 @@ def resolve_phases(root, contributors=None) -> dict[str, Phase]:
             out[p.name] = p
             plugin_names.add(p.name)
     return out
-
 
 def resolve_workflows(root, contributors=None, phases=None) -> dict[str, Workflow]:
     if contributors is None:

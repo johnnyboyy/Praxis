@@ -21,17 +21,10 @@ from pathlib import Path
 
 from contributors import Contribution
 
-# Marker: identifies this module as a praxis plugin's main module (carries
-# `source` + `make`). Layered discovery finds plugins by this constant.
 PRAXIS_PLUGIN = True
 
-# The coordination unit's subject (see domains/monorepo-coordination.md) and the
-# praxis phase name at the root border. Either signal means this unit is running at
-# a coordination border and should be framed as orchestration, not straddling work.
 _COORDINATION_PHASES = {"coordination", "coordinate-work"}
 
-# Sits below corpora's principle tier so the process map frames the injected judgment
-# rather than competing with it.
 _FRAMING_PRIORITY = 5
 
 _COORDINATION_FRAMING = (
@@ -55,12 +48,7 @@ _COORDINATION_FRAMING = (
     "and which decomposed unit must land first."
 )
 
-
 def _is_coordination(situation) -> bool:
-    """A coordination-border situation: the process subject, or the coordination phase.
-
-    Reads only stable `Situation` fields; it does NOT inspect targets against the root
-    tree (that traversal is core root_tree's job, not this plugin's)."""
     if getattr(situation, "subject", None) == "process":
         return True
     if getattr(situation, "phase_name", None) in _COORDINATION_PHASES:
@@ -69,26 +57,17 @@ def _is_coordination(situation) -> bool:
         return True
     return False
 
-
 class MonorepoJudgment:
-    """A judgment source that also injects coordination process framing."""
 
-    # Non-empty source string. Becomes `owner` on every domain this plugin ships,
-    # and this plugin's namespace + precedence identity.
     source = "monorepo"
 
-    # Absolute path to this plugin's own domains dir, derived from the module file so
-    # it is portable — NOT derived from the consuming root.
     domains_dir = Path(__file__).resolve().parent / "domains"
 
     def __init__(self, root):
-        # `root` is the consuming praxis root praxis hands to the factory.
+
         self.root = root
 
     def contribute(self, situation) -> list:
-        """Inject coordination process framing for a cross-root / process unit; `[]`
-        otherwise. This is process framing only — corpora owns judgment composition and
-        core root_tree owns traversal."""
         if not _is_coordination(situation):
             return []
         return [Contribution(
@@ -99,7 +78,5 @@ class MonorepoJudgment:
             meta={"framing": "coordination"},
         )]
 
-
 def make(root) -> "MonorepoJudgment":
-    """Factory. Register via `monorepo_plugin:make` in the root's config."""
     return MonorepoJudgment(root)

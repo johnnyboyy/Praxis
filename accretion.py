@@ -14,10 +14,8 @@ BASE_VOCABULARY: dict[str, list[str]] = {
     "unit": [],
 }
 
-
 def _norm(term: str) -> str:
     return str(term).strip().lower()
-
 
 def minted(root: Path) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
@@ -32,7 +30,6 @@ def minted(root: Path) -> dict[str, list[str]]:
             bucket.append(term)
     return out
 
-
 def vocabulary(root: Path) -> dict[str, list[str]]:
     vocab = {k: list(v) for k, v in BASE_VOCABULARY.items()}
     for v, terms in minted(root).items():
@@ -42,15 +39,12 @@ def vocabulary(root: Path) -> dict[str, list[str]]:
                 bucket.append(t)
     return vocab
 
-
 def is_known(root: Path, vocab: str, term: str) -> bool:
     return _norm(term) in {_norm(t) for t in vocabulary(root).get(vocab, [])}
-
 
 def promotable(root: Path, min_count: int = 3) -> list[dict]:
     return [c for c in journal.gap_candidates(root)
             if c["count"] >= min_count and not is_known(root, c["vocabulary"], c["suggested"])]
-
 
 def mint(root: Path, vocab: str, term: str, note: str | None = None,
          examples: list | None = None) -> dict | None:
@@ -64,11 +58,9 @@ def mint(root: Path, vocab: str, term: str, note: str | None = None,
     return journal.append(root, "conductor.mint", vocabulary=vocab, term=term,
                           note=note, examples=examples)
 
-
 def mint_candidate(root: Path, candidate: dict, note: str | None = None) -> dict | None:
     return mint(root, candidate["vocabulary"], candidate["suggested"], note=note,
                 examples=candidate.get("examples"))
-
 
 def review(root: Path, min_count: int = 3) -> dict:
     return {"min_count": min_count, "promotable": promotable(root, min_count),

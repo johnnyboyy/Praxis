@@ -62,37 +62,16 @@ from pathlib import Path
 
 from workflow import CLOSE, EdgeType, Phase, Workflow
 
-# Marker: identifies this module as a praxis plugin's main module (carries
-# `source` + `make`). Layered discovery finds plugins by this constant.
 PRAXIS_PLUGIN = True
 
-# This plugin's namespace + precedence identity (also exposed on the contributor
-# instance below, matching the uiux / writing precedent).
 source = "planner"
 
-
-# --- frontier artifact location + parser (pure) ----------------------------------
-
-# Task-list item: optional indent, `-`/`*` bullet, `[ ]`/`[x]`/`[X]` box, then text.
 _ITEM_RE = re.compile(r"^\s*[-*]\s+\[( |x|X)\]\s*(.*\S)?\s*$")
 
-
 def frontier_path(root) -> Path:
-    """The decision-frontier artifact path for a root."""
     return Path(root) / ".praxis" / "planner" / "frontier.md"
 
-
 def parse_frontier(text: str) -> dict:
-    """Parse a decision-frontier markdown checklist into a summary.
-
-    Pure function of the text. Returns
-        {"total": <#items>, "answered": <#checked>, "open": <#unchecked>,
-         "frontier": "open" | "clear"}.
-
-    A checklist with no items (missing/empty artifact) reads as "open" with
-    open == 0 — see the module docstring for why. "clear" requires at least one
-    item and zero unanswered.
-    """
     total = 0
     answered = 0
     for line in (text or "").splitlines():
@@ -103,22 +82,17 @@ def parse_frontier(text: str) -> dict:
         if m.group(1) in ("x", "X"):
             answered += 1
     open_count = total - answered
-    # "clear" only when the operator dialogue produced items AND all are answered.
+
     frontier = "clear" if (total > 0 and open_count == 0) else "open"
     return {"total": total, "answered": answered, "open": open_count,
             "frontier": frontier}
 
-
 def read_frontier(root) -> dict:
-    """Read + parse the on-disk frontier artifact (fail-soft to empty)."""
     try:
         text = frontier_path(root).read_text()
     except OSError:
         text = ""
     return parse_frontier(text)
-
-
-# --- PROCESS face: the phase objects ---------------------------------------------
 
 INTERVIEW = Phase(
     "interview", stance="divergent", delivery="inline",
@@ -143,48 +117,27 @@ PLAN = Phase(
     intent="emit a sequenced tasklist that references the barrier",
     produces="tasklist")
 
-
 def _run_frontier(root, unit, composed) -> dict:
-    """Deterministic `run` for the `frontier` phase (delivery="deterministic").
-
-    PURE function of the on-disk artifact: no model, no network. Returns a
-    receipt-shaped dict; the runner journals the facts. `unit` / `composed` are
-    unused — the frontier state lives entirely on disk.
-    """
     summary = read_frontier(root)
     return {"passed": True,
             "facts": {"frontier": summary["frontier"], "open": summary["open"]}}
-
 
 FRONTIER.run = _run_frontier
 
 PLANNER_PHASES = [INTERVIEW, FRONTIER, BARRIER, PLAN]
 
-
-# --- PROCESS face: fact predicates over the frontier fact ------------------------
-# `frontier` emits FACTS only (no `next`); the `intake` workflow owns its routing
-# via fact-predicate edges. Predicates are pure, fail-soft `.get` reads.
-
-
 def _frontier_open(ev) -> bool:
     return (ev.get("facts") or {}).get("frontier") == "open"
 
-
 def _frontier_clear(ev) -> bool:
     return (ev.get("facts") or {}).get("frontier") == "clear"
-
-
-# --- PROCESS face: the workflow object -------------------------------------------
-# interview -> frontier (always). frontier branches on its own fact: open loops
-# back to interview, clear advances to barrier. barrier -> plan (pass), then
-# plan -> close (the seed close phase, as the uiux / writing workflows terminate).
 
 INTAKE = Workflow(
     name="intake",
     phases=[INTERVIEW, FRONTIER, BARRIER, PLAN, CLOSE],
     edges=[
         ("interview", "frontier", "always", EdgeType.carry),
-        # frontier fact routing — declaration order, first matching predicate wins.
+
         ("frontier", "interview", "fact", EdgeType.carry, _frontier_open),
         ("frontier", "barrier", "fact", EdgeType.create, _frontier_clear),
         ("barrier", "plan", "pass", EdgeType.carry),
@@ -194,45 +147,24 @@ INTAKE = Workflow(
 
 PLANNER_WORKFLOWS = [INTAKE]
 
-
-# --- the contributor -------------------------------------------------------------
-
 class PlannerProcess:
-    """The planner's PROCESS face: intake phases + workflow.
 
-    Judgment reaches context through the corpora composer over `domains_dir`, so
-    `contribute()` injects nothing itself (returns []).
-    """
-
-    # Non-empty source string. This plugin's namespace + precedence identity, and
-    # the `owner` stamped on every domain this plugin ships.
     source = "planner"
 
-    # Absolute path to this plugin's own domains dir, derived from the module file
-    # so it is portable — NOT derived from the consuming root.
     domains_dir = Path(__file__).resolve().parent / "domains"
 
     def __init__(self, root):
-        # `root` is the consuming praxis root praxis hands to the factory.
+
         self.root = root
 
     def contribute(self, situation) -> list:
-        """Injects nothing directly — the planner's judgment is composed by
-        corpora over `domains_dir`."""
         return []
 
     def phases(self) -> list:
-        """The planner phases this plugin registers (real workflow.Phase objects);
-        `frontier` carries the deterministic `run` callable."""
         return list(PLANNER_PHASES)
 
     def workflows(self) -> list:
-        """The `intake` workflow. It references the seed `close` phase by name; the
-        registry merges the seed layer in, so validation resolves against the
-        merged phase table."""
         return list(PLANNER_WORKFLOWS)
 
-
 def make(root) -> "PlannerProcess":
-    """Factory. Register via `planner_plugin:make` in the root's config."""
     return PlannerProcess(root)

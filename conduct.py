@@ -17,20 +17,12 @@ import views
 from run import Receipt, Unit, run_unit, verifier_from_test_cmd
 from situation import Situation
 
-
 _REBUILD_IGNORE = ".rebuild/"
 _REBUILD_IGNORE_COMMENT = (
     "# praxis rebuild-triple scratch (extract→synthesize working dir) — never committed"
 )
 
-
 def _ensure_rebuild_gitignore(git_root: Path) -> bool:
-    """Ensure the repo's `.gitignore` ignores the rebuild-triple scratch dir.
-
-    Idempotent: a no-op if any line already ignores `.rebuild/`. A bare pattern
-    (no leading slash) matches at any depth, so it covers `apps/*/.rebuild/` in a
-    monorepo too. Returns True when it appended the entry.
-    """
     gitignore = Path(git_root) / ".gitignore"
     existing = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
     if any(line.strip() == _REBUILD_IGNORE for line in existing.splitlines()):
@@ -40,13 +32,7 @@ def _ensure_rebuild_gitignore(git_root: Path) -> bool:
         f"{prefix}{_REBUILD_IGNORE_COMMENT}\n{_REBUILD_IGNORE}\n", encoding="utf-8")
     return True
 
-
 def init_root(root=None) -> dict:
-    """Mark a directory a managed praxis root by ensuring an empty `.praxis/config.json` exists.
-
-    In a git repo it also ensures `.gitignore` ignores the rebuild-triple scratch
-    dir (`.rebuild/`), so extract→synthesize working files never get committed.
-    """
     import root_tree
     start = Path(root).resolve() if root else Path.cwd()
     git_root = root_tree._git_toplevel(start)
@@ -57,7 +43,6 @@ def init_root(root=None) -> dict:
     return {"status": "initialized", "root": str(target),
             "config": str(config_mod.path(target)), "created": created,
             "gitignore_updated": gitignore_updated}
-
 
 class ClaudeExecutor:
 
@@ -132,7 +117,6 @@ class ClaudeExecutor:
                        evidence={"result": data.get("result"), "num_turns": data.get("num_turns")},
                        cost=cost)
 
-
 def run_task(root: str | Path, *, intent: str, brief: str | None = None,
              task_kind: str = "change", subject: str = "coding",
              suggested_kind: str | None = None, fit: str = "clean", phase: str = "none",
@@ -165,7 +149,6 @@ def run_task(root: str | Path, *, intent: str, brief: str | None = None,
     result["cost"] = views.cost(root)
     return result
 
-
 def run_tasklist(root: str | Path, tasks: list[dict], *, test_cmd: str | None = None,
                  model: str | None = None, max_retries: int | None = None,
                  concurrency: int | None = None, allow_edits: bool = False,
@@ -194,11 +177,9 @@ def run_tasklist(root: str | Path, tasks: list[dict], *, test_cmd: str | None = 
     return plan_mod.plan_and_run(root, specs, contributors, executor, verifier=verifier,
                                  concurrency=concurrency, max_retries=max_retries)
 
-
 def _specs_for(root: Path, tasks: list[dict]) -> list:
     import plan as plan_mod
     return [plan_mod.TaskSpec.from_dict(dict(t)) for t in tasks]
-
 
 def run_tasklist_detached(root: str | Path, tasks: list[dict], *, test_cmd: str | None = None,
                           model: str | None = None, max_retries: int | None = None,
@@ -207,7 +188,6 @@ def run_tasklist_detached(root: str | Path, tasks: list[dict], *, test_cmd: str 
     return cascade.launch_detached(root, tasks, test_cmd=test_cmd, model=model,
                                    max_retries=max_retries, concurrency=concurrency,
                                    allow_edits=allow_edits)
-
 
 def plan_status(root: str | Path) -> dict:
     import cascade
@@ -225,7 +205,6 @@ def plan_status(root: str | Path) -> dict:
         out["worker"] = {"pid": live.get("pid"), "since": live.get("started")}
     return out
 
-
 def register_plan(root: str | Path, tasks: list[dict]) -> dict:
     import plan as plan_mod
     root = Path(root).resolve()
@@ -237,7 +216,6 @@ def register_plan(root: str | Path, tasks: list[dict]) -> dict:
             "next": "call next_handoff to pull the next ready unit into this context (it frames the "
                     "unit and opens the edit gate); repeat until status is complete"}
 
-
 def next_handoff(root: str | Path, brief: str | None = None) -> dict:
     import handoff as handoff_mod
     import plan as plan_mod
@@ -247,22 +225,14 @@ def next_handoff(root: str | Path, brief: str | None = None) -> dict:
         return {"status": "no-plan", "note": "no tasklist has been planned for this root yet"}
     return handoff_mod.pull(root, units, contributors_mod.contributors_for(root), brief=brief)
 
-
 def _find_unit(root: Path, unit_id: str):
-    """Reconstruct the planned units and return the one named `unit_id`, or None."""
     import plan as plan_mod
     units = plan_mod.reconstruct_units(root)
     if units is None:
         return None
     return next((u for u in units if u.id == unit_id), None)
 
-
 def next_phase(root: str | Path, unit_id: str) -> dict:
-    """The resumable phase-walk read: the phase to execute now for `unit_id`.
-
-    Mirrors `next_handoff` at the phase level — a pure fold over the journal, no
-    mutation. `no-plan` when nothing is planned, `unknown-unit` when the id isn't
-    in the plan."""
     import phase_walk
     root = Path(root).resolve()
     unit = _find_unit(root, unit_id)
@@ -274,12 +244,8 @@ def next_phase(root: str | Path, unit_id: str) -> dict:
         return {"status": "unknown-unit", "unit": unit_id}
     return phase_walk.next_phase(root, unit)
 
-
 def record_phase(root: str | Path, unit_id: str, phase: str, evidence: dict | None = None,
                  test_cmd: str | None = None) -> dict:
-    """Record one phase's result and advance the journal cursor — mirrors
-    `record_receipt` at the phase level. The incoming edge's gate is run FROM DISK
-    against `evidence`; the cursor never advances past a failed gate."""
     import phase_walk
     root = Path(root).resolve()
     unit = _find_unit(root, unit_id)
@@ -292,21 +258,12 @@ def record_phase(root: str | Path, unit_id: str, phase: str, evidence: dict | No
     return phase_walk.record_phase(root, unit, phase, evidence or {},
                                    verifier=verifier_from_test_cmd(test_cmd))
 
-
 def _workflow_close_status(root: Path, unit_id: str) -> tuple[str, str | None] | None:
-    """Certify a workflow-driven unit's walk for close, by pure fold over the journal.
-
-    Returns None when the unit is NOT workflow-driven (no phase events) — close is
-    ungated, preserving single-dispatch behavior. Otherwise returns ("complete", None)
-    when the walk reached a terminal phase with every gate verified, or
-    ("halted", reason) when the walk stalled or any gate failed to verify. The signal
-    is the engine-run gate's `verified` flag on `phase.exited` (from a command's exit
-    code) — never model-supplied evidence."""
     events = [e for e in journal.read(root) if e.get("unit") == unit_id]
     exited = [e for e in events if e.get("event") == "phase.exited"]
     entered = [e for e in events if e.get("event") == "phase.entered"]
     if not exited and not entered:
-        return None  # not a workflow walk
+        return None
     stalled = [e for e in events if e.get("event") == "phase.stalled"]
     if stalled:
         phase = stalled[-1].get("phase")
@@ -320,34 +277,18 @@ def _workflow_close_status(root: Path, unit_id: str) -> tuple[str, str | None] |
                 f"gate {e.get('gate')!r} did not verify at phase {e.get('phase')!r}")
     return ("complete", None)
 
-
 def _escalated_reason(root: Path, unit_id: str) -> str | None:
-    """The reason a unit was escalated to a human, or None if it never was.
-
-    Escalation is a one-way terminal state (`unit.escalated`): distinct from a
-    retryable `stall`, it means the bounded fix loop is exhausted and a human is
-    required. Once journaled it BLOCKS close / receipt(result) — an escalated unit
-    can never be silently marked done, exactly like a halted workflow walk. Fail-soft:
-    a malformed journal reads as not-escalated rather than raising."""
     reason: str | None = None
     for e in journal.read(root):
         if e.get("unit") == unit_id and e.get("event") == "unit.escalated":
             reason = e.get("reason") or "unit escalated for human review"
     return reason
 
-
 def escalate_unit(root: str | Path, unit_id: str, reason: str | None = None) -> dict:
-    """Record that a unit's bounded fix loop is exhausted and it NEEDS A HUMAN.
-
-    This is the explicit escalation terminal — a one-way state that is neither a
-    silent stall nor a retryable block. It journals `unit.escalated` (with `reason`)
-    so the unit surfaces in its own `escalated` bucket and can no longer be closed
-    or receipted `result` until a human intervenes."""
     root = Path(root).resolve()
     reason = (reason or "").strip() or "unit escalated for human review"
     journal.append(root, "unit.escalated", unit=unit_id, status="escalated", reason=reason)
     return {"status": "escalated", "unit": unit_id, "reason": reason}
-
 
 def close_unit(root: str | Path, unit_id: str | None = None, note: str | None = None) -> dict:
     root = Path(root).resolve()
@@ -370,7 +311,6 @@ def close_unit(root: str | Path, unit_id: str | None = None, note: str | None = 
     journal.append(root, "unit.done", unit=target, outcome="result", status="complete", note=note)
     return {"status": "closed", "unit": target}
 
-
 def record_receipt(root: str | Path, unit_id: str, outcome: str = "result",
                    note: str | None = None) -> dict:
     root = Path(root).resolve()
@@ -389,14 +329,11 @@ def record_receipt(root: str | Path, unit_id: str, outcome: str = "result",
         raise ValueError(f"outcome must be 'result' or 'stall', got {outcome!r}")
     return {"status": "recorded", "unit": unit_id, "outcome": outcome}
 
-
 def _stub_unit(situation: Situation) -> Unit:
     return Unit(id="preview", situation=situation)
 
-
 def _gen_id(task_kind: str) -> str:
     return f"{task_kind}-{int(time.time())}-{int(time.time() * 1000) % 1000:03d}"
-
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
@@ -421,7 +358,6 @@ def main(argv: list[str] | None = None) -> int:
                    model=a.model, allow_edits=a.allow_edits, dry_run=a.dry_run)
     print(json.dumps(out, indent=2))
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

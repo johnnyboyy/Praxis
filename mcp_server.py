@@ -18,7 +18,6 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 mcp = FastMCP("praxis")
 
-
 def _root(search_base: str | None) -> Path:
     if search_base:
         return Path(search_base).resolve()
@@ -26,16 +25,13 @@ def _root(search_base: str | None) -> Path:
     resolved = root_tree.resolve_root(cwd)
     return resolved if resolved is not None else cwd
 
-
 def _managed(search_base: str | None) -> bool:
     return root_tree.resolve_root(_root(search_base)) is not None
-
 
 _NOT_A_ROOT = json.dumps(
     {"status": "not-a-root",
      "note": "this repo isn't a praxis root yet — run /praxis:init to set it up first"},
     indent=2)
-
 
 def _parse_tasklist(tasks: str) -> tuple[list | None, str | None]:
     try:
@@ -46,14 +42,12 @@ def _parse_tasklist(tasks: str) -> tuple[list | None, str | None]:
         return None, json.dumps({"error": "tasks must be a non-empty JSON array"}, indent=2)
     return parsed, None
 
-
 @mcp.tool()
 def init(search_base: str | None = None) -> str:
     """Mark the current git repo (or folder) as a praxis root by ensuring an empty
     `.praxis/config.json`, so the gate and drive tools begin managing it. The file is a
     namespaced store plugins persist their own config in; a fresh root starts clean (`{}`)."""
     return json.dumps(conduct_engine.init_root(root=search_base), indent=2)
-
 
 @mcp.tool()
 def conduct(intent: str, brief: str | None = None, task_kind: str = "change",
@@ -88,7 +82,6 @@ def conduct(intent: str, brief: str | None = None, task_kind: str = "change",
         targets=[t.strip() for t in (targets or "").split(",") if t.strip()],
         test_cmd=test_cmd, model=model, allow_edits=allow_edits, dry_run=dry_run)
     return json.dumps(out, indent=2)
-
 
 @mcp.tool()
 def plan(tasks: str, test_cmd: str | None = None, model: str | None = None,
@@ -126,14 +119,12 @@ def plan(tasks: str, test_cmd: str | None = None, model: str | None = None,
                                                    allow_edits=allow_edits)
     return json.dumps(out, indent=2)
 
-
 @mcp.tool()
 def plan_status(search_base: str | None = None) -> str:
     """Progress of the current plan, folded from the journal: per-unit buckets (done / in_flight /
     stalled / waiting), whether the background cascade is still running, and the cost rollup. Poll
     this after a `plan` with dry_run=false. `no-plan` when nothing has been planned for this root."""
     return json.dumps(conduct_engine.plan_status(_root(search_base)), indent=2)
-
 
 @mcp.tool()
 def register_plan(tasks: str, search_base: str | None = None) -> str:
@@ -153,7 +144,6 @@ def register_plan(tasks: str, search_base: str | None = None) -> str:
         return err
     return json.dumps(conduct_engine.register_plan(_root(search_base), parsed), indent=2)
 
-
 @mcp.tool()
 def next_handoff(brief: str | None = None, search_base: str | None = None) -> str:
     """PULL the next ready unit's handoff (brief + composed overlay) from the current plan, for a
@@ -161,7 +151,6 @@ def next_handoff(brief: str | None = None, search_base: str | None = None) -> st
     that unit — you cannot edit for it until you have pulled it. Returns a `waiting`/`complete`
     status when nothing is ready, or `no-plan` when no tasklist has been planned for this root."""
     return json.dumps(conduct_engine.next_handoff(_root(search_base), brief=brief), indent=2)
-
 
 @mcp.tool()
 def next_phase(unit_id: str, search_base: str | None = None) -> str:
@@ -173,7 +162,6 @@ def next_phase(unit_id: str, search_base: str | None = None) -> str:
     a terminal, `no-workflow` when the unit isn't workflow-driven, or `no-plan`/`unknown-unit`. Idempotent:
     calling it again without `record_phase` re-hands the same phase."""
     return json.dumps(conduct_engine.next_phase(_root(search_base), unit_id), indent=2)
-
 
 @mcp.tool()
 def record_phase(unit_id: str, phase: str, evidence: str | None = None,
@@ -195,7 +183,6 @@ def record_phase(unit_id: str, phase: str, evidence: str | None = None,
     return json.dumps(conduct_engine.record_phase(_root(search_base), unit_id, phase,
                                                   evidence=parsed, test_cmd=test_cmd), indent=2)
 
-
 @mcp.tool()
 def close_unit(unit_id: str | None = None, note: str | None = None,
                search_base: str | None = None) -> str:
@@ -203,7 +190,6 @@ def close_unit(unit_id: str | None = None, note: str | None = None,
     when you finish an inline unit pulled via next_handoff."""
     return json.dumps(conduct_engine.close_unit(_root(search_base), unit_id=unit_id, note=note),
                       indent=2)
-
 
 @mcp.tool()
 def record_receipt(unit_id: str, outcome: str = "result", note: str | None = None,
@@ -213,7 +199,6 @@ def record_receipt(unit_id: str, outcome: str = "result", note: str | None = Non
     waiting."""
     return json.dumps(conduct_engine.record_receipt(_root(search_base), unit_id, outcome=outcome,
                                                      note=note), indent=2)
-
 
 @mcp.tool()
 def escalate_unit(unit_id: str, reason: str | None = None,
@@ -226,7 +211,6 @@ def escalate_unit(unit_id: str, reason: str | None = None,
     return json.dumps(conduct_engine.escalate_unit(_root(search_base), unit_id, reason=reason),
                       indent=2)
 
-
 @mcp.tool()
 def conductor_status(search_base: str | None = None) -> str:
     """The journal fold for the governing root: the open unit (if any), the deliver-vs-stall summary
@@ -236,7 +220,6 @@ def conductor_status(search_base: str | None = None) -> str:
     return json.dumps({"root": str(root), "open_unit": journal.open_unit(root),
                        "summary": f["summary"], "cost": views.cost(root)}, indent=2)
 
-
 @mcp.tool()
 def conductor_gaps(search_base: str | None = None, min_count: int = 2) -> str:
     """Recurring vocabulary gaps ready to promote: suggestions the model has offered `min_count`+
@@ -244,7 +227,6 @@ def conductor_gaps(search_base: str | None = None, min_count: int = 2) -> str:
     root = _root(search_base)
     return json.dumps({"root": str(root), "promotable": accretion.promotable(root, min_count),
                        "recent_gaps": journal.gaps(root)[-8:]}, indent=2)
-
 
 @mcp.tool()
 def conductor_mint(vocabulary: str, term: str, search_base: str | None = None) -> str:
@@ -254,7 +236,6 @@ def conductor_mint(vocabulary: str, term: str, search_base: str | None = None) -
     ev = accretion.mint(root, vocabulary, term)
     return json.dumps({"minted": ev is not None, "vocabulary": vocabulary, "term": term,
                        "known_now": accretion.is_known(root, vocabulary, term)}, indent=2)
-
 
 if __name__ == "__main__":
     mcp.run()

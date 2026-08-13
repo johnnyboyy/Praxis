@@ -9,7 +9,6 @@ from run import Plan, Unit
 from schedule import run_dag
 from situation import FITS, PHASES, SUBJECTS, TASK_KINDS, Situation
 
-
 @dataclass
 class TaskSpec:
 
@@ -49,14 +48,12 @@ class TaskSpec:
                 "workflow": self.workflow,
                 "label": self.label, "depends_on": list(self.depends_on)}
 
-
 def spec_to_unit(spec: TaskSpec, root: Path | None = None) -> Unit:
     sit = Situation(task_kind=spec.task_kind, intent=spec.intent, subject=spec.subject,
                     suggested_kind=spec.suggested_kind, fit=spec.fit, phase=spec.phase,
                     root=str(root) if root else None,
                     targets=list(spec.targets), workflow=spec.workflow, label=spec.label)
     return Unit(id=spec.id, situation=sit, depends_on=list(spec.depends_on))
-
 
 def build_units(specs: list[TaskSpec], root: Path | None = None) -> list[Unit]:
     ids: list[str] = []
@@ -75,10 +72,8 @@ def build_units(specs: list[TaskSpec], root: Path | None = None) -> list[Unit]:
                 raise ValueError(f"task {spec.id!r} depends on unknown task {d!r}")
     return [spec_to_unit(spec, root) for spec in specs]
 
-
 def _gen_id(task_kind: str, i: int) -> str:
     return f"{task_kind}-{int(time.time())}-{i:02d}"
-
 
 def plan_tasks(root: str | Path, specs: list[TaskSpec]) -> list[Unit]:
     root = Path(root).resolve()
@@ -98,7 +93,6 @@ def plan_tasks(root: str | Path, specs: list[TaskSpec]) -> list[Unit]:
                    specs=specs_out)
     return units
 
-
 def reconstruct_units(root: str | Path) -> list | None:
     root = Path(root).resolve()
     latest = None
@@ -109,7 +103,6 @@ def reconstruct_units(root: str | Path) -> list | None:
         return None
     specs = [TaskSpec.from_dict(s) for s in latest["specs"]]
     return build_units(specs, root)
-
 
 def plan_and_run(root: str | Path, specs: list[TaskSpec], contributors, executor, *,
                  verifier=None, concurrency: int | None = None,

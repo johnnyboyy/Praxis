@@ -1,21 +1,4 @@
 #!/usr/bin/env python3
-"""root_tree — deterministic discovery of the tree of concern-boundaries ("roots") in a source tree.
-
-A root is a directory carrying praxis's own config marker. `.praxis/config.json` is the standard
-(so a repo that SHIPS a praxis/ source tree can self-host without its source dir doubling as the
-marker); bare `praxis/config.json` is also recognized. The marker set is configurable (`--marker`),
-so a project can add an engine's own config marker without any code change here.
-
-A *root* is a boundary of concern: a directory meant to be reasoned about in isolation from its siblings
-(FAMOUS app vs admin; motors circuit-builder vs marketing). Given a task (a path, or a set of touched
-files) the caller asks which root(s) own it, and a task spanning two roots is two units of work — one
-handed to each root — not one agent straddling both.
-
-Commands:
-  tree   [--from DIR] [--marker M ...] [--json]   discover every root under DIR, print the tree
-  resolve PATH [--from DIR] [--marker M ...]       which root governs PATH (nearest ancestor root)
-  span    --files a,b,c [--from DIR] [--marker M]  which roots a set of files spans (decomposition fact)
-"""
 from __future__ import annotations
 
 import argparse
@@ -27,10 +10,8 @@ from pathlib import Path
 
 DEFAULT_MARKERS = [".praxis/config.json", "praxis/config.json"]
 
-
 def split_files(files: str) -> list[str]:
     return [f.strip() for f in files.split(",") if f.strip()]
-
 
 def praxis_dir(root: Path) -> Path:
     root = Path(root)
@@ -57,7 +38,6 @@ def find_roots(base: Path, markers: list[str]) -> list[Path]:
                 break
     return sorted(roots, key=lambda p: str(p))
 
-
 def root_name(root: Path, markers: list[str]) -> str:
     for marker in markers:
         cfg = root / marker
@@ -73,13 +53,11 @@ def root_name(root: Path, markers: list[str]) -> str:
             break
     return root.name
 
-
 def which_marker(root: Path, markers: list[str]) -> str:
     for marker in markers:
         if (root / marker).is_file():
             return marker.split("/")[0]
     return "?"
-
 
 def nearest_root(target: Path, roots: list[Path]) -> Path | None:
     target = target.resolve()
@@ -93,15 +71,7 @@ def nearest_root(target: Path, roots: list[Path]) -> Path | None:
             best = r
     return best
 
-
 def _git_toplevel(start: Path) -> Path | None:
-    """The git repo root containing `start`, or None when `start` is not in a git repo.
-
-    Bounds the upward marker walk: git handles worktrees/submodules/symlinked roots correctly, so
-    the walk never has to guess where the repo ends. A non-git tree (no repo, or git absent) has no
-    bound above `start` itself. `git -C` needs a real directory, so a nonexistent leaf resolves to
-    its parent — the stamp hook's syntactic path-joins still land on a walkable dir.
-    """
     base = start if start.is_dir() else start.parent
     while not base.is_dir() and base != base.parent:
         base = base.parent
@@ -113,14 +83,7 @@ def _git_toplevel(start: Path) -> Path | None:
     top = out.stdout.strip()
     return Path(top).resolve() if top else None
 
-
 def resolve_root(start) -> Path | None:
-    """The praxis root governing `start`, or None when nothing within the bound is marked.
-
-    Git-bounded and opt-in: walk up from `start` looking for `.praxis/config.json` (then
-    `praxis/config.json`), but never above the git repo root — or, outside a git repo, never above
-    `start`'s own directory. No marker within that bound ⇒ None: an unmarked repo is not managed.
-    """
     start = Path(start).resolve()
     git_root = _git_toplevel(start)
     floor = git_root if git_root is not None else (start if start.is_dir() else start.parent)
@@ -132,10 +95,8 @@ def resolve_root(start) -> Path | None:
             break
     return None
 
-
 def governing_root_above(path: Path) -> Path | None:
     return resolve_root(path)
-
 
 def _is_ancestor_or_equal(anc: Path, node: Path) -> bool:
     try:
@@ -143,7 +104,6 @@ def _is_ancestor_or_equal(anc: Path, node: Path) -> bool:
         return True
     except ValueError:
         return False
-
 
 def interop_root(targets: list[Path], roots: list[Path]) -> dict:
     governing = sorted({r for r in (nearest_root(t, roots) for t in targets) if r is not None},
@@ -157,7 +117,6 @@ def interop_root(targets: list[Path], roots: list[Path]) -> dict:
     if entry is None:
         define_at = os.path.commonpath([str(g.resolve()) for g in governing])
     return {"spans": True, "governing": governing, "entry": entry, "define_at": define_at}
-
 
 def build_tree(roots: list[Path], markers: list[str]) -> dict:
     nodes: dict[str, dict] = {}
@@ -185,7 +144,6 @@ def build_tree(roots: list[Path], markers: list[str]) -> dict:
             nodes[str(parent)]["children"].append(str(r))
     return nodes
 
-
 def orphan_sibling_groups(nodes: dict) -> list[dict]:
     tops = [n for n in nodes.values() if n["parent"] is None]
     by_ancestor: dict[str, list[dict]] = {}
@@ -197,7 +155,6 @@ def orphan_sibling_groups(nodes: dict) -> list[dict]:
             groups.append({"ancestor": ancestor, "members": [m["name"] for m in members],
                            "paths": [m["path"] for m in members]})
     return groups
-
 
 def print_tree(base: Path, nodes: dict, markers: list[str]) -> None:
     if not nodes:
@@ -236,7 +193,6 @@ def print_tree(base: Path, nodes: dict, markers: list[str]) -> None:
             print(f"  {len(g['members'])} sibling roots ({names}) under {anc} with no parent root —")
             print(f"    a task spanning them has nowhere to route interop concerns.")
 
-
 def cmd_tree(args) -> int:
     base = Path(args.__dict__["from"]).resolve()
     markers = args.marker or DEFAULT_MARKERS
@@ -253,7 +209,6 @@ def cmd_tree(args) -> int:
         print_tree(base, nodes, markers)
     return 0
 
-
 def cmd_resolve(args) -> int:
     base = Path(args.__dict__["from"]).resolve()
     markers = args.marker or DEFAULT_MARKERS
@@ -268,7 +223,6 @@ def cmd_resolve(args) -> int:
     print(f"{root_name(r, markers)}  [{which_marker(r, markers)}]")
     print(f"  {r}")
     return 0
-
 
 def cmd_span(args) -> int:
     base = Path(args.__dict__["from"]).resolve()
@@ -300,7 +254,6 @@ def cmd_span(args) -> int:
               f"to each root, not one agent straddling both.")
     return 0
 
-
 def cmd_interop(args) -> int:
     base = Path(args.__dict__["from"]).resolve()
     markers = args.marker or DEFAULT_MARKERS
@@ -324,7 +277,6 @@ def cmd_interop(args) -> int:
     print(f"spans {{{gov}}} — NO interop root exists to enter at.")
     print(f"  define one at the common ancestor: {info['define_at']}")
     return 1
-
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="root_tree", description=__doc__,
@@ -357,7 +309,6 @@ def main(argv: list[str]) -> int:
 
     args = ap.parse_args(argv)
     return args.func(args)
-
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

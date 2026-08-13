@@ -1,19 +1,4 @@
 #!/usr/bin/env python3
-"""cascade — the DETACHED background worker that runs a plan's unit graph independently of the MCP server,
-so a big tasklist can be handed off and left to run across client/server restarts ("come back
-later").
-
-Where the thread variant died with the MCP server process, this launches a worker in its OWN session
-(`start_new_session`), writes its progress to the journal (the shared source of truth), and is
-guarded against double-runs by an flock + a pidfile in `.praxis/`. A re-invocation while a worker is
-live is refused; after an interruption the next launch resumes from the journal (`run_dag(resume=
-True)`), never re-spawning finished units. Observe progress with `conduct.plan_status` / the
-`plan_status` tool — a new MCP server instance reads the same journal + pidfile, so it reattaches.
-
-Layout: `run_cascade` is the core (reconstruct the plan → `run_dag(resume=True)`), testable
-in-process with an injected executor; `main` is the worker CLI that holds the lock, records its pid,
-and builds the real executor; `launch_detached` records the plan then spawns the worker detached.
-"""
 from __future__ import annotations
 
 import argparse
@@ -30,25 +15,20 @@ import contributors as contributors_mod  # noqa: E402
 import journal  # noqa: E402
 import orchestrate  # noqa: E402
 
-
 def _state_dir(root: Path) -> Path:
     for m in (".praxis", "praxis"):
         if (root / m).is_dir():
             return root / m
     return root / ".praxis"
 
-
 def _pidfile(root: Path) -> Path:
     return _state_dir(root) / "cascade.pid"
-
 
 def _lockpath(root: Path) -> Path:
     return _state_dir(root) / "cascade.lock"
 
-
 def _logpath(root: Path) -> Path:
     return _state_dir(root) / "cascade.log"
-
 
 def _pid_alive(pid: int) -> bool:
     try:
@@ -58,7 +38,6 @@ def _pid_alive(pid: int) -> bool:
     except PermissionError:
         return True
     return True
-
 
 def is_running(root: str | Path) -> dict | None:
     root = Path(root).resolve()
@@ -74,7 +53,6 @@ def is_running(root: str | Path) -> dict | None:
     except OSError:
         pass
     return None
-
 
 def run_cascade(root: str | Path, *, executor, contributors=None, test_cmd: str | None = None,
                 concurrency: int | None = None, max_retries: int | None = None,
@@ -94,7 +72,6 @@ def run_cascade(root: str | Path, *, executor, contributors=None, test_cmd: str 
     status = "complete" if orch["status"] == "complete" else orch["status"]
     return {"status": status, **fanout,
             "orchestration": {k: v for k, v in orch.items() if k != "fanout"}}
-
 
 def launch_detached(root: str | Path, tasks: list[dict], *, test_cmd: str | None = None,
                     model: str | None = None, max_retries: int | None = None,
@@ -129,7 +106,6 @@ def launch_detached(root: str | Path, tasks: list[dict], *, test_cmd: str | None
             "note": "the cascade runs in a detached process — poll plan_status to watch units "
                     "complete; it survives an MCP-server restart, and re-launching resumes it"}
 
-
 def _spawn_daemon(argv: list[str], logpath: Path) -> None:
     pid = os.fork()
     if pid > 0:
@@ -147,14 +123,12 @@ def _spawn_daemon(argv: list[str], logpath: Path) -> None:
     except BaseException:
         os._exit(127)
 
-
 def _build_executor(root: Path, *, model: str | None, allow_edits: bool):
     if os.environ.get("PRAXIS_CASCADE_FAKE"):
         from run import InlineExecutor, Receipt
         return InlineExecutor(lambda u, c: Receipt(outcome="result")), []
     from conduct import ClaudeExecutor
     return ClaudeExecutor(model=model, cwd=str(root), allow_edits=allow_edits), None
-
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="cascade", description=__doc__)
@@ -190,7 +164,6 @@ def main(argv: list[str] | None = None) -> int:
         fcntl.flock(lock, fcntl.LOCK_UN)
         lock.close()
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

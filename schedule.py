@@ -9,7 +9,6 @@ from contributors import HookContext, fire, gather
 from run import Plan, Unit, run_unit
 from situation import Situation
 
-
 def _validate(units: dict[str, Unit]) -> None:
     for u in units.values():
         for d in u.depends_on:
@@ -33,7 +32,6 @@ def _validate(units: dict[str, Unit]) -> None:
         cyclic = sorted(uid for uid, n in indeg.items() if n > 0)
         raise ValueError(f"dependency cycle among units: {cyclic}")
 
-
 def reflexive_route(root: Path, plan: Plan, contributors, routing_situation: Situation | None = None) -> dict:
     if routing_situation is None:
         edges = sum(len(u.depends_on) for u in plan.units)
@@ -47,7 +45,6 @@ def reflexive_route(root: Path, plan: Plan, contributors, routing_situation: Sit
                    routed_kind=composed.get("routed_kind"), note=composed.get("note"))
     return composed
 
-
 def _blocked(root: Path, unit: Unit, failed_deps: list[str]) -> dict:
     journal.append(root, "unit.proposed", unit=unit.id, unit_of_work=unit.unit_of_work,
                    situation=unit.situation.to_dict())
@@ -58,7 +55,6 @@ def _blocked(root: Path, unit: Unit, failed_deps: list[str]) -> dict:
             "status": "blocked", "verified": None, "attempts": 0, "defects": surfaced,
             "blocked_on": failed_deps, "receipt": None}
 
-
 def _resumed_result(unit: Unit, fold: dict) -> dict:
     u = fold["units"].get(unit.id, {})
     st = u.get("state")
@@ -67,7 +63,6 @@ def _resumed_result(unit: Unit, fold: dict) -> dict:
             "status": u.get("status"), "verified": (st == "done") or None, "attempts": None,
             "defects": u.get("surfaced") or [], "gap_surfaced": None,
             "routed_kind": u.get("last", {}).get("routed_kind"), "receipt": None, "resumed": True}
-
 
 def run_dag(plan: Plan, contributors, executor, root: Path, verifier=None,
             concurrency: int | None = None, max_retries: int | None = None,

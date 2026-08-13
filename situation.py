@@ -15,7 +15,6 @@ VOCABULARIES = ("task_kind", "subject", "phase", "workflow", "unit")
 
 UNCLASSIFIED = "unclassified"
 
-
 @dataclass
 class Situation:
 
@@ -69,7 +68,6 @@ class Situation:
             "label": self.label,
         }
 
-
 def surface_gap(root: Path, *, vocabulary: str, chosen: str, suggested: str | None, fit: str,
                 intent: str, situation: dict | Situation | None = None,
                 note: str | None = None) -> dict | None:
@@ -78,7 +76,6 @@ def surface_gap(root: Path, *, vocabulary: str, chosen: str, suggested: str | No
     sit = situation.to_dict() if isinstance(situation, Situation) else situation
     return journal.append(root, "conductor.gap", vocabulary=vocabulary, chosen=chosen,
                           suggested=suggested, fit=fit, intent=intent, situation=sit, note=note)
-
 
 def surface_task_kind_gap(root: Path, situation: Situation, note: str | None = None) -> dict | None:
     return surface_gap(root, vocabulary="task_kind", chosen=situation.task_kind,

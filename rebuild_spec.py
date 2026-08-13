@@ -1,37 +1,14 @@
 #!/usr/bin/env python3
-"""rebuild_spec — the structured spec (the rebuild blueprint) the rebuild-triple's
-`extract` phase emits.
-
-    spec = {
-        "interface":       [{"symbol": str, "signature": str}, ...],
-        "allowed_surface": [symbol, ...],
-        "tests":           {"spec": [path, ...], "held_out": [path, ...]},
-    }
-
-`interface` is the contract synthesize must reproduce (symbol + signature);
-`allowed_surface` is the ceiling on the synth's public surface (losslessness);
-`tests.spec` are the tests synthesize is allowed to see, `tests.held_out` are
-kept back to prove generalization at the preservation gate.
-
-`validate_spec` is FAIL-CLOSED: any malformed spec raises `SpecError`. It also
-enforces that the held-out split is real — non-empty AND a non-trivial fraction
-of the whole (>= `HELD_OUT_MIN_FRACTION`) — so an `extract` that keeps nothing
-back cannot pass the adequacy gate.
-"""
 from __future__ import annotations
 
 import json
 
-# The held-out tests must be at least this fraction of the total test count.
 HELD_OUT_MIN_FRACTION = 0.25
 
-
 class SpecError(ValueError):
-    """Raised when a spec is malformed or its held-out split is inadequate."""
-
+    pass
 
 def parse_spec(obj) -> dict:
-    """Accept a dict or a JSON string, return a validated spec dict (fail-closed)."""
     if isinstance(obj, str):
         try:
             obj = json.loads(obj)
@@ -39,9 +16,7 @@ def parse_spec(obj) -> dict:
             raise SpecError(f"spec is not valid JSON: {e}") from e
     return validate_spec(obj)
 
-
 def validate_spec(spec) -> dict:
-    """Validate structure + split. Returns the spec unchanged, or raises SpecError."""
     if not isinstance(spec, dict):
         raise SpecError(f"spec must be an object, got {type(spec).__name__}")
 

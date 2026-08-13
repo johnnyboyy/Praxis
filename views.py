@@ -5,7 +5,6 @@ from pathlib import Path
 
 import journal
 
-
 def _unit_events(root: Path) -> dict[str, list[dict]]:
     by_unit: dict[str, list[dict]] = {}
     for e in journal.read(root):
@@ -13,7 +12,6 @@ def _unit_events(root: Path) -> dict[str, list[dict]]:
         if uid is not None:
             by_unit.setdefault(uid, []).append(e)
     return by_unit
-
 
 def handoff(root: Path, unit: str) -> dict | None:
     fold = journal.fold(root)
@@ -45,7 +43,6 @@ def handoff(root: Path, unit: str) -> dict | None:
         "tool_calls": last.get("tool_calls"),
     }
 
-
 def ledger(root: Path) -> list[dict]:
     fold = journal.fold(root)
     by_unit = _unit_events(root)
@@ -62,7 +59,6 @@ def ledger(root: Path) -> list[dict]:
             "gap_surfaced": u["last"].get("gap_surfaced"),
         })
     return rows
-
 
 def cost(root: Path) -> dict:
     per_unit: dict[str, dict] = {}

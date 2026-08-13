@@ -11,32 +11,24 @@ from registry import resolve_phases
 from run import Receipt
 from workflow import GATES, EdgeType, Workflow, edge_parts
 
-
 def _has_choice_edge(workflow: Workflow, from_phase: str, target) -> bool:
     return any(t == target and when == "agent-choice"
                for (f, t, when, _et, _pred) in map(edge_parts, workflow.edges)
                if f == from_phase)
 
-
 def _stall_on_unmatched(root) -> bool:
-    """Read the core/unnamed-scope `stall-on-unmatched-route` flag (fail-soft).
-
-    Config stores strings; case-insensitive "true" is True, anything else/absent is False."""
     try:
         raw = config.read(root).get("stall-on-unmatched-route")
     except Exception:
         return False
     return isinstance(raw, str) and raw.strip().lower() == "true"
 
-
 def _classify_route(root, name: str) -> str:
-    """"unknown" if not a registered phase (typo/removed), else "unwired" (no edge here)."""
     try:
         known = name in resolve_phases(root)
     except Exception:
         known = False
     return "unwired" if known else "unknown"
-
 
 def _journal_route_unmatched(root, **fields) -> None:
     try:
@@ -44,20 +36,18 @@ def _journal_route_unmatched(root, **fields) -> None:
     except Exception:
         pass
 
-
 def _choose_edge(workflow: Workflow, from_phase: str, passed: bool, choice=None,
                  evidence=None):
     edges = [(t, when, et, pred)
              for (f, t, when, et, pred) in map(edge_parts, workflow.edges)
              if f == from_phase]
-    # 1. Failure short-circuits: fail/always route wins. Forward branches
-    #    (predicate/agent-choice) are only consulted when advancing.
+
     if not passed:
         for (t, when, et, pred) in edges:
             if when in ("fail", "always"):
                 return t, et
         return None
-    # 2. Advancing — predicate edges, DECLARATION ORDER, first match wins.
+
     if evidence is not None:
         for (t, when, et, pred) in edges:
             if when == "fact" and pred is not None:
@@ -65,38 +55,27 @@ def _choose_edge(workflow: Workflow, from_phase: str, passed: bool, choice=None,
                     if pred(evidence):
                         return t, et
                 except Exception:
-                    continue  # fail-soft: a raising predicate is a no-match
-    # 3. Advancing — agent-choice match (unchanged mechanism).
+                    continue
+
     if choice is not None:
         for (t, when, et, pred) in edges:
             if when == "agent-choice" and t == choice:
                 return t, et
-    # 4. Default — pass/always.
+
     for (t, when, et, pred) in edges:
         if when in ("pass", "always"):
             return t, et
     return None
 
-
 def _incoming(workflow: Workflow, to_phase: str):
     return [(f, et) for (f, t, _when, et, _pred) in map(edge_parts, workflow.edges)
             if t == to_phase]
 
-
 def gate_for(edge_in) -> str:
-    """The gate name an incoming edge selects (None/first phase -> the create gate)."""
     return GATES[edge_in] if edge_in else GATES[EdgeType.create]
-
 
 def decide_step(workflow: Workflow, unit, name: str, edge_in, receipt,
                 composed: dict, verifiers: dict) -> dict:
-    """The SHARED per-phase gate + edge decision.
-
-    Both the synchronous loop (`run_workflow`) and the resumable surface
-    (`next_phase`/`record_phase`) call THIS to decide (a) which gate guards the
-    incoming edge, (b) whether that gate verified, (c) whether the phase advances
-    (`passed and verified`), and (d) the next edge via `_choose_edge`. Keeping the
-    decision in one place is what stops the two paths from drifting."""
     gate = gate_for(edge_in)
     verifier = verifiers.get(gate)
     verdict = verifier.verify(unit, receipt, composed) if verifier else None
@@ -108,7 +87,6 @@ def decide_step(workflow: Workflow, unit, name: str, edge_in, receipt,
     nxt = _choose_edge(workflow, name, advance, choice, evidence)
     return {"gate": gate, "verified": verified, "verdict": verdict, "evidence": evidence,
             "passed": passed, "advance": advance, "choice": choice, "next": nxt}
-
 
 def run_workflow(root: Path, unit, workflow: Workflow, contributors, executor,
                  verifiers: dict | None = None, start: str | None = None,
@@ -200,9 +178,6 @@ def run_workflow(root: Path, unit, workflow: Workflow, contributors, executor,
         choice = decision["choice"]
         nxt = decision["next"]
 
-        # Guard the silent unmatched-route path: a phase emitted a `next` that no
-        # outgoing agent-choice edge here targets, so the walk is about to fall
-        # through to pass/always. Always journal it (classified); optionally stall.
         emitted = evidence.get("next")
         facts_emitted = bool(evidence.get("facts"))
         if emitted and not _has_choice_edge(workflow, name, emitted):
@@ -218,8 +193,7 @@ def run_workflow(root: Path, unit, workflow: Workflow, contributors, executor,
                                note=f"unmatched route next={emitted!r}")
                 break
         elif facts_emitted and not emitted and nxt is None:
-            # A facts-only phase whose predicates/default all missed — nothing to
-            # route to. Uniform observability via the same event, kind="no-match".
+
             stall = _stall_on_unmatched(root)
             _journal_route_unmatched(
                 root, unit=unit.id, phase=name, phase_index=phase_index,

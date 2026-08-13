@@ -1,27 +1,4 @@
 #!/usr/bin/env python3
-"""units — the lease declarations for a root's units of work: per unit, the EDIT SURFACE (which
-paths that kind of work may write) and the OUTPUT (the deliverable whose delivery ends the unit).
-
-Part of praxis-core. The frame marker and session stamp prove *that* a unit was framed; the lease
-declares *what that unit's work may touch*, so the edit gate can bounce the first out-of-surface
-write.
-
-Declarations live in `<root>/.praxis/units.md` (legacy `praxis/units.md`), root-authored like
-`config.json` — process metadata, not judgment, so it is praxis-side even though the unit *names*
-are engine vocabulary. Format: one `## <unit-of-work>` section per unit, with `edit-surface:`
-(comma-separated glob patterns matched against the root-relative path; `*` crosses `/`, so fnmatch
-here and bash-`case` in the gate hook agree) and `output:` (prose — the deliverable). Everything
-else in the file is prose and ignored.
-
-Fail-open throughout: no units.md, or a unit with no section, means NO surface restriction — the
-lease narrows known units without blocking vocabulary the file hasn't caught up to. Paths under
-the root's praxis dir itself (`.praxis/`, `praxis/`) are always in-surface: process bookkeeping
-(ledger, handoffs, payloads) is never out-of-phase.
-
-Usage:
-  units.py list  --root ROOT [--json]              show the declared leases
-  units.py check --root ROOT --unit UOW --file F   exit 0 in-surface / 2 out-of-surface
-"""
 from __future__ import annotations
 
 import argparse
@@ -36,10 +13,8 @@ import root_tree as rt  # noqa: E402
 
 UNITS_NAME = "units.md"
 
-
 def units_path(root: Path) -> Path:
     return rt.praxis_dir(root) / UNITS_NAME
-
 
 def parse_units(text: str) -> dict[str, dict]:
     out: dict[str, dict] = {}
@@ -61,7 +36,6 @@ def parse_units(text: str) -> dict[str, dict]:
             out[current]["execution"] = line.split(":", 1)[1].strip() or None
     return out
 
-
 def load_units(root: Path) -> dict[str, dict]:
     path = units_path(root)
     if not path.is_file():
@@ -71,12 +45,10 @@ def load_units(root: Path) -> dict[str, dict]:
     except OSError:
         return {}
 
-
 def lease_for(root: Path, unit_of_work: str | None) -> dict | None:
     if not unit_of_work:
         return None
     return load_units(root).get(unit_of_work)
-
 
 def surface_allows(surface: list[str] | None, rel_path: str) -> bool:
     if surface is None:
@@ -84,7 +56,6 @@ def surface_allows(surface: list[str] | None, rel_path: str) -> bool:
     if rel_path.startswith((".praxis/", "praxis/")):
         return True
     return any(fnmatch.fnmatch(rel_path, pattern) for pattern in surface)
-
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="units", description=__doc__,
@@ -109,7 +80,7 @@ def main(argv: list[str]) -> int:
                   f"every unit unrestricted")
         else:
             for unit, lease in units.items():
-                surface = ", ".join(lease["edit_surface"]) if lease["edit_surface"] \
+                surface = ", ".join(lease["edit_surface"]) if lease["edit_surface"]\
                     else "(unrestricted)"
                 print(f"{unit}\n  edit-surface: {surface}\n"
                       f"  output: {lease['output'] or '(undeclared)'}")
@@ -130,7 +101,6 @@ def main(argv: list[str]) -> int:
         return 0
     print(f"out-of-surface: {rel} — unit '{args.unit}' authorizes only: {', '.join(surface)}")
     return 2
-
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

@@ -9,7 +9,6 @@ import journal
 
 POLICY_NAME = "conductor.json"
 
-
 @dataclass
 class Policy:
 
@@ -26,10 +25,8 @@ class Policy:
             verify_required=bool(d.get("verify_required", base.verify_required)),
         )
 
-
 def policy_path(root: Path) -> Path:
     return journal.journal_path(root).parent / POLICY_NAME
-
 
 def load_policy(root: Path) -> Policy:
     path = policy_path(root)

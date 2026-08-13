@@ -43,50 +43,29 @@ from pathlib import Path
 
 import config
 
-# The plugin's owned config scope and working-state dir (spec §6).
 SCOPE = "uiux"
 DEFAULT_UI_LIBRARY = "docs/design/ui-library.md"
 DEFAULT_UX_LIBRARY = "docs/design/ux-library.md"
 DRIFT_THRESHOLD = 3
 
-
 def _state_dir(root) -> Path:
-    """The plugin's working-state dir. Replaces the OLD `.corpora`/`corpora` resolution."""
     return Path(root) / ".praxis" / "uiux"
 
-
 def _lib_paths(root):
-    """Absolute paths to the ui/ux libraries, honoring a config relocation (spec §6)."""
     cfg = config.read(root, SCOPE)
     ui = Path(root) / cfg.get("ui_library", DEFAULT_UI_LIBRARY)
     ux = Path(root) / cfg.get("ux_library", DEFAULT_UX_LIBRARY)
     return ui, ux
 
-
 def manifest_path(root) -> Path:
     return _state_dir(root) / "screenshots" / "manifest.md"
-
 
 def screenshots_dir(root) -> Path:
     return _state_dir(root) / "screenshots"
 
-
-# --- screenshot manifest (a small, flat, YAML-free markdown store) --------------
-# Each catalogued screen is one entry the plugin owns; `contribute` reads it for
-# freshness references and the `close` hook marks entries stale (spec §3, §4).
-#
-#     # Screenshots
-#
-#     - screen: settings
-#       file: settings.png
-#       status: fresh              # fresh | stale
-#       components: button, input  # optional, comma-separated
-
 _MANIFEST_KEYS = ("screen", "file", "status", "components")
 
-
 def read_manifest(root) -> list[dict]:
-    """Parse the screenshot manifest into `{screen,file,status,components[]}` entries. Fail-soft."""
     path = manifest_path(root)
     if not path.is_file():
         return []
@@ -112,7 +91,6 @@ def read_manifest(root) -> list[dict]:
             item[key] = value
     return entries
 
-
 def write_manifest(root, entries: list[dict]) -> None:
     path = manifest_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -126,18 +104,7 @@ def write_manifest(root, entries: list[dict]) -> None:
             lines.append(f"  components: {', '.join(comps)}")
     path.write_text("\n".join(lines) + "\n")
 
-
 def mark_stale(root, screens=None, components=None, all_surfaces=False) -> bool:
-    """Mark the named screens (and every screen tagged with a named component) stale.
-
-    `all_surfaces=True` is the global/blast-radius fan-out (token/theme/shell changes):
-    every catalogued manifest surface is marked stale regardless of `screens`/`components`.
-    This is also the full-recapture escape hatch — the surgical sync phase then reshoots
-    exactly this set, which when all are stale *is* a full recapture (spec §5).
-
-    A screen named but not yet catalogued is appended as a stale entry so the next
-    `screenshot-capture` shoots it (spec §4 action 2). Fail-soft: returns False when
-    nothing changed. Called from the close hook."""
     screens = set(screens or [])
     components = set(components or [])
     if not screens and not components and not all_surfaces:
@@ -151,7 +118,7 @@ def mark_stale(root, screens=None, components=None, all_surfaces=False) -> bool:
         if (all_surfaces or e["screen"] in screens or tagged) and e.get("status") != "stale":
             e["status"] = "stale"
             changed = True
-    # brand-new screens with no capture yet → append a stale placeholder to be shot.
+
     for screen in screens - seen:
         entries.append({"screen": screen, "file": f"{screen}.png", "status": "stale",
                         "components": []})
@@ -160,12 +127,7 @@ def mark_stale(root, screens=None, components=None, all_surfaces=False) -> bool:
         write_manifest(root, entries)
     return changed
 
-
 def mark_fresh(root, screens=None) -> bool:
-    """Clear the stale flag on the named screens (default: ALL currently-stale).
-
-    Inverse of `mark_stale`. Called from the close hook after a screenshot-library-sync
-    recapture (spec §2.4). Fail-soft: returns False when nothing changed."""
     entries = read_manifest(root)
     target = set(screens) if screens else None
     changed = False
@@ -176,7 +138,6 @@ def mark_fresh(root, screens=None) -> bool:
     if changed:
         write_manifest(root, entries)
     return changed
-
 
 def build_state(root: Path) -> dict:
     root = Path(root).resolve()
@@ -198,20 +159,19 @@ def build_state(root: Path) -> dict:
             "blocked_by": blocked_by,
         })
 
-    # init phases — gated on absence, ordered by the ui -> {screenshot, ux} content dependency.
     add("ui-library-init", has_ui and not ui_exists, "bootstrap-ui-surface", "divergent", False, 2)
     add("screenshot-library-init", has_ui and ui_exists and not manifest_exists,
         None, None, True, 3, blocked_by=None if ui_exists else "ui-library-init")
     add("ux-library-init", has_ui and ui_exists and not ux_exists,
         "bootstrap-ux-surface", "convergent", False, 4,
         blocked_by=None if ui_exists else "ui-library-init")
-    # sync phases — gated on presence; drift-gated (uiux owns the counter now, spec §2).
+
     add("ui-library-sync", has_ui and ui_exists, "design-ui-surface", "divergent", False, None, drift_gated=True)
     add("ux-library-sync", has_ui and ux_exists, "design-ux-flow", "convergent", None, None, drift_gated=True)
     add("screenshot-library-sync", has_ui and manifest_exists, None, None, True, None, drift_gated=False)
 
     eligible = [p for p in phases if p["eligible"]]
-    # next bootstrap step: lowest-numbered eligible init phase (deterministic pipeline order).
+
     inits = sorted((p for p in eligible if p["bootstrap_phase"]), key=lambda p: p["bootstrap_phase"])
     next_step = inits[0]["phase"] if inits else None
 
@@ -224,10 +184,7 @@ def build_state(root: Path) -> dict:
         "next_bootstrap_step": next_step,
     }
 
-
 def _drift_counts(root) -> tuple[int, int]:
-    """(ui_drift, ux_drift). Migrates the OLD `since_last_sync` scalar fail-soft:
-    a legacy value seeds BOTH counters so no accumulated drift is dropped."""
     d = config.read(root, SCOPE).get("library_drift", {})
     if not isinstance(d, dict):
         return 0, 0
@@ -236,38 +193,26 @@ def _drift_counts(root) -> tuple[int, int]:
     ux_d = int(d.get("ux_drift", legacy) or 0)
     return ui_d, ux_d
 
-
 def evaluate(root, unit=None, composed=None) -> dict:
-    """Deterministic `Phase.run` callable for the `library-state` phase — FACTS ONLY, no `next`.
-
-    Always `passed=True` — this is a fact, never a failure. The phase emits facts and does NOT name
-    a route: routing is owned by the workflow's fact-predicate edges (IMPL-SPEC-fact-routing §4/§5).
-    `design-bootstrap` predicates on library-absence; `feature-design` predicates on drift.
-
-    `facts.library_state` carries the whole build_state dict (a superset: it adds `drift` and a flat
-    `eligibility` map) for downstream disclosure and the workflow predicates; `produces` carries the
-    same dict forward as `composed["carry"]` for the init/sync spawn phases.
-    """
     s = build_state(Path(root))
     manifest = read_manifest(root)
     stale = [e["screen"] for e in manifest if e.get("status") == "stale"]
-    ui_d, ux_d = _drift_counts(root)          # (ui_drift, ux_drift)
+    ui_d, ux_d = _drift_counts(root)
     s = {
         **s,
-        # --- backward-compat scalar (kept; == max of the two counters) -----------
+
         "drift": max(ui_d, ux_d),
-        # --- per-library staleness -----------------------------------------------
+
         "ui_drift": ui_d,
         "ux_drift": ux_d,
         "screenshots": {
-            "stale": stale,                    # list[str] of screen names
-            "stale_count": len(stale),         # int
-            "any_stale": bool(stale),          # bool
+            "stale": stale,
+            "stale_count": len(stale),
+            "any_stale": bool(stale),
         },
         "eligibility": {p["phase"]: bool(p["eligible"]) for p in s["phases"]},
     }
     return {"passed": True, "facts": {"library_state": s}, "produces": s}
-
 
 def print_state(s: dict) -> None:
     print(f"library state · {s['root']}")
@@ -294,7 +239,6 @@ def print_state(s: dict) -> None:
     if s["next_bootstrap_step"]:
         print(f"  next bootstrap step: {s['next_bootstrap_step']}")
 
-
 def cmd_state(args) -> int:
     s = build_state(Path(args.root))
     if args.json:
@@ -302,7 +246,6 @@ def cmd_state(args) -> int:
     else:
         print_state(s)
     return 0
-
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="library_state", description=__doc__,
@@ -314,7 +257,6 @@ def main(argv: list[str]) -> int:
     s.set_defaults(func=cmd_state)
     args = ap.parse_args(argv)
     return args.func(args)
-
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

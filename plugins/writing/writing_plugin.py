@@ -20,14 +20,7 @@ from __future__ import annotations
 from contributors import Contribution
 from workflow import CLOSE, EdgeType, Phase, Workflow
 
-# Marker: identifies this module as a praxis plugin's main module (carries
-# `source` + `make`). Layered discovery finds plugins by this constant.
 PRAXIS_PLUGIN = True
-
-# --- PROCESS face: the phase objects ---------------------------------------------
-# Both phases are agent-driven `spawn` work (there is no deterministic craft to
-# `run`). `writing-draft` is divergent — it opens the space and gets words down;
-# `writing-revision` is convergent — it narrows an existing draft toward done.
 
 WRITING_DRAFT = Phase(
     "writing-draft", stance="divergent", delivery="spawn",
@@ -41,12 +34,6 @@ WRITING_REVISION = Phase(
 
 WRITING_PHASES = [WRITING_DRAFT, WRITING_REVISION]
 
-# --- PROCESS face: the workflow object -------------------------------------------
-# draft -> revision -> close. `close` is a seed phase (workflow.CLOSE); the
-# registry merges the seed layer in, so validate_workflow resolves it against the
-# merged phase table. A draft that turns out to need a different genre or a fresh
-# direction loops revision -> draft (fail carry) rather than forcing forward.
-
 WRITING = Workflow(
     name="writing",
     phases=[WRITING_DRAFT, WRITING_REVISION, CLOSE],
@@ -59,9 +46,6 @@ WRITING = Workflow(
 
 WRITING_WORKFLOWS = [WRITING]
 
-# --- CONTRIBUTE face -------------------------------------------------------------
-# The recognized genre axis (extensible — a genre the work needs but this set
-# lacks is itself a finding, not a silent stretch of an ill-fitting one).
 GENRES = ("fiction", "nonfiction", "copy", "legal", "documentation")
 
 _PRIORITY = 0
@@ -89,19 +73,14 @@ _REVISION_BODY = (
     "invent here."
 )
 
-
 def _genre(situation) -> str | None:
-    """Read the genre hint off `situation.label` (there is no genre field on
-    Situation). Returns a recognized genre or None."""
     label = getattr(situation, "label", None)
     if not label:
         return None
     low = str(label).lower()
     return next((g for g in GENRES if g in low), None)
 
-
 def _is_draft(situation) -> bool:
-    """draft when the phase name says so, else fall back to the divergent stance."""
     name = getattr(situation, "phase_name", None)
     if name == "writing-draft":
         return True
@@ -109,34 +88,21 @@ def _is_draft(situation) -> bool:
         return False
     return getattr(situation, "phase", None) == "divergent"
 
-
 class WritingProcess:
-    """A PROCESS-ONLY writing source: phases, a workflow, per-stance guidance.
 
-    No `domains_dir` — this plugin carries no judgment (that is the whole design).
-    """
-
-    # Non-empty source string. This plugin's namespace + precedence identity.
     source = "writing"
 
     def __init__(self, root):
-        # `root` is the consuming praxis root praxis hands to the factory.
+
         self.root = root
 
     def phases(self) -> list:
-        """The writing phases this plugin registers (real workflow.Phase objects)."""
         return list(WRITING_PHASES)
 
     def workflows(self) -> list:
-        """The writing workflow. It references the seed `close` phase by name; the
-        registry merges the seed layer in, so validation resolves against the
-        merged phase table."""
         return list(WRITING_WORKFLOWS)
 
     def contribute(self, situation) -> list:
-        """Per-stance drafting/revision guidance, keyed on a prose subject. Returns
-        [] for any non-prose subject. The genre axis rides in the Contribution body
-        and `meta` (there is no genre field on Situation)."""
         if getattr(situation, "subject", None) != "prose":
             return []
 
@@ -158,7 +124,5 @@ class WritingProcess:
             source="writing", title="Writing: revision (convergent)",
             body=_REVISION_BODY + genre_note, priority=_PRIORITY, meta=meta)]
 
-
 def make(root) -> "WritingProcess":
-    """Factory. Register via `writing_plugin:make` in the root's config."""
     return WritingProcess(root)

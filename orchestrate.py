@@ -9,14 +9,8 @@ import schedule
 from run import Plan, Unit, Verdict, run_unit, verifier_from_test_cmd
 from situation import Situation
 
-
-# On escalation, replan splices a caller-supplied replacement into the failing
-# sub-graph and re-runs it; the replacement is the caller's judgment, not the engine's.
-
-
 def _default_owner(defect: str) -> dict:
     return {"intent": f"fix: {defect}", "targets": []}
-
 
 def failing_subdag(units, seed_ids) -> list[str]:
     seeds = set(seed_ids)
@@ -33,13 +27,11 @@ def failing_subdag(units, seed_ids) -> list[str]:
                 stack.append(dep)
     return [u.id for u in units if u.id in affected]
 
-
 def barrier_from_test_cmd(test_cmd: str | None) -> Callable[[], Verdict]:
     verifier = verifier_from_test_cmd(test_cmd)
     if verifier is None:
         return lambda: Verdict(verified=True)
     return lambda: verifier.verify(None, None, None)
-
 
 def run_orchestrated(root: Path, units, contributors, executor,
                      barrier: Callable[[], Verdict], *, fix_rounds: int = 3,
@@ -55,8 +47,6 @@ def run_orchestrated(root: Path, units, contributors, executor,
                 "units": stalled, "failing_subdag": failing_subdag(units, stalled),
                 "fanout": result}
 
-    # Barrier-level escalations: the fan-out completed, so best-effort seeds are
-    # the fan-out units not marked done (empty when every unit succeeded).
     not_done = [r["unit"] for r in result["results"] if r["outcome"] != "result"]
     barrier_subdag = failing_subdag(units, not_done)
 
@@ -86,7 +76,6 @@ def run_orchestrated(root: Path, units, contributors, executor,
     journal.append(root, "orchestration.escalated", reason="loop-exhausted")
     return {"status": "escalated", "reason": "loop-exhausted", "attempts": fix_rounds + 1,
             "failing_subdag": barrier_subdag, "fanout": result}
-
 
 def replan(root: Path, units, failing_ids, replacement_units, contributors, executor,
            barrier: Callable[[], Verdict], *, fix_rounds: int = 3,

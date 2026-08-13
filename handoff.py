@@ -7,7 +7,6 @@ import journal
 from contributors import gather, surface_for
 from run import Unit
 
-
 def assemble(intent: str, composed: dict, brief: str | None = None,
              feedback: list | None = None) -> dict:
     overlay = "\n\n".join(f"## {c.title}\n{c.body}"
@@ -21,11 +20,9 @@ def assemble(intent: str, composed: dict, brief: str | None = None,
     return {"overlay": overlay, "brief": "\n".join(lines),
             "overlay_bytes": len(overlay), "sources": composed.get("sources", [])}
 
-
 def _state_of(fold: dict, uid: str) -> str | None:
     u = fold["units"].get(uid)
     return u["state"] if u else None
-
 
 def next_ready(root: str | Path, units: list[Unit]) -> Unit | None:
     root = Path(root).resolve()
@@ -36,7 +33,6 @@ def next_ready(root: str | Path, units: list[Unit]) -> Unit | None:
         if all(_state_of(fold, d) == "done" for d in u.depends_on):
             return u
     return None
-
 
 def status(root: str | Path, units: list[Unit]) -> dict:
     root = Path(root).resolve()
@@ -57,7 +53,6 @@ def status(root: str | Path, units: list[Unit]) -> dict:
     complete = (len(buckets["done"]) + len(buckets["stalled"])
                 + len(buckets["escalated"]) == len(units))
     return {**buckets, "complete": complete, "total": len(units)}
-
 
 def pull(root: str | Path, units: list[Unit], contributors, brief: str | None = None,
          delivery: str = "spawn") -> dict:

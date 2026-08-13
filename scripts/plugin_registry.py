@@ -1,25 +1,4 @@
 #!/usr/bin/env python3
-"""plugin_registry — pure, testable helpers behind the `:register-plugins` onboarding flow.
-
-Registration is opt-in and re-runnable: a consuming praxis root enables plugins by listing them
-under the `contributors` namespace of its `.praxis/config.json` (each value a `module:make` factory
-spec praxis calls as `factory(root)`), and the modules are made importable by the top-level
-`plugins_path` list (see `contributors._prepend_plugins_path`). This module is the mechanism the
-skill drives:
-
-  discover(root=None, *, plugins_root=None, global_root=...)
-                         -> the plugins available to register, unioned across a layered search path
-                            (bundled < global < project < explicit); each entry carries
-                            {name, source, spec, dir, description, origin/layer}
-  current(root)          -> the root's currently-registered {name: spec} contributors map
-  apply(root, names, discovered)
-                         -> register EXACTLY the selected set (drop the rest) and write the
-                            union of their dirs to top-level `plugins_path`; return an add/remove
-                            summary. Non-destructive to every other config section.
-
-Dependency-free on purpose (json + pathlib + ast, all stdlib): the file format mirrors
-`config.py` so a root written here reads back identically through praxis-core.
-"""
 from __future__ import annotations
 
 import argparse
@@ -31,31 +10,22 @@ from pathlib import Path
 CONFIG_REL = (".praxis", "config.json")
 CONTRIBUTORS_SCOPE = "contributors"
 PLUGINS_PATH_KEY = "plugins_path"
-# Top-level (unnamed-scope) config key: an OPTIONAL list of directory strings a root can add
-# to the discovery search path as the highest-precedence `explicit` layer (see `discover`).
+
 PLUGINS_SEARCH_PATHS_KEY = "plugins_search_paths"
-# The module-level constant a plugin's MAIN module (the file carrying `source` + `make`) sets
-# to identify itself. Discovery is marker-driven — NOT filename-driven — and fully static.
+
 MARKER = "PRAXIS_PLUGIN"
 
 DEFAULT_PLUGINS_ROOT = str(Path(__file__).resolve().parent.parent / "plugins")
-# Claude Code's per-user config dir. The global layer enumerates INSTALLED plugins from here —
-# NOT by scanning it for markers directly. Plugin *source* does not live under `~/.claude/plugins/`;
-# Claude Code records install paths in `plugins/installed_plugins.json` and symlinks skills-directory
-# plugins into `skills/`. Overridable (tests inject a fake root); absent → fail-soft (no entries).
+
 DEFAULT_GLOBAL_ROOT = "~/.claude"
-# Where Claude Code records installed plugins (relative to the global root); v2 shape is
-# {"version":2,"plugins":{"<id>@<marketplace>":[{"scope","installPath",...}]}}.
+
 INSTALLED_PLUGINS_REL = ("plugins", "installed_plugins.json")
-# Where Claude Code symlinks skills-directory plugins (relative to the global root).
+
 GLOBAL_SKILLS_REL = ("skills",)
-# A root's project-local plugins dir (relative to the root).
+
 PROJECT_PLUGINS_REL = (".praxis", "plugins")
 
 _UNSET = object()
-
-
-# ── discovery ────────────────────────────────────────────────────────────────
 
 def discover(
     root: str | Path | None = None,
@@ -63,25 +33,6 @@ def discover(
     plugins_root: str | Path | None = None,
     global_root: str | Path | None = _UNSET,
 ) -> list[dict]:
-    """Discover registerable plugins across a LAYERED search path, marker-driven and static.
-
-    A plugin is identified by STATICALLY finding a module-level `PRAXIS_PLUGIN` marker in a
-    candidate `.py` (plus a `source` and/or `make`) — never by filename and never by importing.
-
-    Layers, in LOW→HIGH precedence (higher wins on same-`name` collision):
-      bundled  — the plugins shipped with praxis (`plugins_root`, default: the bundled dir)
-      global   — best-effort enumeration of Claude Code's INSTALLED plugins (`global_root`,
-                 default `~/.claude`): install paths from `plugins/installed_plugins.json`
-                 plus `skills/` symlink targets, each scanned for the marker. Fail-soft if
-                 absent. Pass `None` to skip.
-      project  — `<root>/.praxis/plugins`                         (only when `root` is given)
-      explicit — dirs from the root's top-level `plugins_search_paths` config
-                                                                  (only when `root` is given)
-
-    Each entry: `{name, source, spec ("module:make"), dir, description, origin, layer}`.
-    `dir` is the directory that must be on `sys.path` for `spec`'s module to import (for a
-    package like `corpora.plugin` that is the package parent, e.g. `.../corpora`).
-    """
     layers: list[tuple[str, list[dict]]] = []
 
     bundled_dir = Path(plugins_root) if plugins_root is not None else Path(DEFAULT_PLUGINS_ROOT)
@@ -100,20 +51,14 @@ def discover(
         layers.append(("explicit", explicit))
 
     merged: dict[str, dict] = {}
-    for layer_name, entries in layers:  # low → high; later layers overwrite on name collision
+    for layer_name, entries in layers:
         for entry in entries:
             tagged = dict(entry, origin=layer_name, layer=layer_name)
             merged[tagged["name"]] = tagged
 
     return sorted(merged.values(), key=lambda e: e["name"])
 
-
 def _scan_tree(search_dir: Path) -> list[dict]:
-    """Return one entry per markered plugin module found anywhere under `search_dir`.
-
-    Fail-soft: a missing/unreadable dir yields `[]`. Skips `__pycache__`. Marker detection is
-    static (ast); a `*_plugin.py`-named file WITHOUT the marker is ignored.
-    """
     try:
         if not search_dir.is_dir():
             return []
@@ -132,30 +77,13 @@ def _scan_tree(search_dir: Path) -> list[dict]:
             entries.append(entry)
     return entries
 
-
 def _scan_global(global_root: Path) -> list[dict]:
-    """Discover markered plugins among Claude Code's INSTALLED plugins under `global_root`.
-
-    Enumerates install paths (never scans `global_root` itself), then reuses `_scan_tree` — the
-    same marker-driven scan the bundled layer uses — on each. Fail-soft throughout: a missing or
-    malformed `installed_plugins.json` and a missing `skills/` dir both yield zero entries.
-    """
     entries: list[dict] = []
     for path in _global_install_paths(global_root):
         entries.extend(_scan_tree(path))
     return entries
 
-
 def _global_install_paths(global_root: Path) -> list[Path]:
-    """The source dirs of Claude Code's installed plugins under `global_root` (deduped, order-stable).
-
-    Two best-effort sources, unioned:
-      1. `plugins/installed_plugins.json` (v2) — the authoritative registry; every
-         `plugins[<id>][*].installPath`.
-      2. `skills/` symlink targets — skills-directory plugins Claude Code symlinks in; resolved
-         to their real source dirs.
-    Each source is independently fail-soft (absent/malformed → contributes nothing).
-    """
     paths: list[Path] = []
     seen: set[Path] = set()
 
@@ -164,7 +92,6 @@ def _global_install_paths(global_root: Path) -> list[Path]:
             seen.add(p)
             paths.append(p)
 
-    # 1. installed_plugins.json — the source of truth.
     manifest = global_root.joinpath(*INSTALLED_PLUGINS_REL)
     try:
         data = json.loads(manifest.read_text())
@@ -180,7 +107,6 @@ def _global_install_paths(global_root: Path) -> list[Path]:
                     if isinstance(ip, str) and ip:
                         _add(Path(ip))
 
-    # 2. ~/.claude/skills symlink targets — resolved to their real source dirs.
     skills = global_root.joinpath(*GLOBAL_SKILLS_REL)
     try:
         children = sorted(skills.iterdir())
@@ -193,7 +119,6 @@ def _global_install_paths(global_root: Path) -> list[Path]:
             continue
 
     return paths
-
 
 def _entry_for(py_file: Path) -> dict | None:
     module, plugin_dir = _module_and_dir(py_file)
@@ -214,14 +139,7 @@ def _entry_for(py_file: Path) -> dict | None:
         "description": description,
     }
 
-
 def _module_and_dir(py_file: Path) -> tuple[str, str]:
-    """Dotted import name for `py_file` + the dir that must be on sys.path for it to import.
-
-    Walks up through any `__init__.py`-bearing package dirs: `.../corpora/corpora/plugin.py`
-    → (`corpora.plugin`, `.../corpora`); a bare `.../general/general_plugin.py` →
-    (`general_plugin`, `.../general`).
-    """
     parts = [py_file.stem]
     d = py_file.parent
     while (d / "__init__.py").exists():
@@ -229,21 +147,16 @@ def _module_and_dir(py_file: Path) -> tuple[str, str]:
         d = d.parent
     return ".".join(parts), str(d.resolve())
 
-
 def _fallback_source(module: str) -> str:
-    """Name for a markered module with no explicit `source`: top package, else stem sans _plugin."""
     head = module.split(".")[0]
     return head.removesuffix("_plugin") if head else ""
 
-
 def _config_search_paths(root: str | Path) -> list[str]:
-    """The root's top-level `plugins_search_paths` list (dir strings), or []."""
     paths = _load(root).get("", {})
     vals = paths.get(PLUGINS_SEARCH_PATHS_KEY) if isinstance(paths, dict) else None
     if not isinstance(vals, list):
         return []
     return [v for v in vals if isinstance(v, str) and v]
-
 
 def _module_docstring(py_file: Path) -> str:
     try:
@@ -252,13 +165,7 @@ def _module_docstring(py_file: Path) -> str:
         return ""
     return ast.get_docstring(tree) or ""
 
-
 def _has_marker(py_file: Path) -> bool:
-    """True iff `py_file` has a module-level `PRAXIS_PLUGIN` assignment AND a `source`/`make`.
-
-    Fully static (ast) — the module is never imported. This is what makes discovery
-    marker-driven rather than filename-driven.
-    """
     try:
         tree = ast.parse(py_file.read_text())
     except (OSError, SyntaxError):
@@ -267,7 +174,7 @@ def _has_marker(py_file: Path) -> bool:
     marked = False
     has_make = False
     has_module_source = False
-    for node in tree.body:  # module level only
+    for node in tree.body:
         if isinstance(node, ast.Assign):
             names = [t.id for t in node.targets if isinstance(t, ast.Name)]
             if MARKER in names:
@@ -284,14 +191,12 @@ def _has_marker(py_file: Path) -> bool:
         return False
     return has_make or has_module_source or _plugin_source(py_file) is not None
 
-
 def _plugin_source(py_file: Path) -> str | None:
-    """Read a `source = "..."` string constant statically (class-level or module-level; no import)."""
     try:
         tree = ast.parse(py_file.read_text())
     except (OSError, SyntaxError):
         return None
-    # Module-level first, then any class body.
+
     for scope in (tree, *[n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]):
         for stmt in getattr(scope, "body", []):
             if isinstance(stmt, ast.Assign):
@@ -302,7 +207,6 @@ def _plugin_source(py_file: Path) -> str | None:
                         return val
     return None
 
-
 def _first_sentence(text: str) -> str:
     collapsed = " ".join((text or "").split())
     if not collapsed:
@@ -311,7 +215,6 @@ def _first_sentence(text: str) -> str:
     if dot != -1:
         return collapsed[: dot + 1]
     return collapsed if collapsed.endswith(".") else collapsed
-
 
 def _readme_h1(plugin_dir: Path) -> str:
     readme = plugin_dir / "README.md"
@@ -323,12 +226,8 @@ def _readme_h1(plugin_dir: Path) -> str:
         pass
     return ""
 
-
-# ── config read/write (mirrors config.py's `.praxis/config.json` format) ─────
-
 def _config_path(root: str | Path) -> Path:
     return Path(root).joinpath(*CONFIG_REL)
-
 
 def _load(root: str | Path) -> dict:
     try:
@@ -337,29 +236,16 @@ def _load(root: str | Path) -> dict:
         return {}
     return data if isinstance(data, dict) else {}
 
-
 def _dump(root: str | Path, scopes: dict) -> None:
     p = _config_path(root)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(scopes, indent=2, sort_keys=True) + "\n")
 
-
-# ── current / apply ──────────────────────────────────────────────────────────
-
 def current(root: str | Path) -> dict:
-    """The root's currently-registered `{name: spec}` contributors map."""
     scope = _load(root).get(CONTRIBUTORS_SCOPE, {})
     return dict(scope) if isinstance(scope, dict) else {}
 
-
 def apply(root: str | Path, selected_names, discovered: list[dict]) -> dict:
-    """Register EXACTLY `selected_names` (drop everything else) and write `plugins_path`.
-
-    Writes `contributors` = `{name: spec}` for the selected, known plugins, and sets top-level
-    `plugins_path` to the sorted union of the selected plugins' dirs so the modules import
-    (Part 1). Every other config section is preserved untouched. Returns a summary:
-      {added, removed, contributors, plugins_path}
-    """
     by_name = {e["name"]: e for e in discovered}
     selected = [n for n in dict.fromkeys(selected_names) if n in by_name]
 
@@ -386,9 +272,6 @@ def apply(root: str | Path, selected_names, discovered: list[dict]) -> dict:
         "contributors": new_contributors,
         "plugins_path": plugins_path,
     }
-
-
-# ── CLI (scripting / testing convenience; the interactive UX lives in the skill) ─
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Register/unregister praxis plugins for a root.")
@@ -430,7 +313,6 @@ def main(argv=None) -> int:
         mark = "x" if e["name"] in registered else " "
         print(f"[{mark}] {e['name']:14} {e['spec']:26} {e['description']}")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

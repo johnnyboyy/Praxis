@@ -27,17 +27,14 @@ STATE_EVENTS: dict[str, str] = {
 IN_FLIGHT = {"framed", "dispatched", "running", "verifying", "verified"}
 CONCLUDED = {"done", "closed", "stalled", "escalated"}
 
-
 def _praxis_dir(root: Path) -> Path:
     for m in (".praxis", "praxis"):
         if (root / m).is_dir():
             return root / m
     return root / ".praxis"
 
-
 def journal_path(root: Path) -> Path:
     return _praxis_dir(root) / JOURNAL_NAME
-
 
 def append(root: Path, event: str, unit: str | None = None, **payload) -> dict:
     path = journal_path(root)
@@ -51,7 +48,6 @@ def append(root: Path, event: str, unit: str | None = None, **payload) -> dict:
         with path.open("a") as fh:
             fh.write(json.dumps(record) + "\n")
     return record
-
 
 def _next_seq(path: Path) -> int:
     if not path.is_file():
@@ -70,7 +66,6 @@ def _next_seq(path: Path) -> int:
         return 0
     return last + 1
 
-
 def read(root: Path) -> list[dict]:
     path = journal_path(root)
     if not path.is_file():
@@ -84,7 +79,6 @@ def read(root: Path) -> list[dict]:
     except (OSError, json.JSONDecodeError):
         pass
     return out
-
 
 def fold(root: Path) -> dict:
     units: dict[str, dict] = {}
@@ -113,7 +107,6 @@ def fold(root: Path) -> dict:
     open_units = [uid for uid in order if units[uid]["state"] in IN_FLIGHT]
     return {"units": units, "open_units": open_units, "summary": _summary(units, order)}
 
-
 def _summary(units: dict[str, dict], order: list[str]) -> dict:
     def bucket() -> dict:
         return {"runs": 0, "result": 0, "stall": 0}
@@ -140,22 +133,18 @@ def _summary(units: dict[str, dict], order: list[str]) -> dict:
                            "status": u.get("status"), "surfaced": u.get("surfaced")})
     return {"by_phase": by_phase, "by_workflow": by_workflow, "recent_stalls": stalls[-5:]}
 
-
 def state_of(root: Path, unit: str) -> str | None:
     u = fold(root)["units"].get(unit)
     return u["state"] if u else None
 
-
 def gaps(root: Path) -> list[dict]:
     return [e for e in read(root) if e.get("event") == "conductor.gap"]
-
 
 def phase_gaps(root: Path, *, unit: str | None = None) -> list[dict]:
     out = [e for e in read(root) if e.get("event") == "phase.gap"]
     if unit is not None:
         out = [e for e in out if e.get("unit") == unit]
     return out
-
 
 def gap_candidates(root: Path) -> list[dict]:
     tally: dict[tuple[str, str], dict] = {}
@@ -175,17 +164,14 @@ def gap_candidates(root: Path) -> list[dict]:
             rec["examples"].append(e["intent"])
     return sorted(tally.values(), key=lambda r: r["count"], reverse=True)
 
-
 def note(root: Path, *, unit: str | None = None, source: str, body: str, **extra) -> dict:
     return append(root, "note", unit=unit, source=source, body=body, **extra)
-
 
 def notes(root: Path, *, unit: str | None = None) -> list[dict]:
     out = [e for e in read(root) if e.get("event") == "note"]
     if unit is not None:
         out = [e for e in out if e.get("unit") == unit]
     return out
-
 
 def open_unit(root: Path) -> dict | None:
     f = fold(root)

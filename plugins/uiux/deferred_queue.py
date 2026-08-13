@@ -56,18 +56,13 @@ REQUIRED = ("id", "stance", "domain", "question", "context", "source-workstream"
 
 SCOPE = "uiux"
 
-
 def state_dir(root: str) -> str:
-    """The plugin's owned working-state dir (spec §6). Replaces the OLD `.corpora`/`corpora`."""
     return os.path.join(root, ".praxis", "uiux")
-
 
 def queue_path(root: str) -> str:
     return os.path.join(state_dir(root), "deferred-decisions.md")
 
-
 def parse_deferred(path: str) -> list:
-    """Parse the queue's deliberately flat YAML subset without a YAML dependency."""
     entries: list = []
     item = None
     in_decisions = False
@@ -90,7 +85,6 @@ def parse_deferred(path: str) -> list:
             item[key.strip()] = value.strip().strip('"').strip("'")
     return entries
 
-
 def deferred_problems(entries: list) -> list:
     problems: list = []
     seen: set = set()
@@ -111,7 +105,7 @@ def deferred_problems(entries: list) -> list:
         created = entry.get("created", "")
         if created and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", created):
             problems.append(f"{label}: created must be YYYY-MM-DD")
-        # A resolved entry is a kept trace — it must record HOW it was settled.
+
         if entry.get("status") == "resolved":
             if not entry.get("resolution"):
                 problems.append(f"{label}: resolved but missing resolution (how it was settled)")
@@ -120,18 +114,10 @@ def deferred_problems(entries: list) -> list:
                 problems.append(f"{label}: resolved must be YYYY-MM-DD")
     return problems
 
-
 def has_ui(root: str) -> bool:
-    """Read the plugin's `has_ui` flag from the typed `uiux` config scope (spec §6)."""
     return str(config.read(root, SCOPE).get("has_ui", "no")).lower() in ("yes", "true")
 
-
 def resolve(root: str, id: str, resolution: str) -> bool:
-    """Mark a decision resolved IN PLACE, keeping it as a trace (the backward spine).
-
-    Programmatic entry point for the close hook (spec §4): flip the entry's status to resolved and
-    record how it was settled (`resolution:` + `resolved:` date). Fail-soft: returns False on a
-    missing queue / unknown id rather than raising (the hook loop has no try/except)."""
     path = queue_path(root)
     if not os.path.exists(path):
         return False
@@ -159,7 +145,6 @@ def resolve(root: str, id: str, resolution: str) -> bool:
     open(path, "w").write("\n".join(out) + "\n")
     return True
 
-
 def cmd_lint(args) -> int:
     path = queue_path(args.root)
     if not os.path.exists(path):
@@ -180,7 +165,6 @@ def cmd_lint(args) -> int:
     queued = [e["id"] for e in entries if e.get("status") == "queued"]
     print(f"PASS {path} ({len(queued)} open, {len(resolved)} resolved trace)")
     return 0
-
 
 def cmd_list(args) -> int:
     path = queue_path(args.root)
@@ -213,7 +197,6 @@ def cmd_list(args) -> int:
                       f"→ {entry.get('resolution', '?')}")
     return 0
 
-
 def cmd_resolve(args) -> int:
     path = queue_path(args.root)
     if not os.path.exists(path):
@@ -226,7 +209,6 @@ def cmd_resolve(args) -> int:
     resolve(args.root, args.id, args.resolution)
     print(f"resolved '{args.id}' in place (kept as trace): {path}")
     return 0
-
 
 def main(argv: list) -> int:
     ap = argparse.ArgumentParser(prog="deferred_queue", description=__doc__,
@@ -246,7 +228,6 @@ def main(argv: list) -> int:
     rs.set_defaults(func=cmd_resolve)
     args = ap.parse_args(argv)
     return args.func(args)
-
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

@@ -1,22 +1,4 @@
 #!/usr/bin/env python3
-"""report — deterministic rendering of a praxis root's journal into human-readable text (or JSON).
-
-The journal (`<root>/.praxis/journal.jsonl`) is an append-only event log; `journal.py` folds it into
-per-unit state, an analytics rollup, and gap tallies. This script is the READ surface over that fold:
-it turns those structures into aligned, one-screen text so reporting is a pure function of the log,
-not a thing the model has to reconstruct by inference. Every subcommand also emits the underlying
-structured data with `--json`.
-
-Commands:
-  summary  [--root R] [--json]            one-screen overview (default): unit state counts, top gap
-                                          candidates, per-phase metrics, open units
-  journal  [--root R] [--json]            recent journal entries (--limit N, --unit UID, --event TYPE)
-  gaps     [--root R] [--json]            recurring gap-vocabulary candidates (+ recent raw gaps)
-  metrics  [--root R] [--json]            analytics rollup: by-phase / by-workflow runs, pass-rate,
-                                          stalls, and unit state counts
-
-A root with no journal yet degrades gracefully: a friendly note and exit 0.
-"""
 from __future__ import annotations
 
 import argparse
@@ -25,22 +7,16 @@ import sys
 import time
 from pathlib import Path
 
-# journal.py lives at the repo ROOT (parent of scripts/); root_tree.py lives beside this file.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import journal  # noqa: E402
 import root_tree as rt  # noqa: E402
 
-
-# ── shared helpers ────────────────────────────────────────────────────────────
-
 def has_journal(root: Path) -> bool:
     return journal.journal_path(root).is_file()
 
-
 def no_journal_msg(root: Path) -> str:
     return f"no journal yet ({journal.journal_path(root)} absent) — nothing to report"
-
 
 def fmt_ts(ts) -> str:
     try:
@@ -48,12 +24,9 @@ def fmt_ts(ts) -> str:
     except (TypeError, ValueError):
         return str(ts)
 
-
 _PAYLOAD_SKIP = {"ts", "seq", "event", "unit"}
 
-
 def payload_summary(ev: dict, width: int = 80) -> str:
-    """A compact key=value digest of an event's payload (everything but the structural keys)."""
     parts = []
     for k, v in ev.items():
         if k in _PAYLOAD_SKIP:
@@ -67,21 +40,17 @@ def payload_summary(ev: dict, width: int = 80) -> str:
     out = " ".join(parts)
     return out if len(out) <= width else out[: width - 3] + "..."
 
-
 def state_counts(fold: dict) -> dict[str, int]:
     counts: dict[str, int] = {}
     for u in fold["units"].values():
         counts[u["state"] or "?"] = counts.get(u["state"] or "?", 0) + 1
     return dict(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
 
-
 def pass_rate(bucket: dict) -> float:
     runs = bucket.get("runs", 0)
     return (bucket.get("result", 0) / runs) if runs else 0.0
 
-
 def _pad(rows: list[list[str]], headers: list[str]) -> list[str]:
-    """Render aligned columns; returns a list of lines (header + separator + rows)."""
     cols = len(headers)
     widths = [len(h) for h in headers]
     for r in rows:
@@ -91,9 +60,6 @@ def _pad(rows: list[list[str]], headers: list[str]) -> list[str]:
     out = [line(headers), "  ".join("-" * widths[i] for i in range(cols))]
     out.extend(line(r) for r in rows)
     return out
-
-
-# ── journal ───────────────────────────────────────────────────────────────────
 
 def cmd_journal(args) -> int:
     root = Path(args.root).resolve()
@@ -120,9 +86,6 @@ def cmd_journal(args) -> int:
         print(l)
     print(f"\nshowing {len(recent)} of {len(events)} entries")
     return 0
-
-
-# ── gaps ──────────────────────────────────────────────────────────────────────
 
 def cmd_gaps(args) -> int:
     root = Path(args.root).resolve()
@@ -153,16 +116,12 @@ def cmd_gaps(args) -> int:
                   f"{sug} -> {chosen}")
     return 0
 
-
-# ── metrics ─────────────────────────────────────────────────────────────────
-
 def _metrics_rows(by: dict) -> list[list[str]]:
     rows = []
     for name, b in sorted(by.items(), key=lambda kv: (-kv[1].get("runs", 0), kv[0])):
         rows.append([name, str(b.get("runs", 0)), str(b.get("result", 0)),
                      str(b.get("stall", 0)), f"{pass_rate(b) * 100:.0f}%"])
     return rows
-
 
 def cmd_metrics(args) -> int:
     root = Path(args.root).resolve()
@@ -207,9 +166,6 @@ def cmd_metrics(args) -> int:
     else:
         print("  (none)")
     return 0
-
-
-# ── summary (default) ─────────────────────────────────────────────────────────
 
 def cmd_summary(args) -> int:
     root = Path(args.root).resolve()
@@ -268,9 +224,6 @@ def cmd_summary(args) -> int:
             print(f"  {s.get('unit')}  phase={s.get('phase')}  status={s.get('status') or '-'}")
     return 0
 
-
-# ── argparse ──────────────────────────────────────────────────────────────────
-
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="report", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -301,10 +254,9 @@ def main(argv: list[str]) -> int:
 
     args = ap.parse_args(argv)
     if not getattr(args, "func", None):
-        # default subcommand: summary against cwd
+
         args = ap.parse_args(["summary", *argv])
     return args.func(args)
-
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
