@@ -9,16 +9,13 @@ import run as R  # noqa: E402
 from contributors import Contribution  # noqa: E402
 from situation import Situation  # noqa: E402
 
-
 def _sit(**over):
     kw = dict(task_kind="change", intent="do the thing", subject="coding")
     kw.update(over)
     return Situation(**kw)
 
-
 def _result(unit, composed):
     return R.Receipt(outcome="result", status="complete", tool_calls=3)
-
 
 class _StubContributor:
     def __init__(self, source):
@@ -26,7 +23,6 @@ class _StubContributor:
 
     def contribute(self, situation):
         return [Contribution(source=self._source, title="frame", body="body")]
-
 
 class ReceiptTest(unittest.TestCase):
     def test_rejects_bad_outcome(self):
@@ -44,7 +40,6 @@ class ReceiptTest(unittest.TestCase):
         self.assertEqual(r.status, "complete")
         self.assertEqual(r.surfaced, [])
 
-
 class UnitTest(unittest.TestCase):
     def test_unit_of_work_defaults_to_label_then_task_kind(self):
         self.assertEqual(R.Unit("u", _sit(label="scaffold-tests")).unit_of_work, "scaffold-tests")
@@ -52,7 +47,6 @@ class UnitTest(unittest.TestCase):
 
     def test_explicit_unit_of_work_wins(self):
         self.assertEqual(R.Unit("u", _sit(label="x"), unit_of_work="named").unit_of_work, "named")
-
 
 class RunLifecycleTest(unittest.TestCase):
     def setUp(self):
@@ -107,7 +101,6 @@ class RunLifecycleTest(unittest.TestCase):
         self.assertTrue(framed["gap_surfaced"])
         self.assertEqual(framed["routed_kind"], "unclassified")
 
-
 class RunPlanTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -119,7 +112,7 @@ class RunPlanTest(unittest.TestCase):
 
     def test_plan_runs_in_order_and_summarizes(self):
         def handler(unit, composed):
-            return R.Receipt(outcome="stall", status="blocked") if unit.id == "u2" \
+            return R.Receipt(outcome="stall", status="blocked") if unit.id == "u2"\
                 else R.Receipt(outcome="result")
 
         plan = R.Plan([R.Unit(f"u{i}", _sit(fit="clean", label="implement-feature")) for i in (1, 2, 3)])
@@ -128,7 +121,6 @@ class RunPlanTest(unittest.TestCase):
         bucket = out["summary"]["by_phase"]["implement-feature"]
         self.assertEqual((bucket["runs"], bucket["result"], bucket["stall"]), (3, 2, 1))
         self.assertEqual(len(out["summary"]["recent_stalls"]), 1)
-
 
 class SubprocessExecutorTest(unittest.TestCase):
     def setUp(self):
@@ -161,7 +153,6 @@ class SubprocessExecutorTest(unittest.TestCase):
         ex = R.SubprocessExecutor(lambda unit, composed: ["/no/such/binary/xyzzy"])
         r = ex.run(self.unit, {})
         self.assertEqual(r.outcome, "stall")
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,7 +7,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import journal  # noqa: E402
 import situation as sit  # noqa: E402
 
-
 class SituationSchemaTest(unittest.TestCase):
     def _base(self, **over):
         kw = dict(task_kind="change", intent="do the thing", subject="coding")
@@ -53,7 +52,6 @@ class SituationSchemaTest(unittest.TestCase):
                                   "phase", "phase_name", "root", "targets", "workflow", "label"})
         self.assertEqual(d["suggested_kind"], "refactor")
         self.assertEqual(d["targets"], ["a.py"])
-
 
 class SurfaceGapTest(unittest.TestCase):
     def setUp(self):
@@ -107,7 +105,6 @@ class SurfaceGapTest(unittest.TestCase):
                              suggested="devops", fit="none", intent="stand up infra")
         self.assertIsNotNone(ev)
         self.assertEqual(journal.gaps(self.root)[0]["vocabulary"], "subject")
-
 
 if __name__ == "__main__":
     unittest.main()

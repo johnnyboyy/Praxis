@@ -10,12 +10,10 @@ import workflow as W  # noqa: E402
 from situation import Situation  # noqa: E402
 from workflow_run import run_workflow  # noqa: E402
 
-
 def _sit(**over):
     kw = dict(task_kind="change", intent="do the thing", subject="coding")
     kw.update(over)
     return Situation(**kw)
-
 
 class SeedLibraryTest(unittest.TestCase):
     def test_seed_phases_present(self):
@@ -41,14 +39,12 @@ class SeedLibraryTest(unittest.TestCase):
 
     def test_rebuild_triple_extract_edge(self):
         wf = W.REBUILD_TRIPLE
-        # rebuild triple: 2-phase, synthesize terminal. The preservation gate is the
-        # synthesize-exit edge-verifier keyed `coverage-diff`, not a phase.
+
         self.assertEqual([p.name for p in wf.phases], ["extract", "synthesize"])
         et = next(et for (f, t, w, et) in wf.edges if f == "extract" and t == "synthesize")
         self.assertEqual(et, W.EdgeType.extract)
-        self.assertEqual(W.next_phases(wf, "synthesize", "pass"), [])  # terminal
-        self.assertEqual(W.GATES[W.EdgeType.extract], "coverage-diff")  # gate unchanged
-
+        self.assertEqual(W.next_phases(wf, "synthesize", "pass"), [])
+        self.assertEqual(W.GATES[W.EdgeType.extract], "coverage-diff")
 
 class _Capture:
     def __init__(self):
@@ -57,7 +53,6 @@ class _Capture:
     def run(self, unit, composed):
         self.seen.append(dict(composed))
         return R.Receipt(outcome="result", evidence={"produces": f"art-{len(self.seen)}"})
-
 
 class WalkTest(unittest.TestCase):
     def setUp(self):
@@ -94,8 +89,7 @@ class WalkTest(unittest.TestCase):
     def test_extract_edge_puts_ir_not_carry(self):
         cap = _Capture()
         run_workflow(self.root, R.Unit("u1", _sit()), W.REBUILD_TRIPLE, [], cap)
-        # 2-phase now: extract -> synthesize (terminal). The extract edge threads
-        # the spec into composed["spec"] at synthesize, never as "carry".
+
         self.assertEqual(len(cap.seen), 2)
         synth = cap.seen[1]
         self.assertEqual(synth["spec"], "art-1")
@@ -135,7 +129,6 @@ class WalkTest(unittest.TestCase):
         self.assertTrue(exited["extract"]["verified"])
         self.assertEqual(out["phase_fits"]["synthesize"], "clean")
 
-
 def _verify_after(fail_times):
     state = {"n": 0}
 
@@ -146,7 +139,6 @@ def _verify_after(fail_times):
         return R.Receipt(outcome="result", evidence={"produces": composed.get("phase")})
 
     return handler
-
 
 class ConditionalTraversalTest(unittest.TestCase):
     def setUp(self):
@@ -224,9 +216,7 @@ class ConditionalTraversalTest(unittest.TestCase):
         out = run_workflow(self.root, R.Unit("u1", _sit()), wf, [], R.InlineExecutor(handler))
         self.assertEqual(out["phases"], ["plan", "refactor"])
 
-
 class _StanceRecorder:
-    """A stance-only contributor: branches solely on situation.phase (stance)."""
 
     source = "stance"
 
@@ -237,9 +227,7 @@ class _StanceRecorder:
         self.stances.append(situation.phase)
         return []
 
-
 class _NamedRecorder:
-    """Reads situation.phase_name and emits phase-specific Contributions."""
 
     source = "named"
 
@@ -252,9 +240,7 @@ class _NamedRecorder:
         self.stances.append(situation.phase)
         return []
 
-
 class StanceNameSplitTest(unittest.TestCase):
-    """Change 2c: phase = stance always; phase_name = the phase name or None."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -276,16 +262,16 @@ class StanceNameSplitTest(unittest.TestCase):
     def test_stance_only_contributor_sees_correct_stance_per_phase(self):
         rec = _StanceRecorder()
         run_workflow(self.root, R.Unit("u1", _sit()), self._wf(), [rec], _Capture())
-        # divergent phase -> "divergent"; convergent -> "convergent"; neutral -> "none"
+
         self.assertEqual(rec.stances, ["divergent", "convergent", "none"])
 
     def test_gather_stance_derivation_unbroken_by_named_phase(self):
-        # composed["stance"] must be the stance (None for neutral), never the phase name.
+
         cap = _Capture()
         run_workflow(self.root, R.Unit("u1", _sit()), self._wf(), [], cap)
         self.assertEqual([c["stance"] for c in cap.seen],
                          ["divergent", "convergent", None])
-        # composed["phase"] remains the NAME (executors read it).
+
         self.assertEqual([c["phase"] for c in cap.seen], ["design", "build", "review"])
 
     def test_contributor_reads_phase_name_across_multi_phase_workflow(self):
@@ -301,7 +287,7 @@ class StanceNameSplitTest(unittest.TestCase):
 
         cap = _Capture()
         run_workflow(self.root, R.Unit("u1", _sit()), self._wf(), [_PhaseSpecific()], cap)
-        # phase-specific injection: sources present only on the design phase
+
         self.assertIn("ps", cap.seen[0]["sources"])
         self.assertNotIn("ps", cap.seen[1]["sources"])
         self.assertNotIn("ps", cap.seen[2]["sources"])
@@ -312,9 +298,7 @@ class StanceNameSplitTest(unittest.TestCase):
         self.assertEqual(rec.names, ["design", "build", "review"])
         self.assertEqual(rec.stances, ["divergent", "convergent", "none"])
 
-
 class RunUnitWorkflowTest(unittest.TestCase):
-    """Change 2a/2b: run_unit resolves situation.workflow via the registry."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -365,13 +349,12 @@ class RunUnitWorkflowTest(unittest.TestCase):
             sys.path.remove(str(modroot))
             sys.modules.pop("wf_plugin", None)
 
-        # ran the plugin workflow (not single-dispatch)
         self.assertEqual(out["workflow"], "df")
         self.assertEqual(out["phases"], ["design", "build"])
-        # executor saw the phase NAME; contributor saw phase_name + stance split
+
         self.assertEqual([c["phase"] for c in cap.seen], ["design", "build"])
-        self.assertIn("wfp", cap.seen[0]["sources"])       # design-ctx injected
-        self.assertNotIn("wfp", cap.seen[1]["sources"])    # phase-specific: not on build
+        self.assertIn("wfp", cap.seen[0]["sources"])
+        self.assertNotIn("wfp", cap.seen[1]["sources"])
         self.assertEqual(cap.seen[0]["stance"], "divergent")
         self.assertEqual(cap.seen[1]["stance"], "convergent")
         self.assertFalse(self._events("workflow.unresolved"))
@@ -379,7 +362,7 @@ class RunUnitWorkflowTest(unittest.TestCase):
     def test_unknown_workflow_name_falls_back_and_journals_unresolved(self):
         cap = _Capture()
         out = R.run_unit(self.root, R.Unit("u1", _sit(workflow="nope")), [], cap)
-        # single-dispatch result shape (not a workflow walk)
+
         self.assertEqual(out["outcome"], "result")
         self.assertNotIn("phases", out)
         unresolved = self._events("workflow.unresolved")
@@ -393,11 +376,9 @@ class RunUnitWorkflowTest(unittest.TestCase):
         self.assertEqual(out["outcome"], "result")
         self.assertNotIn("phases", out)
         self.assertFalse(self._events("workflow.unresolved"))
-        self.assertEqual(len(cap.seen), 1)  # one dispatch, no phase walk
-
+        self.assertEqual(len(cap.seen), 1)
 
 class DeterministicRunTest(unittest.TestCase):
-    """Change 3: delivery='deterministic' + Phase.run callable + fact-routing."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -426,8 +407,7 @@ class DeterministicRunTest(unittest.TestCase):
         cap = _Capture()
         out = run_workflow(self.root, R.Unit("u1", _sit()), self._router_wf("b"), [], cap)
         self.assertEqual(out["phases"], ["route", "b"])
-        # executor.run was NOT called for the deterministic 'route' phase;
-        # only 'b' (an inline phase) reached the executor.
+
         self.assertEqual([c["phase"] for c in cap.seen], ["b"])
 
     def test_fact_drives_conditional_routing_to_a(self):
@@ -444,8 +424,7 @@ class DeterministicRunTest(unittest.TestCase):
         self.assertEqual(facts[0]["facts"], {"eligible": "b"})
 
     def test_seed_deterministic_phase_without_run_uses_executor(self):
-        # BUILD_VERIFY's 'verify' is delivery='deterministic' but has no run
-        # callable -> behavior unchanged: the executor handles it.
+
         cap_seen = []
 
         def handler(unit, composed):
@@ -456,13 +435,12 @@ class DeterministicRunTest(unittest.TestCase):
 
         out = run_workflow(self.root, R.Unit("u1", _sit()), W.BUILD_VERIFY, [],
                            R.InlineExecutor(handler))
-        self.assertIn("verify", cap_seen)          # executor DID handle verify
+        self.assertIn("verify", cap_seen)
         self.assertEqual(out["phases"], ["implement", "verify", "close"])
         self.assertFalse(self._events("phase.facts"))
 
     def test_deterministic_loop_bounded_by_max_phase_loops(self):
-        # A deterministic phase that always routes back to itself must be
-        # bounded by max_phase_loops.
+
         loop = W.Phase(
             "loop", stance="neutral", delivery="deterministic",
             run=lambda r, u, c: {"passed": True, "next": "loop"})
@@ -484,14 +462,11 @@ class DeterministicRunTest(unittest.TestCase):
             ("route", "b", "pass", W.EdgeType.carry),
         ])
         out = run_workflow(self.root, R.Unit("u1", _sit()), wf, [], _Capture())
-        # stalled: did not advance to 'b'
+
         self.assertEqual(out["phases"], ["route"])
         self.assertTrue(self._events("phase.error"))
 
-
 class PredicateEdgeTest(unittest.TestCase):
-    """Change 1: fact-predicate edges. A facts-only phase whose workflow carries
-    predicate edges routes on those predicates (declaration order, first match)."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -518,7 +493,7 @@ class PredicateEdgeTest(unittest.TestCase):
             ("route", "b", "fact", W.EdgeType.carry, lambda ev: ev["facts"]["k"]["go_b"]),
         ])
         out = run_workflow(self.root, R.Unit("u1", _sit()), wf, [], _Capture())
-        # declaration order: c-edge tests false, b-edge wins
+
         self.assertEqual(out["phases"], ["route", "b"])
 
     def test_true_predicate_before_false_still_ordered(self):
@@ -549,11 +524,11 @@ class PredicateEdgeTest(unittest.TestCase):
             ("route", "b", "fact", W.EdgeType.carry, lambda ev: ev["facts"]["k"]["go_b"]),
         ])
         out = run_workflow(self.root, R.Unit("u1", _sit()), wf, [], _Capture())
-        # raising predicate = no-match; next edge (b) wins
+
         self.assertEqual(out["phases"], ["route", "b"])
 
     def test_predicate_tier_beats_agent_choice(self):
-        # phase emits BOTH facts and next; predicate tier is consulted first.
+
         route = W.Phase(
             "route", stance="neutral", delivery="deterministic",
             run=lambda r, u, c: {"passed": True, "next": "c",
@@ -566,8 +541,7 @@ class PredicateEdgeTest(unittest.TestCase):
         ])
         out = run_workflow(self.root, R.Unit("u1", _sit()), wf, [], _Capture())
         self.assertEqual(out["phases"], ["route", "b"])
-        # emitted next="c" matched no agent-choice? c IS an agent-choice edge, so
-        # no unmatched-route event is expected.
+
         self.assertFalse(self._events("phase.route_unmatched"))
 
     def test_agent_choice_used_when_no_predicate_matches(self):
@@ -585,7 +559,7 @@ class PredicateEdgeTest(unittest.TestCase):
         self.assertEqual(out["phases"], ["route", "c"])
 
     def test_fail_route_overrides_predicate(self):
-        # failure short-circuits: forward predicate branches are not consulted.
+
         route = W.Phase(
             "route", stance="neutral", delivery="deterministic",
             run=lambda r, u, c: {"passed": False, "facts": {"k": {"go_b": True}}})
@@ -604,10 +578,7 @@ class PredicateEdgeTest(unittest.TestCase):
                          ["write-tests", "implement", "refactor", "test-cleanup"])
         self.assertFalse(self._events("phase.route_unmatched"))
 
-
 class UnmatchedRouteGuardTest(unittest.TestCase):
-    """Guard the silent unmatched-route path: a phase emits `next` that no
-    outgoing agent-choice edge targets."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -621,8 +592,7 @@ class UnmatchedRouteGuardTest(unittest.TestCase):
         return [e for e in journal.read(self.root) if e.get("event") == event]
 
     def _wf_emitting(self, target):
-        # route emits `next=target`; the only outgoing edge is a plain pass edge
-        # to `a` (no agent-choice edge, so any emitted `next` is unmatched).
+
         route = W.Phase(
             "route", stance="neutral", delivery="deterministic",
             run=lambda r, u, c: {"passed": True, "next": target})
@@ -634,7 +604,7 @@ class UnmatchedRouteGuardTest(unittest.TestCase):
     def test_unknown_phase_name_journals_kind_unknown_and_falls_through(self):
         out = run_workflow(self.root, R.Unit("u1", _sit()),
                            self._wf_emitting("nonexistent"), [], _Capture())
-        # behavior unchanged: falls through the pass edge to `a`
+
         self.assertEqual(out["phases"], ["route", "a"])
         ev = self._events("phase.route_unmatched")
         self.assertEqual(len(ev), 1)
@@ -646,7 +616,7 @@ class UnmatchedRouteGuardTest(unittest.TestCase):
         self.assertFalse(self._events("phase.stalled"))
 
     def test_registered_but_unwired_phase_journals_kind_unwired(self):
-        # "close" is a registered seed phase but has no edge from `route` here.
+
         out = run_workflow(self.root, R.Unit("u1", _sit()),
                            self._wf_emitting("close"), [], _Capture())
         self.assertEqual(out["phases"], ["route", "a"])
@@ -661,7 +631,7 @@ class UnmatchedRouteGuardTest(unittest.TestCase):
         config.write(self.root, None, {"stall-on-unmatched-route": "true"})
         out = run_workflow(self.root, R.Unit("u1", _sit()),
                            self._wf_emitting("nonexistent"), [], _Capture())
-        # halted at `route`, never advanced to `a`
+
         self.assertEqual(out["phases"], ["route"])
         ev = self._events("phase.route_unmatched")
         self.assertEqual(len(ev), 1)
@@ -710,13 +680,13 @@ class UnmatchedRouteGuardTest(unittest.TestCase):
     def test_facts_no_match_journals_kind_no_match_and_ends(self):
         out = run_workflow(self.root, R.Unit("u1", _sit()),
                            self._wf_facts_no_match(), [], _Capture())
-        self.assertEqual(out["phases"], ["route"])          # nowhere to go
+        self.assertEqual(out["phases"], ["route"])
         ev = self._events("phase.route_unmatched")
         self.assertEqual(len(ev), 1)
         self.assertEqual(ev[0]["kind"], "no-match")
         self.assertIsNone(ev[0]["next"])
         self.assertIsNone(ev[0]["resolved"])
-        self.assertFalse(self._events("phase.stalled"))     # flag off -> no stall
+        self.assertFalse(self._events("phase.stalled"))
 
     def test_facts_no_match_stalls_when_flag_on(self):
         import config
@@ -744,7 +714,7 @@ class UnmatchedRouteGuardTest(unittest.TestCase):
         self.assertFalse(self._events("phase.route_unmatched"))
 
     def test_facts_with_pass_default_emits_no_event(self):
-        # facts emitted, predicate misses, but a pass default catches it.
+
         route = W.Phase("route", stance="neutral", delivery="deterministic",
                         run=lambda r, u, c: {"passed": True, "facts": {"k": 1}})
         a = W.Phase("a", stance="convergent")
@@ -757,9 +727,7 @@ class UnmatchedRouteGuardTest(unittest.TestCase):
         self.assertEqual(out["phases"], ["route", "b"])
         self.assertFalse(self._events("phase.route_unmatched"))
 
-
 class _UnitCloseRecorder:
-    """Contributor whose only hook is unit-close; records the fired receipts."""
 
     source = "uc"
 
@@ -773,7 +741,6 @@ class _UnitCloseRecorder:
         return {"unit-close": lambda ctx: self.seen.append(
             (getattr(ctx.unit, "id", None), ctx.receipt, ctx.verdict))}
 
-
 class WorkflowUnitCloseTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -784,7 +751,7 @@ class WorkflowUnitCloseTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def _drift_wf(self):
-        # early phase carries drift evidence; terminal 'close' phase carries none
+
         early = W.Phase("early", stance="convergent")
         close = W.Phase("close", stance="neutral")
         return W.Workflow("drift", [early, close], edges=[
@@ -796,22 +763,22 @@ class WorkflowUnitCloseTest(unittest.TestCase):
             if composed.get("phase") == "early":
                 return R.Receipt(outcome="result",
                                  evidence={"ui-drift": {"screens": ["s"]}})
-            return R.Receipt(outcome="result", evidence={})  # terminal close: no drift
+            return R.Receipt(outcome="result", evidence={})
 
         rec = _UnitCloseRecorder()
         out = run_workflow(self.root, R.Unit("u1", _sit()), self._drift_wf(),
                            [rec], R.InlineExecutor(handler))
-        # fired exactly once for the workflow unit
+
         self.assertEqual(len(rec.seen), 1)
         uid, receipt, verdict = rec.seen[0]
         self.assertEqual(uid, "u1")
         self.assertIsNone(verdict)
-        # mid-walk signal survives the aggregate even though the terminal phase had none
+
         self.assertEqual(receipt["evidence"]["ui-drift"]["screens"], ["s"])
-        # canonical 6-key Receipt.to_dict shape
+
         self.assertEqual(set(receipt),
                          {"outcome", "status", "surfaced", "evidence", "cost", "tool_calls"})
-        # return exposes both "final" (superset) and the "receipt" alias
+
         self.assertEqual(out["final"], receipt)
         self.assertEqual(out["receipt"], receipt)
 
@@ -825,9 +792,8 @@ class WorkflowUnitCloseTest(unittest.TestCase):
         run_workflow(self.root, R.Unit("u1", _sit()), self._drift_wf(),
                      [rec], R.InlineExecutor(handler))
         ev = rec.seen[0][1]["evidence"]
-        self.assertEqual(ev["k"], "late")   # terminal phase overwrote
-        self.assertEqual(ev["only"], 1)     # untouched key persists
-
+        self.assertEqual(ev["k"], "late")
+        self.assertEqual(ev["only"], 1)
 
 if __name__ == "__main__":
     unittest.main()

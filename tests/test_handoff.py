@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-"""Tests for the forward handoff (handoff.py): on-demand assembly, next-ready selection over the
-journal, the progress fold, and the gate-backed pull that records payload_read so a self-advancing
-agent may edit only after it has pulled."""
 import sys
 import tempfile
 import unittest
@@ -17,7 +14,6 @@ from plan import build_units, TaskSpec  # noqa: E402
 from run import Unit  # noqa: E402
 from situation import Situation  # noqa: E402
 
-
 class _DocsLeaseContributor:
     source = "docs-lease"
 
@@ -26,7 +22,6 @@ class _DocsLeaseContributor:
 
     def surface(self, situation):
         return ["docs/**", "*.md"]
-
 
 class TempRoot:
     def __enter__(self):
@@ -38,11 +33,9 @@ class TempRoot:
     def __exit__(self, *a):
         self._tmp.cleanup()
 
-
 def _units():
     return build_units([TaskSpec(intent="schema", id="s"),
                         TaskSpec(intent="api", id="api", depends_on=["s"])])
-
 
 class AssembleTest(unittest.TestCase):
     def test_assembles_overlay_and_brief(self):
@@ -59,7 +52,6 @@ class AssembleTest(unittest.TestCase):
         ho = handoff_mod.assemble("x", {"contributions": []}, feedback=["missing test"])
         self.assertIn("did not pass verification", ho["brief"])
         self.assertIn("missing test", ho["brief"])
-
 
 class NextReadyTest(unittest.TestCase):
     def test_leaf_is_ready_dependent_is_not(self):
@@ -81,7 +73,6 @@ class NextReadyTest(unittest.TestCase):
             journal.append(root, "unit.stalled", unit="s", outcome="stall", status="blocked")
             self.assertIsNone(handoff_mod.next_ready(root, units))
 
-
 class StatusTest(unittest.TestCase):
     def test_progress_buckets(self):
         with TempRoot() as root:
@@ -91,7 +82,6 @@ class StatusTest(unittest.TestCase):
             self.assertEqual(st["done"], ["s"])
             self.assertEqual(st["waiting"], ["api"])
             self.assertFalse(st["complete"])
-
 
 class PullTest(unittest.TestCase):
     def test_pull_delivers_handoff_and_records_read_so_gate_opens(self):
@@ -124,7 +114,6 @@ class PullTest(unittest.TestCase):
             out = handoff_mod.pull(root, units, [])
             self.assertEqual(out["status"], "complete")
 
-
 class LeaseSurfaceTest(unittest.TestCase):
     def _unit(self):
         sit = Situation(task_kind="change", intent="edit code", subject="coding",
@@ -140,11 +129,11 @@ class LeaseSurfaceTest(unittest.TestCase):
             rroot = root.resolve()
             framed = journal.open_unit(rroot)["last"]
             self.assertEqual(framed["surface"], ["*.md", "docs/**"])
-            # A source-file edit is outside the docs-only lease -> denied.
+
             verdict, reason = gate.gate_decision(rroot, str(rroot / "src" / "x.py"))
             self.assertEqual(verdict, "deny")
             self.assertIn("lease surface", reason.lower())
-            # A docs edit is inside the lease -> allowed.
+
             verdict, _ = gate.gate_decision(rroot, str(rroot / "docs" / "guide.md"))
             self.assertEqual(verdict, "allow")
 
@@ -156,12 +145,11 @@ class LeaseSurfaceTest(unittest.TestCase):
             rroot = root.resolve()
             framed = journal.open_unit(rroot)["last"]
             self.assertEqual(framed["surface"], ["src/x.py"])
-            # No contributor claim: surface is exactly the situation targets.
+
             verdict, _ = gate.gate_decision(rroot, str(rroot / "src" / "x.py"))
             self.assertEqual(verdict, "allow")
             verdict, _ = gate.gate_decision(rroot, str(rroot / "docs" / "guide.md"))
             self.assertEqual(verdict, "deny")
-
 
 if __name__ == "__main__":
     unittest.main()

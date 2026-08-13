@@ -7,7 +7,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import journal  # noqa: E402
 
-
 class JournalTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -107,7 +106,6 @@ class JournalTest(unittest.TestCase):
         p.write_text('{"seq":0,"event":"unit.framed","unit":"u1","label":"x"}\nNOT JSON\n')
         u = journal.fold(self.root)["units"]["u1"]
         self.assertEqual(u["state"], "framed")
-
 
 if __name__ == "__main__":
     unittest.main()

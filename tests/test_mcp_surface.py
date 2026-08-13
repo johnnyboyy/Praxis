@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-"""Regression tests for the MCP surface (mcp_server.py).
-
-Two guards, both aimed at the class of bug that fully broke the surface once: a `@mcp.tool()`
-function whose name equals an imported module name rebinds that name in module globals, so the
-tool's body then resolves the *function* where it meant the *module* → AttributeError at call time
-(the `import conduct` vs `def conduct` collision from the conductor→praxis cutover).
-
-  1. STATIC (always runs): no tool name may collide with an imported module name in mcp_server.py.
-     This is the invariant that makes the shadowing impossible; it needs no `mcp` installed.
-  2. FUNCTIONAL (skips if `mcp` absent): import mcp_server and CALL every tool on a temp root — a
-     shadowed module reference would raise here, and each tool must return parseable JSON. Also
-     exercises the register_plan → next_handoff PULL workflow (the fix for the coupled record/run
-     gap: registering a plan must NOT spawn or cascade).
-"""
 import ast
 import json
 import sys
@@ -33,7 +19,6 @@ try:
 except ImportError:
     _HAVE_MCP = False
 
-
 def _tools_and_imports(src: str):
     tree = ast.parse(src)
     imported = set()
@@ -53,7 +38,6 @@ def _tools_and_imports(src: str):
                     tools.append(n.name)
     return tools, imported
 
-
 class ShadowGuardTest(unittest.TestCase):
     def test_no_tool_name_shadows_an_imported_module(self):
         tools, imported = _tools_and_imports(MCP_SERVER_PY.read_text())
@@ -69,11 +53,8 @@ class ShadowGuardTest(unittest.TestCase):
                          "conductor_status", "conductor_gaps", "conductor_mint"):
             self.assertIn(expected, tools)
 
-
 @unittest.skipUnless(_HAVE_MCP, "mcp package not installed")
 class ToolCallThroughTest(unittest.TestCase):
-    """Call every tool through the module (a shadowed module ref would raise here). Nothing spawns:
-    conduct/plan use dry_run, register_plan is deterministic, next_handoff only reads the journal."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -129,7 +110,6 @@ class ToolCallThroughTest(unittest.TestCase):
     def test_bad_json_is_reported_not_raised(self):
         out = self._json(self.srv.plan("{not json", search_base=self.base))
         self.assertIn("error", out)
-
 
 if __name__ == "__main__":
     unittest.main()

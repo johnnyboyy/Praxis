@@ -1,10 +1,3 @@
-"""Shared test setup for the planner suite.
-
-Puts the praxis skill dir and this plugin's dir on sys.path so that
-`from workflow import ...`, `import registry`, `import run`, `from situation import ...`,
-and the plugin's own `import planner_plugin` all resolve (the same way the uiux /
-writing suites bootstrap).
-"""
 
 import sys
 from pathlib import Path

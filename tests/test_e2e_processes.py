@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""End-to-end process tests: drive the conductor's whole workflows through its public entries and
-read the outcome back off the journal — the inline PULL process (register → next_handoff → done),
-the background CASCADE process (async → stall cascade → plan_status complete), and RESUME after an
-interruption. These exercise the real wiring (plan → schedule → handoff → journal → views), not a
-single unit."""
 import os
 import sys
 import tempfile
@@ -21,7 +16,6 @@ import gate  # noqa: E402
 import journal  # noqa: E402
 from run import InlineExecutor, Receipt  # noqa: E402
 
-
 class TempRoot:
     def __enter__(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -33,7 +27,6 @@ class TempRoot:
     def __exit__(self, *a):
         self._tmp.cleanup()
 
-
 def _wait_worker_done(root, timeout=20):
     t0 = time.time()
     while time.time() - t0 < timeout:
@@ -42,10 +35,7 @@ def _wait_worker_done(root, timeout=20):
         time.sleep(0.02)
     return False
 
-
 class InlinePullProcessTest(unittest.TestCase):
-    """The 'implement it yourself' process: register a unit graph, pull each ready unit into context (the
-    pull opens the edit gate for it), advance as each is finished, until the plan is complete."""
 
     def test_register_pull_advance_to_complete(self):
         with TempRoot() as root:
@@ -78,10 +68,7 @@ class InlinePullProcessTest(unittest.TestCase):
             self.assertEqual(conduct_engine.plan_status(root)["status"], "complete")
             self.assertTrue(any(g["suggested"] == "scaffold-tests" for g in journal.gaps(root)))
 
-
 class CascadeProcessTest(unittest.TestCase):
-    """The cascade process (worker core, in-process): a unit graph runs in dependency order to completion; a
-    unit that stalls blocks its dependents, and the whole run is recoverable from the journal."""
 
     def test_cascade_with_stall_cascade(self):
         with TempRoot() as root:
@@ -106,10 +93,7 @@ class CascadeProcessTest(unittest.TestCase):
             self.assertEqual(journal.fold(root)["units"]["deploy"]["state"], "stalled")
             self.assertIn("cost", st)
 
-
 class CloseUnitTest(unittest.TestCase):
-    """The inline unit-close: after pulling a unit and doing the work in-context, close_unit marks it
-    done so dependents unlock and the edit gate closes until the next handoff."""
 
     def test_close_unlocks_dependent_and_closes_gate(self):
         with TempRoot() as root:
@@ -135,11 +119,7 @@ class CloseUnitTest(unittest.TestCase):
         with TempRoot() as root:
             self.assertEqual(conduct_engine.close_unit(root), {"status": "no-open-unit"})
 
-
 class RecordReceiptTest(unittest.TestCase):
-    """The fan-out receipt process: a dispatched unit's outcome is journaled by record_receipt — a
-    result unlocks its dependents, a stall marks it blocked and leaves them waiting, and the plan
-    reads complete once every unit is done or stalled."""
 
     def test_result_unlocks_dependent_then_stall_completes_plan(self):
         with TempRoot() as root:
@@ -174,11 +154,7 @@ class RecordReceiptTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 conduct_engine.record_receipt(root, "u1", outcome="bogus")
 
-
 class DetachedWorkerProcessTest(unittest.TestCase):
-    """The durable 'hand off and come back later' process: a real detached worker PROCESS runs the
-    plan, survives independently, and the run is observed by reattaching through plan_status. The
-    worker uses a fake executor (PRAXIS_CASCADE_FAKE) so no child is spawned and nothing is spent."""
 
     def test_detached_cascade_runs_to_completion(self):
         with TempRoot() as root:
@@ -196,9 +172,7 @@ class DetachedWorkerProcessTest(unittest.TestCase):
             finally:
                 os.environ.pop("PRAXIS_CASCADE_FAKE", None)
 
-
 class ResumeProcessTest(unittest.TestCase):
-    """Resume after interruption: a plan whose leaf already finished re-runs only the remainder."""
 
     def test_resume_runs_only_the_remaining_units(self):
         with TempRoot() as root:
@@ -211,7 +185,6 @@ class ResumeProcessTest(unittest.TestCase):
             cascade.run_cascade(root, executor=ex, contributors=[], concurrency=1)
             self.assertEqual(ran, ["b", "c"])
             self.assertEqual(conduct_engine.plan_status(root)["status"], "complete")
-
 
 if __name__ == "__main__":
     unittest.main()

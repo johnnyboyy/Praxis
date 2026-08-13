@@ -7,7 +7,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import registry  # noqa: E402
 from workflow import EdgeType, Phase, Workflow  # noqa: E402
 
-
 class _PhaseContributor:
     source = "plug"
 
@@ -24,7 +23,6 @@ class _PhaseContributor:
     def workflows(self):
         return list(self._workflows)
 
-
 def _design_wf():
     design = Phase("design", stance="divergent")
     return Workflow(
@@ -32,7 +30,6 @@ def _design_wf():
         phases=[design],
         edges=[("design", "design", "always", EdgeType.carry)],
     )
-
 
 class ResolvePhasesTest(unittest.TestCase):
     def setUp(self):
@@ -50,8 +47,8 @@ class ResolvePhasesTest(unittest.TestCase):
     def test_contributor_phase_merges(self):
         stub = _PhaseContributor(phases=[Phase("design", stance="divergent")])
         out = registry.resolve_phases(self.root, [stub])
-        self.assertIn("plan", out)          # seed preserved
-        self.assertIn("design", out)        # plugin merged
+        self.assertIn("plan", out)
+        self.assertIn("design", out)
         self.assertEqual(out["design"].stance, "divergent")
 
     def test_seed_vs_plugin_collision_keeps_seed(self):
@@ -83,7 +80,6 @@ class ResolvePhasesTest(unittest.TestCase):
         self.assertIn("design", out)
         self.assertIn("plan", out)
 
-
 class ResolveWorkflowsTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -103,8 +99,8 @@ class ResolveWorkflowsTest(unittest.TestCase):
             workflows=[_design_wf()],
         )
         out = registry.resolve_workflows(self.root, [stub])
-        self.assertIn("tdd-unit", out)      # seed preserved
-        self.assertIn("design-flow", out)   # plugin merged
+        self.assertIn("tdd-unit", out)
+        self.assertIn("design-flow", out)
 
     def test_workflow_naming_unknown_phase_is_dropped(self):
         ghost = Workflow(
@@ -163,7 +159,6 @@ class ResolveWorkflowsTest(unittest.TestCase):
         self.assertIn("design-flow", out)
         self.assertIn("tdd-unit", out)
 
-
 class ValidatePredicateEdgeTest(unittest.TestCase):
     def _phases(self):
         return {"a": Phase("a"), "b": Phase("b")}
@@ -200,7 +195,6 @@ class ValidatePredicateEdgeTest(unittest.TestCase):
             ("a", "b", "pass", EdgeType.carry),
         ])
         self.assertEqual(registry.validate_workflow(w, self._phases()), [])
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -6,7 +6,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config as C  # noqa: E402
 
-
 class ConfigTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -65,14 +64,13 @@ class ConfigTest(unittest.TestCase):
         self.assertTrue(C.ensure(self.root))
         self.assertEqual(C.path(self.root).read_text(), "{}\n")
         self.assertEqual(C.read(self.root), {})
-        self.assertFalse(C.ensure(self.root))  # idempotent
+        self.assertFalse(C.ensure(self.root))
 
     def test_malformed_file_reads_as_empty(self):
         C.path(self.root).parent.mkdir(parents=True)
         C.path(self.root).write_text("not json {")
         self.assertEqual(C.read(self.root), {})
         self.assertEqual(C.read(self.root, "plugin"), {})
-
 
 if __name__ == "__main__":
     unittest.main()

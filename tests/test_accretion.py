@@ -8,12 +8,10 @@ import accretion as acc  # noqa: E402
 import journal  # noqa: E402
 import situation as sit  # noqa: E402
 
-
 def _sit(**over):
     kw = dict(task_kind="change", intent="stand up infra", subject="process")
     kw.update(over)
     return sit.Situation(**kw)
-
 
 class VocabularyTest(unittest.TestCase):
     def setUp(self):
@@ -61,7 +59,6 @@ class VocabularyTest(unittest.TestCase):
     def test_empty_term_rejected(self):
         with self.assertRaises(ValueError):
             acc.mint(self.root, "task_kind", "   ")
-
 
 class PromotionLoopTest(unittest.TestCase):
     def setUp(self):
@@ -114,7 +111,6 @@ class PromotionLoopTest(unittest.TestCase):
         self.assertEqual(r["minted"]["subject"], ["devops"])
         self.assertIn("devops", r["vocabulary"]["subject"])
         self.assertIn("coding", r["vocabulary"]["subject"])
-
 
 if __name__ == "__main__":
     unittest.main()

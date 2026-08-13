@@ -12,12 +12,10 @@ import run as R  # noqa: E402
 import schedule as S  # noqa: E402
 from situation import Situation  # noqa: E402
 
-
 def _sit(**over):
     kw = dict(task_kind="change", intent="do the thing", subject="coding")
     kw.update(over)
     return Situation(**kw)
-
 
 class PolicyLoadTest(unittest.TestCase):
     def setUp(self):
@@ -53,7 +51,6 @@ class PolicyLoadTest(unittest.TestCase):
     def test_non_dict_degrades_to_defaults(self):
         self._write([1, 2, 3])
         self.assertEqual(P.load_policy(self.root).max_retries, 2)
-
 
 class PolicyDrivesLoopTest(unittest.TestCase):
     def setUp(self):
@@ -118,7 +115,6 @@ class PolicyDrivesLoopTest(unittest.TestCase):
         verifier = R.CallableVerifier(lambda u, r, c: R.Verdict(verified=True))
         out = R.run(plan, [], work, self.root, verifier=verifier)
         self.assertEqual(out["results"][0]["outcome"], "result")
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -12,10 +12,8 @@ import conduct  # noqa: E402
 import config as C  # noqa: E402
 import root_tree as rt  # noqa: E402
 
-
 def git_init(path: Path) -> None:
     subprocess.run(["git", "init", "-q", str(path)], check=True, capture_output=True)
-
 
 class InitRootTest(unittest.TestCase):
     def setUp(self):
@@ -47,7 +45,7 @@ class InitRootTest(unittest.TestCase):
             out = conduct.init_root(root=plain)
             self.assertEqual(Path(out["root"]), plain)
             self.assertEqual(C.read(plain), {})
-            # no git root -> no .gitignore is written
+
             self.assertFalse(out["gitignore_updated"])
             self.assertFalse((plain / ".gitignore").exists())
         finally:
@@ -58,7 +56,7 @@ class InitRootTest(unittest.TestCase):
         self.assertTrue(out["gitignore_updated"])
         gitignore = self.tmp / ".gitignore"
         self.assertIn(".rebuild/", gitignore.read_text().splitlines())
-        # second init does not re-append the entry
+
         again = conduct.init_root(root=self.tmp)
         self.assertFalse(again["gitignore_updated"])
         self.assertEqual(gitignore.read_text().count(".rebuild/"), 1)
@@ -68,9 +66,8 @@ class InitRootTest(unittest.TestCase):
         gitignore.write_text("node_modules/\ndist/\n", encoding="utf-8")
         conduct.init_root(root=self.tmp)
         text = gitignore.read_text()
-        self.assertIn("node_modules/", text)  # existing entries untouched
+        self.assertIn("node_modules/", text)
         self.assertIn(".rebuild/", text.splitlines())
-
 
 class ManagedHelperTest(unittest.TestCase):
     def setUp(self):
@@ -85,7 +82,6 @@ class ManagedHelperTest(unittest.TestCase):
         self.assertFalse(mcp_server._managed(str(self.tmp)))
         conduct.init_root(root=self.tmp)
         self.assertTrue(mcp_server._managed(str(self.tmp)))
-
 
 if __name__ == "__main__":
     unittest.main()

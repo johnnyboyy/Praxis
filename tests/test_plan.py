@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Tests for the tasklist intake + planning head (plan.py): deterministic assembly, the recorded
-plan, and the head-to-tail `plan_and_run` that sets a unit graph cascading through run_dag."""
 import sys
 import tempfile
 import unittest
@@ -13,7 +11,6 @@ from plan import (TaskSpec, build_units, plan_and_run, plan_tasks, reconstruct_u
                   spec_to_unit)  # noqa: E402
 from run import InlineExecutor, Receipt, Unit  # noqa: E402
 
-
 class TempRoot:
     def __enter__(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -23,7 +20,6 @@ class TempRoot:
 
     def __exit__(self, *a):
         self._tmp.cleanup()
-
 
 class DeterministicAssemblyTest(unittest.TestCase):
     def test_spec_to_unit_projects_features(self):
@@ -57,7 +53,6 @@ class DeterministicAssemblyTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             TaskSpec(intent="x", subject="bogus")
 
-
 class PlanTasksRecordingTest(unittest.TestCase):
     def test_ready_plan_is_recorded_with_units_and_edges(self):
         with TempRoot() as root:
@@ -69,7 +64,6 @@ class PlanTasksRecordingTest(unittest.TestCase):
             self.assertEqual(ev[0]["status"], "ready")
             self.assertEqual(ev[0]["units"], ["a", "b"])
             self.assertIn(["a", "b"], ev[0]["edges"])
-
 
 class ReconstructTest(unittest.TestCase):
     def test_reconstruct_units_from_journal(self):
@@ -85,7 +79,6 @@ class ReconstructTest(unittest.TestCase):
     def test_reconstruct_none_when_no_plan(self):
         with TempRoot() as root:
             self.assertIsNone(reconstruct_units(root))
-
 
 class PlanAndRunTest(unittest.TestCase):
     def test_tasklist_cascades_through_run_dag_in_dependency_order(self):
@@ -121,7 +114,6 @@ class PlanAndRunTest(unittest.TestCase):
             outcomes = {r["unit"]: r["outcome"] for r in out["results"]}
             self.assertEqual(outcomes["s"], "stall")
             self.assertEqual(outcomes["api"], "stall")
-
 
 if __name__ == "__main__":
     unittest.main()

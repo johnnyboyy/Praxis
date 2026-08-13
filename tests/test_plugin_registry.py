@@ -1,8 +1,3 @@
-"""Tests for plugin_registry — the helpers behind :register-plugins, plus the Part-1
-contributors.py `plugins_path` -> sys.path enablement.
-
-Run with: python3 -m pytest praxis/tests/test_plugin_registry.py -q
-"""
 
 import json
 import sys
@@ -22,8 +17,6 @@ import contributors as cb  # noqa: E402
 
 PLUGINS_ROOT = str(ROOT / "plugins")
 
-
-# A minimal, self-contained markered plugin main module (marker + source + make).
 MARKERED_TMPL = textwrap.dedent('''
     PRAXIS_PLUGIN = True
 
@@ -36,7 +29,6 @@ MARKERED_TMPL = textwrap.dedent('''
         return _C()
 ''')
 
-# Same shape but WITHOUT the marker — must NOT be discovered even when *_plugin.py-named.
 UNMARKED_TMPL = textwrap.dedent('''
     class _C:
         source = "{name}"
@@ -47,13 +39,11 @@ UNMARKED_TMPL = textwrap.dedent('''
         return _C()
 ''')
 
-
 def _write_markered(directory: Path, name: str, filename: str | None = None) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     f = directory / (filename or f"{name}_plugin.py")
     f.write_text(MARKERED_TMPL.format(name=name))
     return f
-
 
 def _write_unmarked(directory: Path, name: str, filename: str | None = None) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
@@ -61,9 +51,7 @@ def _write_unmarked(directory: Path, name: str, filename: str | None = None) -> 
     f.write_text(UNMARKED_TMPL.format(name=name))
     return f
 
-
 def _write_installed_plugins(global_root: Path, install_paths) -> None:
-    """Write a v2 installed_plugins.json under `global_root/plugins/` listing `install_paths`."""
     manifest = global_root / "plugins" / "installed_plugins.json"
     manifest.parent.mkdir(parents=True, exist_ok=True)
     plugins = {
@@ -72,17 +60,14 @@ def _write_installed_plugins(global_root: Path, install_paths) -> None:
     }
     manifest.write_text(json.dumps({"version": 2, "plugins": plugins}))
 
-
 def _link_skill(global_root: Path, name: str, target: Path) -> None:
-    """Symlink `global_root/skills/<name>` -> target, as Claude Code does for skills plugins."""
     skills = global_root / "skills"
     skills.mkdir(parents=True, exist_ok=True)
     (skills / name).symlink_to(target)
 
-
 class DiscoverTest(unittest.TestCase):
     def setUp(self):
-        # global_root=None keeps the bundled layer hermetic (no dependence on ~/.claude/plugins).
+
         self.entries = pr.discover(plugins_root=PLUGINS_ROOT, global_root=None)
         self.by_name = {e["name"]: e for e in self.entries}
 
@@ -117,9 +102,7 @@ class DiscoverTest(unittest.TestCase):
             pr.discover(plugins_root="/no/such/plugins/root", global_root=None), []
         )
 
-
 class MarkerDetectionTest(unittest.TestCase):
-    """Discovery is marker-driven, not filename-driven, and static."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -129,7 +112,7 @@ class MarkerDetectionTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_markered_module_is_found(self):
-        _write_markered(self.dir, "alpha", filename="alpha_main.py")  # non-*_plugin name
+        _write_markered(self.dir, "alpha", filename="alpha_main.py")
         found = {e["name"]: e for e in pr.discover(plugins_root=self.dir, global_root=None)}
         self.assertIn("alpha", found)
         self.assertEqual(found["alpha"]["spec"], "alpha_main:make")
@@ -139,10 +122,9 @@ class MarkerDetectionTest(unittest.TestCase):
         self.assertEqual(pr.discover(plugins_root=self.dir, global_root=None), [])
 
     def test_plugin_named_file_without_marker_is_ignored(self):
-        # Proves detection is marker- not filename-driven: a *_plugin.py without the marker.
-        _write_unmarked(self.dir, "gamma")  # gamma_plugin.py, no PRAXIS_PLUGIN
-        self.assertEqual(pr.discover(plugins_root=self.dir, global_root=None), [])
 
+        _write_unmarked(self.dir, "gamma")
+        self.assertEqual(pr.discover(plugins_root=self.dir, global_root=None), [])
 
 class ApplyTest(unittest.TestCase):
     def setUp(self):
@@ -204,9 +186,7 @@ class ApplyTest(unittest.TestCase):
         pr.apply(self.root, ["general"], self.discovered)
         self.assertEqual(pr.current(self.root), {"general": "general_plugin:make"})
 
-
 class PluginsPathEnablementTest(unittest.TestCase):
-    """Part 1: a dir listed in top-level plugins_path becomes importable by contributors_for."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -230,7 +210,7 @@ class PluginsPathEnablementTest(unittest.TestCase):
             sys.path.remove(str(self.plugin_dir))
 
     def test_plugins_path_makes_module_importable(self):
-        # Module dir NOT on sys.path yet; registration provides it via plugins_path.
+
         self.assertNotIn(str(self.plugin_dir), sys.path)
         config.write(self.root, "contributors", {"tempxyz": "temp_plugin_xyz:make"})
         config.write(self.root, None, {"plugins_path": [str(self.plugin_dir)]})
@@ -239,13 +219,11 @@ class PluginsPathEnablementTest(unittest.TestCase):
         self.assertEqual(loaded[0].source, "tempxyz")
 
     def test_absent_plugins_path_is_unchanged_behavior(self):
-        # No plugins_path and module not importable -> simply no contributors, no error.
+
         config.write(self.root, "contributors", {"tempxyz": "temp_plugin_xyz:make"})
         self.assertEqual(cb.contributors_for(self.root), [])
 
-
 class LayeredDiscoveryTest(unittest.TestCase):
-    """bundled < global < project < explicit, unioned by name."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -259,7 +237,7 @@ class LayeredDiscoveryTest(unittest.TestCase):
         found = {e["name"]: e for e in pr.discover(self.root, global_root=None)}
         self.assertIn("projonly", found)
         self.assertEqual(found["projonly"]["origin"], "project")
-        # bundled still contributes the six alongside the project plugin.
+
         self.assertIn("general", found)
 
     def test_explicit_search_path_discovered(self):
@@ -271,7 +249,7 @@ class LayeredDiscoveryTest(unittest.TestCase):
         self.assertEqual(found["extra"]["origin"], "explicit")
 
     def test_global_layer_discovered_via_installed_plugins(self):
-        # An installed plugin's source lives at its installPath, NOT under the global root itself.
+
         gr = self.root / "dot_claude"
         install = self.root / "cache" / "vendor" / "widget" / "1.0.0"
         _write_markered(install, "glob1")
@@ -281,7 +259,7 @@ class LayeredDiscoveryTest(unittest.TestCase):
         self.assertEqual(found["glob1"]["origin"], "global")
 
     def test_global_layer_discovered_via_skills_symlink(self):
-        # Claude Code symlinks skills-directory plugins into ~/.claude/skills.
+
         gr = self.root / "dot_claude"
         src = self.root / "elsewhere" / "myplugin"
         _write_markered(src, "glob2")
@@ -291,8 +269,7 @@ class LayeredDiscoveryTest(unittest.TestCase):
         self.assertEqual(found["glob2"]["origin"], "global")
 
     def test_global_root_itself_is_not_scanned(self):
-        # A marker sitting loose under the global root (not an install path / skill) is ignored:
-        # the global layer enumerates INSTALLED plugins, it does not scan the root.
+
         gr = self.root / "dot_claude"
         _write_markered(gr / "plugins" / "stray", "notreal")
         found = {e["name"]: e for e in pr.discover(self.root, global_root=gr)}
@@ -307,14 +284,12 @@ class LayeredDiscoveryTest(unittest.TestCase):
         self.assertEqual(found, [])
 
     def test_absent_global_root_is_fail_soft(self):
-        # A non-existent global dir must not raise and must add nothing.
+
         found = pr.discover(plugins_root=str(self.root / "empty"),
                             global_root=str(self.root / "no_such_cc"))
         self.assertEqual(found, [])
 
-
 class PrecedenceTest(unittest.TestCase):
-    """Same name in two layers → the higher-precedence layer wins."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -324,7 +299,7 @@ class PrecedenceTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_project_beats_bundled_lookalike(self):
-        # Put a plugin in a fake "bundled" dir AND in the project layer under the same name.
+
         bundled = self.root / "bundled"
         _write_markered(bundled, "dup")
         proj = self.root / ".praxis" / "plugins"
@@ -368,7 +343,6 @@ class PrecedenceTest(unittest.TestCase):
                  pr.discover(self.root, plugins_root=str(self.root / "empty"), global_root=gr)}
         self.assertEqual(found["dup"]["origin"], "project")
         self.assertEqual(found["dup"]["dir"], str(proj.resolve()))
-
 
 if __name__ == "__main__":
     unittest.main()

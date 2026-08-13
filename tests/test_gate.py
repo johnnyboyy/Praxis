@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-"""Adversarial tests for the security-critical edit gate (scripts/gate.py), through its public
-gate_decision / mark_payload_read surface: no-unit, in/out of lease surface, the payload-read
-precondition for file/spawn deliveries, fail-open on a broken journal, and the mark-read no-op."""
 import sys
 import tempfile
 import unittest
@@ -13,7 +10,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import gate  # noqa: E402
 import journal  # noqa: E402
 
-
 class TempRoot:
     def __enter__(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -24,12 +20,10 @@ class TempRoot:
     def __exit__(self, *a):
         self._tmp.cleanup()
 
-
 def _frame(root, unit_of_work, *, surface=None, delivery=None, unit="u1"):
     journal.append(root, "unit.proposed", unit=unit, unit_of_work=unit_of_work)
     journal.append(root, "unit.framed", unit=unit, unit_of_work=unit_of_work,
                    surface=surface, delivery=delivery)
-
 
 class NoUnitTest(unittest.TestCase):
     def test_no_open_unit_is_no_unit(self):
@@ -41,7 +35,6 @@ class NoUnitTest(unittest.TestCase):
             _frame(root, "implement-feature", surface=["src/*"])
             journal.append(root, "unit.done", unit="u1", outcome="result", status="complete")
             self.assertEqual(gate.gate_decision(root, str(root / "src" / "x.py")), ("no_unit", None))
-
 
 class LeaseSurfaceTest(unittest.TestCase):
     def test_in_surface_edit_is_allowed(self):
@@ -68,7 +61,6 @@ class LeaseSurfaceTest(unittest.TestCase):
             _frame(root, "design-ux-flow", surface=["docs/*"])
             self.assertEqual(gate.gate_decision(root, str(root / ".praxis" / "chunks" / "w.md")),
                              ("allow", None))
-
 
 class PayloadReadPreconditionTest(unittest.TestCase):
     def test_spawn_payload_unread_denies_then_allows_after_read(self):
@@ -101,7 +93,6 @@ class PayloadReadPreconditionTest(unittest.TestCase):
             self.assertEqual(verdict, "deny")
             self.assertIn("lease surface", reason)
 
-
 class FailOpenTest(unittest.TestCase):
     def test_garbage_journal_fails_open_to_no_unit(self):
         with TempRoot() as root:
@@ -120,7 +111,6 @@ class FailOpenTest(unittest.TestCase):
                 journal.open_unit = original
             self.assertEqual((verdict, reason), ("no_unit", None))
 
-
 class MarkPayloadReadTest(unittest.TestCase):
     def test_mark_without_open_unit_is_noop_false(self):
         with TempRoot() as root:
@@ -134,7 +124,6 @@ class MarkPayloadReadTest(unittest.TestCase):
             notes = [e for e in journal.read(root)
                      if e["event"] == "unit.note" and e.get("payload_read")]
             self.assertEqual(len(notes), 1)
-
 
 if __name__ == "__main__":
     unittest.main()

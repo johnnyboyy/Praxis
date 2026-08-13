@@ -8,16 +8,13 @@ import journal  # noqa: E402
 import run as R  # noqa: E402
 from situation import Situation  # noqa: E402
 
-
 def _sit(**over):
     kw = dict(task_kind="change", intent="do the thing", subject="coding")
     kw.update(over)
     return Situation(**kw)
 
-
 def _result(unit, composed):
     return R.Receipt(outcome="result", status="complete")
-
 
 class VerdictTest(unittest.TestCase):
     def test_from_dict(self):
@@ -35,9 +32,7 @@ class VerdictTest(unittest.TestCase):
         vr = R.CallableVerifier(lambda u, r, c: {"verified": True})
         self.assertTrue(vr.verify(R.Unit("u", _sit()), R.Receipt(outcome="result"), {}).verified)
 
-
 class _VerifyAfter:
-    """A verifier that fails until its `pass_on`-th call, then passes."""
 
     def __init__(self, pass_on):
         self.calls = 0
@@ -48,7 +43,6 @@ class _VerifyAfter:
         if self.calls >= self.pass_on:
             return R.Verdict(verified=True, evidence={"ok": True})
         return R.Verdict(verified=False, defects=[f"defect #{self.calls}"])
-
 
 class VerificationGateTest(unittest.TestCase):
     def setUp(self):
@@ -137,7 +131,6 @@ class VerificationGateTest(unittest.TestCase):
                          ["unit.proposed", "unit.framed", "unit.dispatched", "unit.running",
                           "unit.receipt", "unit.done"])
 
-
 class CommandVerifierTest(unittest.TestCase):
     def setUp(self):
         self.unit = R.Unit("u1", _sit())
@@ -161,7 +154,6 @@ class CommandVerifierTest(unittest.TestCase):
             self.unit, R.Receipt(outcome="result"), {})
         self.assertFalse(v.verified)
 
-
 class RunWithVerifierTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -183,7 +175,6 @@ class RunWithVerifierTest(unittest.TestCase):
         self.assertEqual([r["verified"] for r in out["results"]], [True, False, True])
         bucket = out["summary"]["by_phase"]["implement-feature"]
         self.assertEqual((bucket["runs"], bucket["result"], bucket["stall"]), (3, 2, 1))
-
 
 if __name__ == "__main__":
     unittest.main()

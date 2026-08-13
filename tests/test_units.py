@@ -1,10 +1,3 @@
-"""Tests for units — the lease declarations (edit surface + output) per unit of work.
-Run with: python3 -m unittest discover -s praxis/tests -v
-
-Covers the deterministic lease surface: parsing units.md, fail-open on absence, the
-always-allowed praxis bookkeeping paths, and glob semantics (`*` crosses `/`, matching the
-bash-`case` matching the gate hook applies).
-"""
 
 import subprocess
 import sys
@@ -33,14 +26,12 @@ output: implemented code with passing tests
 output: a retrospective note
 """
 
-
 def mkroot(base: Path, units_text: str | None = None) -> Path:
     (base / ".praxis").mkdir(parents=True, exist_ok=True)
     (base / ".praxis" / "config.json").write_text("{}\n")
     if units_text is not None:
         (base / ".praxis" / "units.md").write_text(units_text)
     return base
-
 
 class TestParse(unittest.TestCase):
     def test_sections_surfaces_outputs(self):
@@ -56,7 +47,6 @@ class TestParse(unittest.TestCase):
 
     def test_empty_text(self):
         self.assertEqual(units.parse_units(""), {})
-
 
 class TestLease(unittest.TestCase):
     def setUp(self):
@@ -82,7 +72,6 @@ class TestLease(unittest.TestCase):
     def test_no_unit_named_fails_open(self):
         self.assertIsNone(units.lease_for(self.root, None))
 
-
 class TestSurfaceAllows(unittest.TestCase):
     def test_none_is_unrestricted(self):
         self.assertTrue(units.surface_allows(None, "anything/at/all.ts"))
@@ -100,7 +89,6 @@ class TestSurfaceAllows(unittest.TestCase):
     def test_praxis_bookkeeping_always_allowed(self):
         self.assertTrue(units.surface_allows(["docs/*"], ".praxis/chunks/w.md"))
         self.assertTrue(units.surface_allows(["docs/*"], "praxis/handoffs/h.md"))
-
 
 class TestCLI(unittest.TestCase):
     def setUp(self):
@@ -136,7 +124,6 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("design-ux-flow", result.stdout)
         self.assertIn("docs/*", result.stdout)
-
 
 if __name__ == "__main__":
     unittest.main()

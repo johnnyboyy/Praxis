@@ -1,10 +1,3 @@
-"""End-to-end: the whole conductor vertical composed together.
-
-Each phase's own suite tests its layer in isolation; this exercises the full stack as one system —
-a unit graph plan run under an editable policy, through the contributor seam (with gap surfacing) and the
-verification gate, then read back as views, then the accreted vocabulary promoted. It doubles as a
-worked example of how the pieces fit.
-"""
 import json
 import sys
 import tempfile
@@ -22,9 +15,7 @@ from situation import Situation  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 
-
 class FullStackNoEngineTest(unittest.TestCase):
-    """The whole machine, no engine needed — mechanics only, so it always runs."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -88,7 +79,6 @@ class FullStackNoEngineTest(unittest.TestCase):
         self.assertEqual(acc.promotable(self.root, min_count=3), [])
 
         self.assertEqual(journal.fold(self.root)["open_units"], [])
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,12 +10,10 @@ import views  # noqa: E402
 from contributors import Contribution  # noqa: E402
 from situation import Situation  # noqa: E402
 
-
 def _sit(**over):
     kw = dict(task_kind="change", intent="do the thing", subject="coding")
     kw.update(over)
     return Situation(**kw)
-
 
 class _StubContributor:
     def __init__(self, source):
@@ -23,7 +21,6 @@ class _StubContributor:
 
     def contribute(self, situation):
         return [Contribution(source=self._source, title="frame", body="body")]
-
 
 class HandoffViewTest(unittest.TestCase):
     def setUp(self):
@@ -65,7 +62,6 @@ class HandoffViewTest(unittest.TestCase):
         self.assertEqual(h["defects"], [["boom"], ["boom"]])
         self.assertEqual(h["surfaced"], ["boom"])
 
-
 class LedgerViewTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -77,7 +73,7 @@ class LedgerViewTest(unittest.TestCase):
 
     def test_ledger_is_one_row_per_unit_in_order(self):
         def handler(unit, composed):
-            return R.Receipt(outcome="stall", status="blocked") if unit.id == "u2" \
+            return R.Receipt(outcome="stall", status="blocked") if unit.id == "u2"\
                 else R.Receipt(outcome="result")
 
         plan = R.Plan([R.Unit(f"u{i}", _sit(label="implement-feature")) for i in (1, 2, 3)])
@@ -87,7 +83,6 @@ class LedgerViewTest(unittest.TestCase):
         self.assertEqual([r["outcome"] for r in rows], ["result", "stall", "result"])
         self.assertEqual([r["state"] for r in rows], ["done", "stalled", "done"])
         self.assertTrue(all(r["attempts"] == 1 for r in rows))
-
 
 class CostViewTest(unittest.TestCase):
     def setUp(self):
@@ -117,7 +112,6 @@ class CostViewTest(unittest.TestCase):
     def test_cost_is_zero_without_receipts(self):
         self.assertEqual(views.cost(self.root), {"tokens": 0, "usd": 0.0, "tool_calls": 0, "per_unit": {}})
 
-
 class SubprocessCostCaptureTest(unittest.TestCase):
     def setUp(self):
         self.unit = R.Unit("u1", _sit())
@@ -142,7 +136,6 @@ class SubprocessCostCaptureTest(unittest.TestCase):
 
         r = R.SubprocessExecutor(argv, cost_extractor=lambda o, e: {"tokens": 999}).run(self.unit, {})
         self.assertEqual(r.cost["tokens"], 9)
-
 
 if __name__ == "__main__":
     unittest.main()

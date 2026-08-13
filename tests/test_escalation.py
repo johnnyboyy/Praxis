@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""Spine B3 escalation terminal: fix-loop exhaustion is an EXPLICIT engine state.
-
-Proves `escalate_unit` journals a one-way `unit.escalated` terminal that (a) blocks
-close / receipt(result) exactly like a halted walk, (b) surfaces in its OWN
-`escalated` bucket distinct from `stalled`, while (c) leaving plain `stall`
-semantics (retryable, own bucket) unchanged."""
 import sys
 import tempfile
 import unittest
@@ -13,7 +7,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import conduct as conduct_engine  # noqa: E402
 import journal  # noqa: E402
-
 
 class EscalationTerminalTest(unittest.TestCase):
 
@@ -35,7 +28,7 @@ class EscalationTerminalTest(unittest.TestCase):
         evs = self._events("unit.escalated")
         self.assertEqual(len(evs), 1)
         self.assertEqual(evs[0]["reason"], "needs a human decision")
-        # it is a terminal (concluded) state, not in-flight
+
         self.assertEqual(journal.state_of(self.root, "u1"), "escalated")
         self.assertIn("escalated", journal.CONCLUDED)
 
@@ -45,26 +38,25 @@ class EscalationTerminalTest(unittest.TestCase):
         self.assertEqual(out["status"], "blocked")
         self.assertTrue(out.get("escalated"))
         self.assertIn("exhausted", out["reason"])
-        self.assertFalse(self._events("unit.done"))  # NOT silently closed
+        self.assertFalse(self._events("unit.done"))
 
     def test_record_receipt_result_rejected_on_escalated(self):
         conduct_engine.escalate_unit(self.root, "u1", reason="needs human")
         out = conduct_engine.record_receipt(self.root, "u1", outcome="result")
         self.assertEqual(out["status"], "blocked")
         self.assertTrue(out.get("escalated"))
-        self.assertFalse(self._events("unit.done"))  # no unit.done appended
+        self.assertFalse(self._events("unit.done"))
 
     def test_stall_still_retryable_and_not_escalated(self):
         out = conduct_engine.record_receipt(self.root, "u2", outcome="stall", note="dep missing")
         self.assertEqual(out["status"], "recorded")
         self.assertEqual(out["outcome"], "stall")
         self.assertEqual(journal.state_of(self.root, "u2"), "stalled")
-        # a plain stall never lands in the escalated terminal
+
         self.assertFalse(self._events("unit.escalated"))
-        # and a stalled unit CAN still be closed (stall is not one-way terminal here)
+
         out2 = conduct_engine.close_unit(self.root, unit_id="u2")
         self.assertEqual(out2["status"], "closed")
-
 
 class EscalationBucketTest(unittest.TestCase):
 
@@ -90,11 +82,10 @@ class EscalationBucketTest(unittest.TestCase):
         self.assertIn("escalated", prog)
         self.assertEqual(prog["escalated"], ["u1"])
         self.assertEqual(prog["stalled"], ["u2"])
-        # distinct buckets: escalated is NOT lumped with stalled
+
         self.assertNotIn("u1", prog["stalled"])
         self.assertNotIn("u2", prog["escalated"])
         self.assertEqual(prog["waiting"], ["u3"])
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,12 +10,10 @@ import contributors as cb  # noqa: E402
 import journal  # noqa: E402
 from situation import Situation  # noqa: E402
 
-
 def _sit(**over):
     kw = dict(task_kind="change", intent="do the thing", subject="coding")
     kw.update(over)
     return Situation(**kw)
-
 
 class _StubContributor:
     def __init__(self, source, title, body, priority=0):
@@ -23,7 +21,6 @@ class _StubContributor:
 
     def contribute(self, situation):
         return [self._c]
-
 
 class ContributorsForTest(unittest.TestCase):
     def test_defaults_to_empty(self):
@@ -60,7 +57,6 @@ class ContributorsForTest(unittest.TestCase):
             config.write(root, "contributors", {"broken": "no_such_module:make"})
             self.assertEqual(cb.contributors_for(root), [])
 
-
 class ValidateContributorTest(unittest.TestCase):
     def test_conforming_stub_has_no_problems(self):
         class _OK:
@@ -81,7 +77,6 @@ class ValidateContributorTest(unittest.TestCase):
             def contribute(self, situation):
                 return []
         self.assertTrue(cb.validate_contributor(_BadHooks()))
-
 
 class GatherEmptyTest(unittest.TestCase):
     def setUp(self):
@@ -114,7 +109,6 @@ class GatherEmptyTest(unittest.TestCase):
         self.assertFalse(r["gap_surfaced"])
         self.assertEqual(r["routed_kind"], "unclassified")
 
-
 class GatherComposeTest(unittest.TestCase):
     def test_composes_and_orders_by_priority(self):
         contribs = [_StubContributor("b", "B", "body b", priority=5),
@@ -133,7 +127,6 @@ class GatherComposeTest(unittest.TestCase):
         self.assertEqual(cb.gather([], _sit(phase="divergent"))["stance"], "divergent")
         self.assertIsNone(cb.gather([], _sit(phase="none"))["stance"])
 
-
 class _SurfaceContributor:
     source = "leaseholder"
 
@@ -145,7 +138,6 @@ class _SurfaceContributor:
 
     def surface(self, situation):
         return self._globs
-
 
 class SurfaceForTest(unittest.TestCase):
     def test_claim_returns_sorted_union(self):
@@ -181,7 +173,6 @@ class SurfaceForTest(unittest.TestCase):
                 raise RuntimeError("nope")
         ok = _SurfaceContributor(["docs/**"])
         self.assertEqual(cb.surface_for([_Boom(), ok], _sit()), ["docs/**"])
-
 
 if __name__ == "__main__":
     unittest.main()

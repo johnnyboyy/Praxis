@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-"""Tests for the resumable unit graph and the detached cascade worker: `schedule.run_dag(resume=True)`
-(skip already-done units), `cascade.run_cascade` (the worker core, in-process), the pidfile/flock
-liveness + idempotency guard, and `conduct.plan_status` folded from the journal + pidfile."""
 import json
 import os
 import sys
@@ -20,7 +17,6 @@ from plan import TaskSpec, build_units, plan_tasks  # noqa: E402
 from run import InlineExecutor, Plan, Receipt  # noqa: E402
 from schedule import run_dag  # noqa: E402
 
-
 class TempRoot:
     def __enter__(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -30,7 +26,6 @@ class TempRoot:
 
     def __exit__(self, *a):
         self._tmp.cleanup()
-
 
 class RunDagResumeTest(unittest.TestCase):
     def test_resume_skips_already_done_unit(self):
@@ -66,7 +61,6 @@ class RunDagResumeTest(unittest.TestCase):
             run_dag(Plan(units=units), [], ex, root, concurrency=1, resume=False)
             self.assertEqual(ran, ["a"])
 
-
 class RunCascadeCoreTest(unittest.TestCase):
     def test_runs_the_registered_plan(self):
         with TempRoot() as root:
@@ -85,10 +79,7 @@ class RunCascadeCoreTest(unittest.TestCase):
             out = cascade.run_cascade(root, executor=InlineExecutor(lambda u, c: Receipt(outcome="result")))
             self.assertEqual(out["status"], "no-plan")
 
-
 class CascadeBarrierTest(unittest.TestCase):
-    """run_cascade routes fan-out through the orchestrator: a test_cmd becomes the barrier that must
-    pass (with a fix round) before the cascade closes; a barrier that never passes escalates."""
 
     def _counting_barrier_cmd(self, root, *, pass_at):
         script = root / "barrier.py"
@@ -130,7 +121,6 @@ class CascadeBarrierTest(unittest.TestCase):
             self.assertEqual(out["status"], "escalated")
             self.assertEqual(out["orchestration"]["reason"], "loop-exhausted")
 
-
 class LivenessGuardTest(unittest.TestCase):
     def test_live_pidfile_reads_running_stale_is_cleaned(self):
         with TempRoot() as root:
@@ -148,7 +138,6 @@ class LivenessGuardTest(unittest.TestCase):
             self.assertEqual(out["status"], "already-running")
             self.assertEqual(out["pid"], os.getpid())
             self.assertFalse([e for e in journal.read(root) if e["event"] == "conductor.plan"])
-
 
 class PlanStatusTest(unittest.TestCase):
     def test_no_plan(self):
@@ -173,7 +162,6 @@ class PlanStatusTest(unittest.TestCase):
             st = conduct_engine.plan_status(root)
             self.assertEqual(st["status"], "running")
             self.assertEqual(st["worker"]["pid"], os.getpid())
-
 
 if __name__ == "__main__":
     unittest.main()

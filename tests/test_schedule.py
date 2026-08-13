@@ -11,20 +11,16 @@ import run as R  # noqa: E402
 import schedule as S  # noqa: E402
 from situation import Situation  # noqa: E402
 
-
 def _sit(**over):
     kw = dict(task_kind="change", intent="do the thing", subject="coding")
     kw.update(over)
     return Situation(**kw)
 
-
 def _u(uid, deps=None, **sit):
     return R.Unit(uid, _sit(label="implement-feature", **sit), depends_on=deps or [])
 
-
 def _ok(unit, composed):
     return R.Receipt(outcome="result")
-
 
 class ValidationTest(unittest.TestCase):
     def setUp(self):
@@ -53,7 +49,6 @@ class ValidationTest(unittest.TestCase):
     def test_concurrency_floor(self):
         with self.assertRaises(ValueError):
             self._run(R.Plan([_u("a")]), concurrency=0)
-
 
 class DagOrderTest(unittest.TestCase):
     def setUp(self):
@@ -87,7 +82,6 @@ class DagOrderTest(unittest.TestCase):
                  if e["event"] == "unit.depends_on"]
         self.assertEqual(edges, [("b", "a")])
 
-
 class BlockedCascadeTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -102,7 +96,7 @@ class BlockedCascadeTest(unittest.TestCase):
     def _handler(self, unit, composed):
         with self.lock:
             self.executed.append(unit.id)
-        return R.Receipt(outcome="stall", status="blocked") if unit.id == "a" \
+        return R.Receipt(outcome="stall", status="blocked") if unit.id == "a"\
             else R.Receipt(outcome="result")
 
     def test_stalled_dependency_blocks_and_cascades(self):
@@ -118,7 +112,6 @@ class BlockedCascadeTest(unittest.TestCase):
         self.assertEqual(out["c"]["blocked_on"], ["b"])
         self.assertEqual(sorted(self.executed), ["a", "d"])
         self.assertEqual(journal.state_of(self.root, "b"), "stalled")
-
 
 class ConcurrencyTest(unittest.TestCase):
     def setUp(self):
@@ -167,7 +160,6 @@ class ConcurrencyTest(unittest.TestCase):
         fold = journal.fold(self.root)
         self.assertEqual(sum(1 for u in fold["units"].values() if u["state"] == "done"), 20)
 
-
 class VerificationInDagTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -189,7 +181,6 @@ class VerificationInDagTest(unittest.TestCase):
         self.assertEqual(out["b"]["outcome"], "stall")
         self.assertFalse(out["b"]["verified"])
         self.assertEqual(out["c"]["status"], "blocked")
-
 
 class ReflexiveRoutingTest(unittest.TestCase):
     def setUp(self):
@@ -217,7 +208,6 @@ class ReflexiveRoutingTest(unittest.TestCase):
         self.assertEqual(len(gaps), 1)
         self.assertEqual(gaps[0]["suggested"], "orchestrate-matrix")
         self.assertEqual(journal.gap_candidates(self.root)[0]["suggested"], "orchestrate-matrix")
-
 
 if __name__ == "__main__":
     unittest.main()

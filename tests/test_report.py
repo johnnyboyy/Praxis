@@ -1,10 +1,3 @@
-"""Tests for report — deterministic rendering of a praxis root's journal.
-Run with: python3 -m unittest discover -s praxis/tests -v  (or via pytest).
-
-Exercises the read surface (summary/journal/gaps/metrics) end-to-end by seeding a
-temp `.praxis` root's journal and invoking scripts/report.py as a CLI (subprocess
-with --root), mirroring how the other script tests drive their CLIs.
-"""
 
 import json
 import subprocess
@@ -19,16 +12,13 @@ sys.path.insert(0, str(REPO))
 
 import journal  # noqa: E402
 
-
 def mkroot(base: Path) -> Path:
     (base / ".praxis").mkdir(parents=True, exist_ok=True)
     (base / ".praxis" / "config.json").write_text("{}\n")
     return base
 
-
 def seed(root: Path) -> None:
-    """Drive a couple of units through their lifecycle plus gaps and a note."""
-    # Unit A: proposed -> framed -> dispatched -> receipt(result) -> verified -> done
+
     journal.append(root, "unit.proposed", unit="A", label="build-api", workflow="delivery")
     journal.append(root, "unit.framed", unit="A", label="build-api", workflow="delivery")
     journal.append(root, "unit.dispatched", unit="A", label="build-api", workflow="delivery")
@@ -37,34 +27,28 @@ def seed(root: Path) -> None:
     journal.append(root, "unit.verified", unit="A", label="build-api", workflow="delivery")
     journal.append(root, "unit.done", unit="A", label="build-api", workflow="delivery")
 
-    # Unit B: another completed result on the same workflow, different phase label
     journal.append(root, "unit.proposed", unit="B", label="write-docs", workflow="delivery")
     journal.append(root, "unit.framed", unit="B", label="write-docs", workflow="delivery")
     journal.append(root, "unit.receipt", unit="B", label="write-docs", workflow="delivery",
                    outcome="result", status="ok")
     journal.append(root, "unit.done", unit="B", label="write-docs", workflow="delivery")
 
-    # Unit C: stalled (outcome=stall)
     journal.append(root, "unit.proposed", unit="C", label="flaky-step", workflow="research")
     journal.append(root, "unit.framed", unit="C", label="flaky-step", workflow="research")
     journal.append(root, "unit.receipt", unit="C", label="flaky-step", workflow="research",
                    outcome="stall", status="blocked")
     journal.append(root, "unit.stalled", unit="C", label="flaky-step", workflow="research")
 
-    # Two conductor.gap events sharing the same suggested vocabulary -> candidate count >= 2
     journal.append(root, "conductor.gap", suggested="triage", vocabulary="task_kind",
                    chosen="debug", intent="figure out the failure")
     journal.append(root, "conductor.gap", suggested="triage", vocabulary="task_kind",
                    chosen="debug", intent="root-cause the outage")
 
-    # A note
     journal.note(root, source="conductor", body="remember to revisit the flaky step")
-
 
 def run_report(root: Path, *args):
     return subprocess.run([sys.executable, str(REPORT), *args, "--root", str(root)],
                           capture_output=True, text=True)
-
 
 class EmptyRootTests(unittest.TestCase):
     def setUp(self):
@@ -89,7 +73,6 @@ class EmptyRootTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("no journal", r.stdout)
 
-
 class SeededRootTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -99,7 +82,6 @@ class SeededRootTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    # ── journal ──────────────────────────────────────────────────────────────
     def test_journal_text_shows_events_and_note(self):
         r = run_report(self.root, "journal", "--limit", "50")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -136,7 +118,6 @@ class SeededRootTests(unittest.TestCase):
         self.assertTrue(data)
         self.assertTrue(all(e.get("unit") == "A" for e in data))
 
-    # ── gaps ─────────────────────────────────────────────────────────────────
     def test_gaps_text_shows_recurring_term_with_count(self):
         r = run_report(self.root, "gaps")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -152,7 +133,6 @@ class SeededRootTests(unittest.TestCase):
         self.assertEqual(len(triage), 1)
         self.assertGreaterEqual(triage[0]["count"], 2)
 
-    # ── metrics ──────────────────────────────────────────────────────────────
     def test_metrics_text_reflects_phases_workflows_and_stall(self):
         r = run_report(self.root, "metrics")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -160,7 +140,7 @@ class SeededRootTests(unittest.TestCase):
         self.assertIn("by workflow", r.stdout)
         self.assertIn("delivery", r.stdout)
         self.assertIn("build-api", r.stdout)
-        # the stalled unit C shows up
+
         self.assertIn("C", r.stdout)
         self.assertIn("stall", r.stdout.lower())
 
@@ -173,14 +153,12 @@ class SeededRootTests(unittest.TestCase):
         self.assertIn("delivery", summary["by_workflow"])
         self.assertEqual(summary["by_workflow"]["delivery"]["result"], 2)
         self.assertIn("build-api", summary["by_phase"])
-        # one stall recorded
+
         stalls = summary["recent_stalls"]
         self.assertTrue(any(s.get("unit") == "C" for s in stalls))
 
-    # ── summary (default) ────────────────────────────────────────────────────
     def test_summary_default_no_subcommand(self):
-        # No subcommand defaults to `summary` against cwd (the top-level parser
-        # carries no --root), so run from inside the seeded root.
+
         r = subprocess.run([sys.executable, str(REPORT)], cwd=str(self.root),
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -196,7 +174,6 @@ class SeededRootTests(unittest.TestCase):
         self.assertIn("done", data["state_counts"])
         self.assertEqual(data["state_counts"]["done"], 2)
         self.assertEqual(data["state_counts"]["stalled"], 1)
-
 
 if __name__ == "__main__":
     unittest.main()

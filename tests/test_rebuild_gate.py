@@ -1,9 +1,3 @@
-"""The rebuild-triple gate mechanics, proven on synthetic fixtures.
-
-No model, no worktree, no isolation: synthetic specs + synth trees in
-tmp_path, verdicts derived purely from disk (ast surface set-diff + held-out
-pytest exit code). Isolation is explicitly NOT exercised here — the synth path
-is taken as given; rebuild isolation closes the absolute-path copy hole."""
 import shutil
 import sys
 import tempfile
@@ -18,14 +12,10 @@ import workflow as W  # noqa: E402
 from situation import Situation  # noqa: E402
 from workflow_run import run_workflow  # noqa: E402
 
-
 def _sit(**over):
     kw = dict(task_kind="change", intent="rebuild", subject="coding", workflow="rebuild-triple")
     kw.update(over)
     return Situation(**kw)
-
-
-# ---- synthetic fixture builders --------------------------------------------
 
 FAITHFUL_IMPL = textwrap.dedent("""
     def add(a, b):
@@ -35,15 +25,12 @@ FAITHFUL_IMPL = textwrap.dedent("""
         return a - b
 """)
 
-
 def _write_synth(tree: Path, impl: str) -> Path:
     tree.mkdir(parents=True, exist_ok=True)
     (tree / "calc.py").write_text(impl)
     return tree
 
-
 def _held_out_test(dirpath: Path) -> str:
-    """A held-out test file (never seen by synthesize) that binds to the synth."""
     dirpath.mkdir(parents=True, exist_ok=True)
     p = dirpath / "test_held.py"
     p.write_text(textwrap.dedent("""
@@ -57,7 +44,6 @@ def _held_out_test(dirpath: Path) -> str:
     """))
     return str(p)
 
-
 def _ir(held_path: str, **over) -> dict:
     ir = {
         "interface": [
@@ -70,7 +56,6 @@ def _ir(held_path: str, **over) -> dict:
     }
     ir.update(over)
     return ir
-
 
 class RebuildIRValidationTest(unittest.TestCase):
     def _base(self):
@@ -86,7 +71,7 @@ class RebuildIRValidationTest(unittest.TestCase):
             rebuild_spec.validate_spec(ir)
 
     def test_trivial_held_out_fraction_rejected(self):
-        # 1 held-out of 10 total = 10% < 25% threshold.
+
         ir = self._base()
         ir["tests"]["spec"] = [f"t{i}" for i in range(9)]
         ir["tests"]["held_out"] = ["test_one"]
@@ -102,7 +87,6 @@ class RebuildIRValidationTest(unittest.TestCase):
     def test_parse_spec_accepts_json_string(self):
         import json
         self.assertIsInstance(rebuild_spec.parse_spec(json.dumps(self._base())), dict)
-
 
 class CoverageDiffVerifierTest(unittest.TestCase):
     def setUp(self):
@@ -126,7 +110,7 @@ class CoverageDiffVerifierTest(unittest.TestCase):
         self.assertEqual(v.evidence["check"], "all")
 
     def test_missing_interface_symbol_fails_completeness(self):
-        impl = "def add(a, b):\n    return a + b\n"  # no `sub`
+        impl = "def add(a, b):\n    return a + b\n"
         v = self._run(impl)
         self.assertFalse(v.verified)
         self.assertEqual(v.evidence["check"], "interface")
@@ -167,23 +151,20 @@ class CoverageDiffVerifierTest(unittest.TestCase):
         self.assertFalse(v.verified)
         self.assertEqual(v.evidence["check"], "synth-path")
 
-
 class AdequacyVerifierTest(unittest.TestCase):
-    """The does-it gate at extract-exit: spec split-enforcement + the coverage
-    verifier pointed at the ORIGINAL (reused, exit-code only)."""
 
     def _extract_receipt(self, ir):
-        # extract phase emits the spec as its produced artifact.
+
         return R.Receipt(outcome="result", evidence={"produces": ir})
 
     def test_adequate_ir_passes_when_coverage_passes(self):
-        cov = R.CommandVerifier(lambda u, r, c: ["true"])   # exit 0 against original
+        cov = R.CommandVerifier(lambda u, r, c: ["true"])
         v = R.adequacy_verifier(cov)
         out = v.verify(None, self._extract_receipt(_ir("t/test_held.py")), {})
         self.assertTrue(out.verified, out.defects)
 
     def test_ir_failing_adequacy_threshold_fails_at_extract(self):
-        cov = R.CommandVerifier(lambda u, r, c: ["false"])  # exit 1: threshold not met
+        cov = R.CommandVerifier(lambda u, r, c: ["false"])
         v = R.adequacy_verifier(cov)
         out = v.verify(None, self._extract_receipt(_ir("t/test_held.py")), {})
         self.assertFalse(out.verified)
@@ -198,10 +179,7 @@ class AdequacyVerifierTest(unittest.TestCase):
         self.assertFalse(out.verified)
         self.assertEqual(out.evidence["check"], "spec-split")
 
-
 class RebuildWalkTest(unittest.TestCase):
-    """Walk-level: a rebuild-triple unit whose synthesize output passes the
-    coverage-diff gate advances (verified); one that fails halts at synthesize."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -245,27 +223,13 @@ class RebuildWalkTest(unittest.TestCase):
         self.assertEqual(out["phases"], ["extract", "synthesize"])
         exited = self._events("phase.exited")
         self.assertTrue(exited["extract"]["verified"])
-        self.assertFalse(exited["synthesize"]["verified"])  # preservation gate blocks
+        self.assertFalse(exited["synthesize"]["verified"])
 
-
-# ---- TypeScript path (language-aware preservation gate) --------------------
-#
-# The SAME coverage-diff gate, dispatched to the TS surface-extractor (tsc ->
-# `.d.ts`) + TS held-out runner (a controllable command). Verdicts are still read
-# from DISK only: the exported-symbol set-diff and the held-out process exit code.
-# No hard TS/stryker dependency is imposed on the suite — the tsc command is
-# `npx -p typescript tsc` (skips cleanly when unavailable) and the held-out runner
-# is `node` (which runs `.ts` natively on Node >= 23 via type-stripping).
-
-# tsc command used by the TS fixtures; overrides the `pnpm exec tsc` default.
 _TS_TSC_CMD = ["npx", "--yes", "-p", "typescript", "tsc"]
-# Held-out runner: Node runs the `.ts` held-out file directly (exit code = verdict).
+
 _TS_HELD_CMD = ["node"]
 
-
 def _ts_toolchain_ok() -> bool:
-    """True iff both `node` and a working tsc are present — else the TS fixtures
-    skip cleanly (absent toolchain in CI is not a failure)."""
     if shutil.which("node") is None:
         return False
     try:
@@ -277,14 +241,10 @@ def _ts_toolchain_ok() -> bool:
     except Exception:
         return False
 
-
 _TS_OK = _ts_toolchain_ok()
-
 
 @unittest.skipUnless(_TS_OK, "tsc/node toolchain unavailable")
 class TsCoverageDiffVerifierTest(unittest.TestCase):
-    """The TS coverage-diff path on a real tiny TS package: a faithful synth
-    PASSES; missing-interface, extra-surface, and failing-held-out each FAIL."""
 
     FAITHFUL = ("export function add(a: number, b: number): number { return a + b; }\n"
                 "export function sub(a: number, b: number): number { return a - b; }\n")
@@ -304,8 +264,6 @@ class TsCoverageDiffVerifierTest(unittest.TestCase):
         return d
 
     def _held(self, name, module_dir, body):
-        """A held-out `.ts` test OUTSIDE the synth tree that imports the synth's
-        module by relative path and asserts against it (exit code is the verdict)."""
         p = self.dir / f"held_{name}.ts"
         rel = "./" + str(module_dir.relative_to(self.dir)) + "/calc.ts"
         p.write_text(f'import {{ add, sub }} from "{rel}";\n'
@@ -357,7 +315,7 @@ class TsCoverageDiffVerifierTest(unittest.TestCase):
         self.assertIn("leak", v.evidence["extra"])
 
     def test_failing_held_out_fails_generalization(self):
-        # surface + signatures are faithful, but `add` multiplies -> held-out fails.
+
         synth = self._synth("bad",
                             "export function add(a: number, b: number): number { return a * b; }\n"
                             "export function sub(a: number, b: number): number { return a - b; }\n")
@@ -367,11 +325,7 @@ class TsCoverageDiffVerifierTest(unittest.TestCase):
         self.assertEqual(v.evidence["check"], "held_out")
         self.assertNotEqual(v.evidence["returncode"], 0)
 
-
 class TsMutationAdapterTest(unittest.TestCase):
-    """The Stryker-based TS mutation adequacy adapter — fake-proven, NO hard
-    @stryker-mutator dependency (the command is a controllable fake, as with
-    the mutation barrier). Verdict = mutation score >= threshold, else exit code."""
 
     def test_unwired_without_threshold(self):
         self.assertIsNone(R.ts_mutation_verifier("pnpm exec stryker run", None))
@@ -389,16 +343,10 @@ class TsMutationAdapterTest(unittest.TestCase):
             R.ts_mutation_verifier("this-stryker-does-not-exist-xyz", 0.9)
             .verify(None, None, {}).verified)
 
-
 if __name__ == "__main__":
     unittest.main()
 
-
 def test_held_out_runs_from_synth_tree_with_relative_paths(tmp_path):
-    """Regression: held-out test files are named RELATIVE to the synth tree, so
-    the runner must execute pytest from inside that tree. Guards the cwd bug where
-    pytest inherited the caller's cwd and exit-4'd (usage error) on a faithful
-    rebuild instead of actually running the generalization check."""
     from run import coverage_diff_verifier, Receipt
     spec = {"interface": [{"symbol": "add", "signature": "add(a, b)"}],
           "allowed_surface": ["add"],

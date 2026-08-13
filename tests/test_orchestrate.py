@@ -9,20 +9,16 @@ import orchestrate as O  # noqa: E402
 import run as R  # noqa: E402
 from situation import Situation  # noqa: E402
 
-
 def _sit(**over):
     kw = dict(task_kind="change", intent="do the thing", subject="coding", label="impl")
     kw.update(over)
     return Situation(**kw)
 
-
 def _u(uid, deps=None, **sit):
     return R.Unit(uid, _sit(**sit), depends_on=deps or [])
 
-
 def _ok(unit, composed):
     return R.Receipt(outcome="result")
-
 
 def _stateful_barrier(*verdicts):
     calls = [0]
@@ -33,7 +29,6 @@ def _stateful_barrier(*verdicts):
         return verdicts[i]
 
     return barrier, calls
-
 
 class OrchestrateTest(unittest.TestCase):
     def setUp(self):
@@ -80,7 +75,7 @@ class OrchestrateTest(unittest.TestCase):
         barrier, calls = _stateful_barrier(R.Verdict(verified=True))
 
         def handler(unit, composed):
-            return R.Receipt(outcome="stall", status="blocked") if unit.id == "b" \
+            return R.Receipt(outcome="stall", status="blocked") if unit.id == "b"\
                 else R.Receipt(outcome="result")
 
         out = O.run_orchestrated(self.root, [_u("a"), _u("b")], [],
@@ -113,7 +108,7 @@ class OrchestrateTest(unittest.TestCase):
         barrier, _ = _stateful_barrier(R.Verdict(verified=True))
 
         def handler(unit, composed):
-            return R.Receipt(outcome="stall", status="blocked") if unit.id == "b" \
+            return R.Receipt(outcome="stall", status="blocked") if unit.id == "b"\
                 else R.Receipt(outcome="result")
 
         units = [_u("a"), _u("b")]
@@ -125,7 +120,6 @@ class OrchestrateTest(unittest.TestCase):
         replan_out = O.replan(self.root, units, out["failing_subdag"], [_u("b2")],
                               [], R.InlineExecutor(handler), barrier)
         self.assertEqual(replan_out["status"], "complete")
-
 
 if __name__ == "__main__":
     unittest.main()

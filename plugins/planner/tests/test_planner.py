@@ -1,9 +1,3 @@
-"""The planner plugin: phase/workflow resolution, the deterministic frontier
-reader, and the intake workflow walk.
-
-Mirrors the uiux / writing suites: plain `import planner_plugin`, `import registry`,
-drive the live routing. Domain discovery/parsing is corpora's job, not this suite's.
-"""
 
 from pathlib import Path
 
@@ -13,23 +7,17 @@ import run as R
 from workflow import edge_parts
 from workflow_run import _choose_edge
 
-
 def _planner(root):
     return planner_plugin.make(str(root))
-
-
-# --- 1. resolution: the four planner phases + the intake workflow surface --------
 
 def test_resolve_phases_contains_planner_phases_plus_seed(tmp_path):
     phases = registry.resolve_phases(str(tmp_path), [_planner(tmp_path)])
     assert {"interview", "frontier", "barrier", "plan"} <= set(phases)
-    assert "close" in phases  # seed still present
-
+    assert "close" in phases
 
 def test_every_planner_phase_validates(tmp_path):
     for p in _planner(tmp_path).phases():
         assert registry.validate_phase(p) == [], p.name
-
 
 def test_resolve_workflows_contains_intake_and_validates(tmp_path):
     contributor = _planner(tmp_path)
@@ -43,18 +31,14 @@ def test_resolve_workflows_contains_intake_and_validates(tmp_path):
     assert ("frontier", "barrier") in edges
     assert ("barrier", "plan") in edges
     assert ("plan", "close") in edges
-    # the workflow validates against the merged (seed + planner) phase table
+
     assert registry.validate_workflow(intake, phases) == []
-
-
-# --- 3. deterministic frontier reader -------------------------------------------
 
 def _write_frontier(root, text):
     p = planner_plugin.frontier_path(root)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(text)
     return p
-
 
 def test_frontier_open_when_any_unanswered(tmp_path):
     _write_frontier(tmp_path,
@@ -63,20 +47,17 @@ def test_frontier_open_when_any_unanswered(tmp_path):
     assert ev["facts"]["frontier"] == "open"
     assert ev["facts"]["open"] == 2
 
-
 def test_frontier_clear_when_all_answered(tmp_path):
     _write_frontier(tmp_path, "# Decision frontier\n\n- [x] a\n- [X] b\n")
     ev = planner_plugin._run_frontier(tmp_path, None, None)
     assert ev["facts"]["frontier"] == "clear"
     assert ev["facts"]["open"] == 0
 
-
 def test_frontier_missing_file_reads_open_never_clear(tmp_path):
-    # no artifact written at all
+
     ev = planner_plugin._run_frontier(tmp_path, None, None)
     assert ev["facts"]["frontier"] == "open"
     assert ev["facts"]["open"] == 0
-
 
 def test_frontier_itemless_file_reads_open_never_clear(tmp_path):
     _write_frontier(tmp_path, "# Decision frontier\n\njust prose, no items.\n")
@@ -84,12 +65,7 @@ def test_frontier_itemless_file_reads_open_never_clear(tmp_path):
     assert ev["facts"]["frontier"] == "open"
     assert ev["facts"]["open"] == 0
 
-
-# --- 4. workflow walk: the intake route branches on the frontier fact ------------
-
 class _Capture:
-    """A real executor stub: records phases and returns a `produces` receipt so the
-    walk advances along its pass/fact edges (mirrors the uiux routing suite)."""
 
     def __init__(self):
         self.seen = []
@@ -99,25 +75,21 @@ class _Capture:
         return R.Receipt(outcome="result",
                          evidence={"produces": f"art-{len(self.seen)}"})
 
-
 def _intake(tmp_path):
     contributor = _planner(tmp_path)
     return registry.resolve_workflows(
         str(tmp_path), [contributor])["intake"]
-
 
 def test_walk_interview_always_advances_to_frontier(tmp_path):
     wf = _intake(tmp_path)
     nxt = _choose_edge(wf, "interview", passed=True)
     assert nxt is not None and nxt[0] == "frontier"
 
-
 def test_walk_frontier_open_loops_back_to_interview(tmp_path):
     wf = _intake(tmp_path)
     nxt = _choose_edge(wf, "frontier", passed=True,
                        evidence={"facts": {"frontier": "open"}})
     assert nxt is not None and nxt[0] == "interview"
-
 
 def test_walk_frontier_clear_advances_through_barrier_plan_to_close(tmp_path):
     wf = _intake(tmp_path)
@@ -129,11 +101,7 @@ def test_walk_frontier_clear_advances_through_barrier_plan_to_close(tmp_path):
     step = _choose_edge(wf, "plan", passed=True)
     assert step is not None and step[0] == "close"
 
-
 def test_walk_end_to_end_cleared_frontier_reaches_close(tmp_path):
-    """Full drive through the live runner: a fully-cleared on-disk frontier makes
-    the deterministic phase emit `clear`, so intake walks straight to close with
-    no loop-back to interview."""
     _write_frontier(tmp_path, "# Decision frontier\n\n- [x] settled\n")
     wf = _intake(tmp_path)
     from workflow_run import run_workflow
