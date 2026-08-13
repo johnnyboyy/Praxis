@@ -26,6 +26,10 @@ are in the graph, not because a domain asked for it.
 **Consequence to unwind when re-homing.** uiux design tasks previously received anti-mean via
 corpora and lose it until it is re-homed to a phase.
 
+**Status (2026-08-13).** The Situation stance channel was deleted in the vocabulary trims
+(`42b192b`) — `Phase.stance` survives as metadata on phase definitions, so the candidate home
+stands: a divergent phase's framing, injected by a contributor branching on `phase_name`.
+
 ## Worktree isolation for parallel orchestrate units (queued 2026-08-11)
 
 **What.** When `orchestrate` fans out multiple units in parallel — especially rebuild-triple pairs
@@ -45,6 +49,10 @@ supports `isolation: "worktree"` — simplest first cut is: dispatch parallel un
 merge back, and how the praxis edit gate + journal (already per-root) interact with a worktree per
 unit. Observed live in the corpora Lap-1 build, where cx-composer and cx-tests saw each other and
 converged (the pin held, but it was luck-adjacent).
+
+**Status (2026-08-13).** Dispatch moved to the pull model (`a7c1a13`): executors read their own
+payloads via `read_handoff`/`next_phase`. The candidate home is unchanged — the orchestrate
+skill's dispatch step is where `isolation: "worktree"` gets requested.
 
 ## OS-level capability sandboxing for the rebuild seam (queued 2026-08-12)
 
@@ -71,7 +79,8 @@ PreToolUse hook logs each dispatched subagent's tool call keyed on its `agent_id
 (`cat`/`sed`/`head`/`tail`/`less`/`grep`/`find`) seen in `Bash` commands. **The residual, still
 open here:** a raw filesystem syscall (e.g. Python `open()`) bypasses the PreToolUse hook and is
 NOT captured — only the OS-level sandboxing below closes it. Capture is also only active when the
-hook is installed in settings (`hooks/hooks.json`).
+hook is installed in settings (`hooks/hooks.json`; the script itself moved to
+`plugins/rebuild/hooks/tripwire_log.sh` with the rebuild pack, `ce149bd`).
 
 ## Corpora owns domain discovery + validation (queued 2026-08-11)
 
@@ -89,11 +98,18 @@ that drift from the real parser.
 
 **Candidate shape.** `corpora.discover(root)` collects malformed-domain problems alongside the
 pool; a `validate_domains(root) -> problems` surface; one corpora test over a fixture root with a
-couple of plugins registered. Possibly unify by having `discover` reuse praxis's marker/layered
-discovery for locating `domains_dir`s. Land with Lap 2 (ratify/retrospective), which is corpora's
-next build.
+couple of plugins registered.
 
-## Mutation scope = plan blast radius (queued 2026-08-12)
+**Status (2026-08-13).** Half the premise moved: corpora's discovery is now driven by its own
+`sources` config list (`91fd1d2`) and plugin `domains_dir`s no longer exist (`8c5d5f3`) — the
+domains live in the peer bucket. What remains wanted is `validate_domains` over the bucket
+collections + the project pool, fail-soft at discovery, exactly as stated above.
+
+## Mutation scope = plan blast radius (queued 2026-08-12 — SUPERSEDED 2026-08-13)
+
+**Superseded:** mutation verifiers were evicted from core in the engine cut (`ce149bd`); the
+barrier's form is plugin/root content now. The scoping insight below transfers to whoever builds
+a mutation adequacy pack — kept for that reader.
 
 The mutation adequacy signal's THRESHOLD is an absolute policy constant, but its SCOPE should be
 the files the plan/units actually changed (the blast radius), not the whole repo. Mutation is
@@ -103,11 +119,15 @@ plan's touched paths (from the journal/plan), not the entire tree. Applies to th
 and the extract-seam adequacy gate. (Surfaced from the "would an architecture shift be blocked?"
 question — answer: no, mutation measures TEST strength, not churn; but scope it to the blast radius.)
 
-## Refinements from an independent design review (2026-08-12)
+## Refinements from an independent design review (2026-08-12 — reconciled 2026-08-13)
 
 Five points from an outside review of the spine. The skeleton (contract-first, cheap inner-loop
-gates, expensive outer-loop gate, close only through passed gates) was affirmed; these are where
-the details decide whether it works in practice.
+gates, expensive outer-loop gate, close only through passed gates) was affirmed. Reconciliation
+after the cuts: **1–3 LANDED** in `skills/orchestrate` (the BARRIER step carries
+integration-contract tests and the append-only rule; the FINAL BARRIER step carries the
+single-fixer-with-global-context rule); **4 LANDED** as the `escalate_unit` engine terminal
+(escalated bucket, close refused); **5 superseded** with mutation's eviction (see the
+superseded entry above). Original points kept below for their reasoning.
 
 1. **Integration-contract tests are an explicit BARRIER deliverable** (lands in: planner). Per-unit
    acceptance tests can all pass while units disagree about interfaces / shared state / ordering.
@@ -138,7 +158,9 @@ The `record_phase` MCP tool types `evidence` as a string it `json.loads`es, but 
 serializes a JSON object argument as a dict (rejected by the string type) and a quoted string as a
 double-encoded string (loads to a str, not an object). Small usability fix: accept a dict OR a JSON
 string for `evidence` (coerce dict-or-string), like other tools do. Found driving the live rebuild
-walk; the conduct/phase_walk functions themselves take a dict fine.
+walk; the conduct/phase_walk functions themselves take a dict fine. **Reproduced live
+2026-08-13** driving the audit-and-cut trial walk (the harness hands the tool a dict; the tool
+rejects it) — still open, still the same one-line coercion fix.
 
 ## Probation: tdd-unit usage (queued 2026-08-13)
 
