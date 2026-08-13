@@ -1,13 +1,15 @@
 {
   "": {
     "plugins_path": [
-      "/Users/johnzdanis/jdev/skills/corpora"
+      "/Users/johnzdanis/jdev/skills/corpora",
+      "/Users/johnzdanis/jdev/skills/praxis/plugins/audit-cut"
     ],
     "plugins_search_paths": [
       "/Users/johnzdanis/jdev/skills/corpora"
     ]
   },
   "contributors": {
+    "audit-cut": "audit_cut_plugin:make",
     "corpora": "corpora.plugin:make"
   },
   "corpora": {
