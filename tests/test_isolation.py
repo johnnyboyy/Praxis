@@ -5,8 +5,11 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugins" / "rebuild"))
 import isolation  # noqa: E402
 import phase_walk  # noqa: E402
+import rebuild_plugin  # noqa: E402
+import rebuild_verifiers as RV  # noqa: E402
 import run as R  # noqa: E402
 import workflow as W  # noqa: E402
 from situation import Situation  # noqa: E402
@@ -210,7 +213,7 @@ class TripwireVerifierTest(unittest.TestCase):
         original.write_text(FAITHFUL_IMPL)
         ir = _ir(["s1", "s2", "s3"], [held])
 
-        gate = isolation.synthesize_exit_gate(R.coverage_diff_verifier())
+        gate = isolation.synthesize_exit_gate(RV.coverage_diff_verifier())
 
         clean = R.Receipt(outcome="result",
                           evidence={"produces": str(synth), "tool_log": []})
@@ -256,11 +259,11 @@ class RebuildWalkTripwireTest(unittest.TestCase):
         original.write_text(FAITHFUL_IMPL)
         ir = _ir(["s1", "s2", "s3"], [held])
 
-        verifiers = {"does-it": R.adequacy_verifier(None),
+        verifiers = {"does-it": RV.adequacy_verifier(None),
                      "coverage-diff": isolation.synthesize_exit_gate(
-                         R.coverage_diff_verifier())}
+                         RV.coverage_diff_verifier())}
         unit = R.Unit("u1", _sit())
-        wf = W.REBUILD_TRIPLE
+        wf = rebuild_plugin.REBUILD_TRIPLE
         phase_walk.record_phase(self.root, unit, "extract", {"produces": ir},
                                 verifiers=verifiers, workflow=wf)
         phase_walk.record_phase(self.root, unit, "synthesize",
@@ -378,8 +381,8 @@ class TripwireHookScriptTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self.tmp.name)
         self.log = self.dir / "tripwire.log"
-        self.hook = (Path(__file__).resolve().parents[1] / "hooks"
-                     / "tripwire_log.sh")
+        self.hook = (Path(__file__).resolve().parents[1] / "plugins" / "rebuild"
+                     / "hooks" / "tripwire_log.sh")
 
     def tearDown(self):
         self.tmp.cleanup()

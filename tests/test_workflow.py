@@ -4,7 +4,9 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugins" / "rebuild"))
 import journal  # noqa: E402
+import rebuild_plugin  # noqa: E402
 import run as R  # noqa: E402
 import workflow as W  # noqa: E402
 from phase_walk import decide_step, gate_for, incoming  # noqa: E402
@@ -28,9 +30,14 @@ def _decide(wf, name, receipt, edge_in=None, verifiers=None):
 class SeedLibraryTest(unittest.TestCase):
     def test_seed_phases_present(self):
         for name in ("plan", "write-tests", "implement", "refactor", "test-cleanup",
-                     "verify", "fix", "close", "extract", "synthesize"):
+                     "verify", "fix", "close"):
             self.assertIn(name, W.SEED_PHASES)
             self.assertIn(W.SEED_PHASES[name].stance, W.STANCES)
+
+    def test_rebuild_phases_live_in_the_plugin_not_the_seed(self):
+        self.assertNotIn("extract", W.SEED_PHASES)
+        self.assertNotIn("synthesize", W.SEED_PHASES)
+        self.assertNotIn("rebuild-triple", W.SEED_WORKFLOWS)
 
     def test_gate_mapping(self):
         self.assertEqual(W.GATES[W.EdgeType.create], "does-it")
@@ -48,7 +55,7 @@ class SeedLibraryTest(unittest.TestCase):
             self.assertEqual(et, W.EdgeType.carry)
 
     def test_rebuild_triple_extract_edge(self):
-        wf = W.REBUILD_TRIPLE
+        wf = rebuild_plugin.REBUILD_TRIPLE
 
         self.assertEqual([p.name for p in wf.phases], ["extract", "synthesize"])
         et = next(et for (f, t, w, et) in wf.edges if f == "extract" and t == "synthesize")
@@ -249,7 +256,7 @@ class WalkFactRoutingTest(unittest.TestCase):
         self.assertEqual(nxt["gate"], "regression")
 
     def test_extract_edge_hands_spec_not_carry(self):
-        wf = W.REBUILD_TRIPLE
+        wf = rebuild_plugin.REBUILD_TRIPLE
         unit = self._unit(wf)
         phase_walk.record_phase(self.root, unit, "extract",
                                 {"passed": True, "produces": {"interface": []}},

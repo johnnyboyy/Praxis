@@ -5,8 +5,10 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugins" / "rebuild"))
 import journal  # noqa: E402
 import phase_walk  # noqa: E402
+import rebuild_plugin  # noqa: E402
 import run as R  # noqa: E402
 import workflow as W  # noqa: E402
 from situation import Situation  # noqa: E402
@@ -164,7 +166,7 @@ class RebuildWalkTest(_Base):
 
     def test_next_phase_at_synthesize_returns_isolation_directive(self):
         unit = R.Unit("u1", _sit(workflow="rebuild-triple"))
-        wf = W.REBUILD_TRIPLE
+        wf = rebuild_plugin.REBUILD_TRIPLE
         synth, ir = self._drive_to_synthesize(unit, wf)
 
         step = phase_walk.next_phase(self.root, unit, workflow=wf)
@@ -180,7 +182,7 @@ class RebuildWalkTest(_Base):
 
     def test_out_of_worktree_read_trips_wire_and_does_not_advance(self):
         unit = R.Unit("u1", _sit(workflow="rebuild-triple"))
-        wf = W.REBUILD_TRIPLE
+        wf = rebuild_plugin.REBUILD_TRIPLE
         synth, ir = self._drive_to_synthesize(unit, wf)
 
         rec = phase_walk.record_phase(
@@ -194,7 +196,7 @@ class RebuildWalkTest(_Base):
 
     def test_clean_synthesize_advances_to_complete(self):
         unit = R.Unit("u1", _sit(workflow="rebuild-triple"))
-        wf = W.REBUILD_TRIPLE
+        wf = rebuild_plugin.REBUILD_TRIPLE
         synth, ir = self._drive_to_synthesize(unit, wf)
 
         rec = phase_walk.record_phase(

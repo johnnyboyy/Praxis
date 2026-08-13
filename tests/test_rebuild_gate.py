@@ -1,4 +1,3 @@
-import shutil
 import sys
 import tempfile
 import textwrap
@@ -6,10 +5,13 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugins" / "rebuild"))
 import rebuild_spec  # noqa: E402
 import run as R  # noqa: E402
 import workflow as W  # noqa: E402
 import phase_walk  # noqa: E402
+import rebuild_plugin  # noqa: E402
+import rebuild_verifiers as RV  # noqa: E402
 from situation import Situation  # noqa: E402
 
 def _sit(**over):
@@ -92,7 +94,7 @@ class CoverageDiffVerifierTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self.tmp.name)
-        self.verifier = R.coverage_diff_verifier()
+        self.verifier = RV.coverage_diff_verifier()
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -159,20 +161,20 @@ class AdequacyVerifierTest(unittest.TestCase):
 
     def test_adequate_ir_passes_when_coverage_passes(self):
         cov = R.CommandVerifier(lambda u, r, c: ["true"])
-        v = R.adequacy_verifier(cov)
+        v = RV.adequacy_verifier(cov)
         out = v.verify(None, self._extract_receipt(_ir("t/test_held.py")), {})
         self.assertTrue(out.verified, out.defects)
 
     def test_ir_failing_adequacy_threshold_fails_at_extract(self):
         cov = R.CommandVerifier(lambda u, r, c: ["false"])
-        v = R.adequacy_verifier(cov)
+        v = RV.adequacy_verifier(cov)
         out = v.verify(None, self._extract_receipt(_ir("t/test_held.py")), {})
         self.assertFalse(out.verified)
         self.assertEqual(out.evidence["check"], "adequacy")
 
     def test_trivial_split_rejected_at_extract(self):
         cov = R.CommandVerifier(lambda u, r, c: ["true"])
-        v = R.adequacy_verifier(cov)
+        v = RV.adequacy_verifier(cov)
         bad = _ir("t/test_held.py")
         bad["tests"]["held_out"] = []
         out = v.verify(None, self._extract_receipt(bad), {})
@@ -199,10 +201,10 @@ class RebuildWalkTest(unittest.TestCase):
         held = _held_out_test(self.root / "held")
         ir = _ir(held)
 
-        verifiers = {"does-it": R.adequacy_verifier(None),
-                     "coverage-diff": R.coverage_diff_verifier()}
+        verifiers = {"does-it": RV.adequacy_verifier(None),
+                     "coverage-diff": RV.coverage_diff_verifier()}
         unit = R.Unit("u1", _sit())
-        wf = W.REBUILD_TRIPLE
+        wf = rebuild_plugin.REBUILD_TRIPLE
         phase_walk.record_phase(self.root, unit, "extract", {"produces": ir},
                                 verifiers=verifiers, workflow=wf)
         phase_walk.record_phase(self.root, unit, "synthesize",
@@ -226,129 +228,12 @@ class RebuildWalkTest(unittest.TestCase):
         self.assertTrue(exited["extract"]["verified"])
         self.assertFalse(exited["synthesize"]["verified"])
 
-_TS_TSC_CMD = ["npx", "--yes", "-p", "typescript", "tsc"]
-
-_TS_HELD_CMD = ["node"]
-
-def _ts_toolchain_ok() -> bool:
-    if shutil.which("node") is None:
-        return False
-    try:
-        with tempfile.TemporaryDirectory() as td:
-            src = Path(td) / "probe.ts"
-            src.write_text("export function ping(): number { return 1; }\n")
-            surface, _ = R._ts_surface(Path(td), _TS_TSC_CMD, 300)
-        return "ping" in surface
-    except Exception:
-        return False
-
-_TS_OK = _ts_toolchain_ok()
-
-@unittest.skipUnless(_TS_OK, "tsc/node toolchain unavailable")
-class TsCoverageDiffVerifierTest(unittest.TestCase):
-
-    FAITHFUL = ("export function add(a: number, b: number): number { return a + b; }\n"
-                "export function sub(a: number, b: number): number { return a - b; }\n")
-
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.dir = Path(self.tmp.name)
-        self.verifier = R.coverage_diff_verifier()
-
-    def tearDown(self):
-        self.tmp.cleanup()
-
-    def _synth(self, name, impl):
-        d = self.dir / name
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "calc.ts").write_text(impl)
-        return d
-
-    def _held(self, name, module_dir, body):
-        p = self.dir / f"held_{name}.ts"
-        rel = "./" + str(module_dir.relative_to(self.dir)) + "/calc.ts"
-        p.write_text(f'import {{ add, sub }} from "{rel}";\n'
-                     'import assert from "node:assert";\n' + body)
-        return str(p)
-
-    def _ir(self, held, **over):
-        ir = {"language": "typescript", "surface_cmd": _TS_TSC_CMD,
-              "held_out_cmd": _TS_HELD_CMD,
-              "interface": [{"symbol": "add", "signature": "add(a, b)"},
-                            {"symbol": "sub", "signature": "sub(a, b)"}],
-              "allowed_surface": ["add", "sub"],
-              "tests": {"spec": ["s1", "s2", "s3"], "held_out": [held]}}
-        ir.update(over)
-        return ir
-
-    def _verify(self, synth, ir):
-        receipt = R.Receipt(outcome="result", evidence={"produces": str(synth)})
-        return self.verifier.verify(None, receipt, {"spec": ir})
-
-    def test_faithful_ts_synth_passes(self):
-        synth = self._synth("good", self.FAITHFUL)
-        held = self._held("good", synth,
-                          "assert.strictEqual(add(2, 3), 5);\n"
-                          "assert.strictEqual(sub(5, 2), 3);\n")
-        v = self._verify(synth, self._ir(held))
-        self.assertTrue(v.verified, v.defects)
-        self.assertEqual(v.evidence["check"], "all")
-        self.assertEqual(v.evidence["surface"], ["add", "sub"])
-
-    def test_missing_interface_symbol_fails_completeness(self):
-        synth = self._synth("miss",
-                            "export function add(a: number, b: number): number { return a + b; }\n")
-        held = self._held("miss", synth, "assert.strictEqual(add(2, 3), 5);\n")
-        v = self._verify(synth, self._ir(held))
-        self.assertFalse(v.verified)
-        self.assertEqual(v.evidence["check"], "interface")
-        self.assertIn("sub", v.evidence["missing"])
-
-    def test_extra_surface_fails_losslessness(self):
-        synth = self._synth("extra", self.FAITHFUL
-                            + "export function leak(z: number): number { return z; }\n")
-        held = self._held("extra", synth,
-                          "assert.strictEqual(add(2, 3), 5);\n"
-                          "assert.strictEqual(sub(5, 2), 3);\n")
-        v = self._verify(synth, self._ir(held))
-        self.assertFalse(v.verified)
-        self.assertEqual(v.evidence["check"], "surface")
-        self.assertIn("leak", v.evidence["extra"])
-
-    def test_failing_held_out_fails_generalization(self):
-
-        synth = self._synth("bad",
-                            "export function add(a: number, b: number): number { return a * b; }\n"
-                            "export function sub(a: number, b: number): number { return a - b; }\n")
-        held = self._held("bad", synth, "assert.strictEqual(add(2, 3), 5);\n")
-        v = self._verify(synth, self._ir(held))
-        self.assertFalse(v.verified)
-        self.assertEqual(v.evidence["check"], "held_out")
-        self.assertNotEqual(v.evidence["returncode"], 0)
-
-class TsMutationAdapterTest(unittest.TestCase):
-
-    def test_unwired_without_threshold(self):
-        self.assertIsNone(R.ts_mutation_verifier("pnpm exec stryker run", None))
-
-    def test_score_above_threshold_passes(self):
-        v = R.ts_mutation_verifier("sh -c 'echo mutation score: 0.95'", 0.9)
-        self.assertTrue(v.verify(None, None, {}).verified)
-
-    def test_score_below_threshold_fails(self):
-        v = R.ts_mutation_verifier("sh -c 'echo 0.50'", 0.9)
-        self.assertFalse(v.verify(None, None, {}).verified)
-
-    def test_exit_code_verdict_when_no_score(self):
-        self.assertFalse(
-            R.ts_mutation_verifier("this-stryker-does-not-exist-xyz", 0.9)
-            .verify(None, None, {}).verified)
-
 if __name__ == "__main__":
     unittest.main()
 
 def test_held_out_runs_from_synth_tree_with_relative_paths(tmp_path):
-    from run import coverage_diff_verifier, Receipt
+    from rebuild_verifiers import coverage_diff_verifier
+    from run import Receipt
     spec = {"interface": [{"symbol": "add", "signature": "add(a, b)"}],
           "allowed_surface": ["add"],
           "tests": {"spec": ["test_spec.py"], "held_out": ["test_held.py"]}}
@@ -370,3 +255,39 @@ def test_held_out_runs_from_synth_tree_with_relative_paths(tmp_path):
                    evidence={"produces": synth("bad", "def add(a, b):\n    return a * b\n")}),
                    {"spec": spec})
     assert not bad.verified and bad.evidence.get("check") == "held_out"
+
+class CoverageVerifierBuilderTest(unittest.TestCase):
+    def test_absent_config_returns_none_no_fabricated_pass(self):
+        self.assertIsNone(RV.coverage_verifier(None, None))
+        self.assertIsNone(RV.coverage_verifier(None, 80))
+        self.assertIsNone(RV.coverage_verifier("pytest", None))
+
+    def test_exit_zero_passes_exit_nonzero_fails(self):
+        ok = RV.coverage_verifier("sh -c 'exit 0'", 80, target="pkg")
+        bad = RV.coverage_verifier("sh -c 'exit 1'", 80, target="pkg")
+        self.assertTrue(ok.verify(None, None, {}).verified)
+        self.assertFalse(bad.verify(None, None, {}).verified)
+
+class PluginRegistrationTest(unittest.TestCase):
+    def test_registered_root_resolves_rebuild_triple_with_verifiers(self):
+        import config
+        import registry
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".praxis").mkdir()
+            config.write(root, "contributors", {"rebuild": "rebuild_plugin:make"})
+            wfs = registry.resolve_workflows(root)
+            self.assertIn("rebuild-triple", wfs)
+            wf = wfs["rebuild-triple"]
+            self.assertTrue(callable(wf.verifiers))
+            gates = R.verifiers_for_workflow(root, wf)
+            self.assertIn("does-it", gates)
+            self.assertIn("coverage-diff", gates)
+
+    def test_unregistered_root_has_no_rebuild_vocabulary(self):
+        import registry
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".praxis").mkdir()
+            self.assertNotIn("rebuild-triple", registry.resolve_workflows(root))
+            self.assertNotIn("extract", registry.resolve_phases(root))

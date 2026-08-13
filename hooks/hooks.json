@@ -10,7 +10,7 @@
       {
         "matcher": "Read|Grep|Glob|Bash",
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/tripwire_log.sh" }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/plugins/rebuild/hooks/tripwire_log.sh" }
         ]
       }
     ],

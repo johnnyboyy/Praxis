@@ -36,6 +36,7 @@ class Workflow:
     phases: list
     edges: list
     expand: dict | None = None
+    verifiers: object | None = None  # optional factory: (root) -> {gate-name: Verifier}
 
     def phase(self, name: str) -> Phase | None:
         return next((p for p in self.phases if p.name == name), None)
@@ -69,14 +70,10 @@ VERIFY = Phase("verify", stance="neutral",
 FIX = Phase("fix", stance="convergent",
             intent="repair a failed verification", produces="code")
 CLOSE = Phase("close", stance="neutral", intent="finalize the unit", produces="closure")
-EXTRACT = Phase("extract", stance="divergent",
-                intent="inventory/classify the original into a spec", produces="spec")
-SYNTHESIZE = Phase("synthesize", stance="convergent",
-                   intent="rebuild to the interface, free of the attractor", produces="code")
 
 SEED_PHASES: dict[str, Phase] = {
     p.name: p for p in (PLAN, WRITE_TESTS, IMPLEMENT, REFACTOR, TEST_CLEANUP,
-                        VERIFY, FIX, CLOSE, EXTRACT, SYNTHESIZE)
+                        VERIFY, FIX, CLOSE)
 }
 
 TDD_UNIT = Workflow(
@@ -89,14 +86,6 @@ TDD_UNIT = Workflow(
     ],
 )
 
-REBUILD_TRIPLE = Workflow(
-    name="rebuild-triple",
-
-    phases=[EXTRACT, SYNTHESIZE],
-    edges=[
-        ("extract", "synthesize", "pass", EdgeType.extract),
-    ],
-)
 
 BUILD_VERIFY = Workflow(
     name="build-verify",
@@ -110,5 +99,5 @@ BUILD_VERIFY = Workflow(
 )
 
 SEED_WORKFLOWS: dict[str, Workflow] = {
-    w.name: w for w in (TDD_UNIT, REBUILD_TRIPLE, BUILD_VERIFY)
+    w.name: w for w in (TDD_UNIT, BUILD_VERIFY)
 }
