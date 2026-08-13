@@ -32,7 +32,7 @@ path, LOW→HIGH precedence (higher wins a name collision):
 | Plugin | Role |
 |---|---|
 | **corpora** (peer repo) | The pure composer — ships NO domains. Discovers every registered contributor's `domains_dir` (none of the bundled plugins have one now) + the project pool + the domains bucket's sources, merges, coarse-cuts by subject/applies-when, defers the fine call to the model. Harvests proposals on `unit-close`. |
-| **writing** | Process-only: prose draft/revision phases + workflow. |
+| **writing** | **The reference plugin** — kept as the worked example of the contract (a process-only pack on a non-coding subject, ~100 lines), not as a claim that a writing practice exists. The day a real writing practice grows, it graduates to a peer repo like corpora/uiux did. |
 | **rebuild** | Process-only: the rebuild triple — extract/synthesize phases, the `rebuild-triple` workflow with its own gate forms (spec adequacy at extract-exit; tripwire ∘ coverage-diff at synthesize-exit), spec validation (`rebuild_spec.py`), and worktree isolation + copy-detection (`isolation.py`, `hooks/tripwire_log.sh`). |
 | **coding-process** | Process-only: TDD vocabulary — write-tests/refactor/test-cleanup phases + the `tdd-unit` workflow. |
 

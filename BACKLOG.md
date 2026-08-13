@@ -139,3 +139,11 @@ serializes a JSON object argument as a dict (rejected by the string type) and a 
 double-encoded string (loads to a str, not an object). Small usability fix: accept a dict OR a JSON
 string for `evidence` (coerce dict-or-string), like other tools do. Found driving the live rebuild
 walk; the conduct/phase_walk functions themselves take a dict fine.
+
+## Probation: tdd-unit usage (queued 2026-08-13)
+
+`coding-process`'s tdd-unit workflow has a zero runtime record (no workflow-driven unit
+has ever chosen it). It survives the 2026-08 cuts on cheapness (45 lines) and on being
+the seed's only alternative to build-verify. At the next audit, decide by the journal:
+if real workflow-driven units exist and none picked tdd-unit, delete it the way stance
+and agent-choice went — the vocabulary can be re-added the day a consumer demands it.
