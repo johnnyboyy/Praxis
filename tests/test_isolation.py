@@ -1,7 +1,7 @@
-"""R3b — isolation + copy-detection for the rebuild seam, proven on fixtures.
+"""Isolation + copy-detection for the rebuild seam, proven on fixtures.
 
 No model, no real subagent: synthetic worktrees + read-logs in tmp_path. Proves
-the three mechanical defenses (IR-only seed, dependency hygiene, copy tripwire)
+the three mechanical defenses (spec-only seed, dependency hygiene, copy tripwire)
 and that a tripped wire fails a rebuild unit even when coverage-diff would pass.
 Honest framing preserved: this is copy-DETECTION, not a capability boundary."""
 import os
@@ -239,14 +239,14 @@ class TripwireVerifierTest(unittest.TestCase):
         # Control: faithful synth + clean log → the composed gate passes.
         clean = R.Receipt(outcome="result",
                           evidence={"produces": str(synth), "tool_log": []})
-        self.assertTrue(gate.verify(None, clean, {"ir": ir}).verified)
+        self.assertTrue(gate.verify(None, clean, {"spec": ir}).verified)
 
         # A copy: the synth READ the original by absolute path → tripwire fails
         # the unit even though coverage-diff on the faithful tree would pass.
         copied = R.Receipt(outcome="result",
                            evidence={"produces": str(synth),
                                      "tool_log": [str(original)]})
-        v = gate.verify(None, copied, {"ir": ir})
+        v = gate.verify(None, copied, {"spec": ir})
         self.assertFalse(v.verified)
         self.assertEqual(v.evidence["check"], "tripwire")
 

@@ -29,12 +29,12 @@ turns on the ones it wants.
 | `workflow.py` | `Phase` / `Workflow` / edge dataclasses; `WHENS`; the seed phase/workflow library. |
 | `workflow_run.py` | `run_workflow` — the phase walker: edge routing (`_choose_edge`), deterministic delivery, the aggregate receipt, `phase_fit`/`phase.route_unmatched` recording. |
 | `registry.py` | `resolve_phases` / `resolve_workflows` — merge seed phases/workflows with contributor-provided ones (seed wins, first-plugin wins; fail-soft). |
-| `run.py` | `run_unit` — the live drive: single-dispatch or resolve+run a named workflow; fires `verify` / `unit-close` / `close` hooks (`_finish`). Home of the R2 coverage/mutation verifiers and the R3a rebuild gates (`adequacy_verifier`, `coverage_diff_verifier`). |
-| `rebuild_ir.py` | The structured IR the rebuild triple's `extract` phase emits (`interface` / `allowed_surface` / `tests.{spec,held_out}`); `validate_ir` is fail-closed and enforces a real held-out split. |
-| `isolation.py` | **R3b — rebuild isolation + copy-detection.** `seed_synth_worktree` (IR-only scratch tree with its own `.praxis` marker), `dep_hygiene_ok` (synth binds to synth, original off the import path), `scan_tripwire` (flag reads outside the worktree), `synthesize_exit_gate` (tripwire ∘ coverage-diff). |
+| `run.py` | `run_unit` — the live drive: single-dispatch or resolve+run a named workflow; fires `verify` / `unit-close` / `close` hooks (`_finish`). Home of the coverage/mutation verifiers and the rebuild gates (`adequacy_verifier`, `coverage_diff_verifier`). |
+| `rebuild_ir.py` | The structured spec the rebuild triple's `extract` phase emits (`interface` / `allowed_surface` / `tests.{spec,held_out}`); `validate_ir` is fail-closed and enforces a real held-out split. |
+| `isolation.py` | **Rebuild isolation + copy-detection.** `seed_synth_worktree` (spec-only scratch tree with its own `.praxis` marker), `dep_hygiene_ok` (synth binds to synth, original off the import path), `scan_tripwire` (flag reads outside the worktree), `synthesize_exit_gate` (tripwire ∘ coverage-diff). |
 | `situation.py` | `Situation` — the framing a Contributor sees (`task_kind`, `subject`, `phase`=stance, `phase_name`, `workflow`, `label`, `targets`, `intent`). Project-shape is not a Situation field — corpora detects it and stores it in its own config namespace. |
 | `orchestrate.py` / `cascade.py` | Orchestration altitude: fan-out → barrier full-verify → bounded fix-loop → escalation. |
-| `conduct.py` / `plan.py` / `handoff.py` | The inline drive: `register_plan` → `next_handoff` → `close_unit`; plan DAG bookkeeping; handoff assembly. |
+| `conduct.py` / `plan.py` / `handoff.py` | The inline drive: `register_plan` → `next_handoff` → `close_unit`; plan's unit graph bookkeeping; handoff assembly. |
 | `scripts/gate.py`, `scripts/units.py`, `hooks/` | The **edit-lease gate**: a PreToolUse hook denies out-of-lease edits via a pure function over the journal (glob `surface_allows`). |
 | `journal.py` | Append-only event log (`.praxis/journal.jsonl`) — the source of truth for plan/unit/phase state. |
 | `config.py` | `.praxis/config.json` — the namespaced per-root store (the `## contributors` registry + each plugin's own scope). |
@@ -75,16 +75,16 @@ so the `module:make` specs import without any external `PYTHONPATH`).
 - `docs/design.md` — the enduring conceptual model (edges, gates, the rebuild triple, the
   attractor theory). Load-bearing; read this for *why*.
 - `docs/plugins.md` — the current Contributor contract.
-- `docs/history/` — historical build-time IRs (superseded by code + tests).
+- `docs/history/` — historical build-time specs (superseded by code + tests).
 
 ## Rebuild isolation — what it is, and what it is NOT
 
 The rebuild triple exists to enforce one invariant: `synthesize` REBUILDS the interface
 rather than COPYING the original. Behavioral gates (coverage-diff, held-out) cannot tell a
-faithful copy from a real rebuild — both go green. The R3b defense (`isolation.py`) is
+faithful copy from a real rebuild — both go green. The rebuild-isolation defense (`isolation.py`) is
 therefore three honest, best-effort layers, not a sandbox:
 
-- **Attractor-reduction** — `seed_synth_worktree` builds a scratch tree with ONLY the IR's
+- **Attractor-reduction** — `seed_synth_worktree` builds a scratch tree with ONLY the spec's
   sanctioned artifacts (spec tests + shared config) and its own `.praxis` marker; the
   original source is never seeded, so a synth agent that stays in its lane never meets it.
 - **A copy-detection tripwire** — `scan_tripwire` flags any read that resolves outside the
@@ -106,7 +106,7 @@ subagent can `Read` any absolute path; cwd isolation is attractor-reduction plus
 not a capability boundary. Real OS capability sandboxing (container / mount namespace /
 read-only bind mount) and moving the original aside for the run are on the **BACKLOG**, not
 this lap. The residual risk — a faithful copy made through an absolute-path read — is named,
-not pretended closed; strong held-out adequacy (R3a) is the behavior-preserving backstop.
+not pretended closed; strong held-out adequacy (the preservation gate) is the behavior-preserving backstop.
 
 ## The invariant worth remembering
 

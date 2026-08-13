@@ -40,9 +40,9 @@ edge type — not the phase — selects the preservation gate:
 
 | edge    | did to the original | what's in context               | preservation gate | question        |
 |---------|---------------------|---------------------------------|-------------------|-----------------|
-| create  | none existed        | the IR (prescriptive spec)      | `does-it`         | *does it?*      |
+| create  | none existed        | the spec (prescriptive spec)      | `does-it`         | *does it?*      |
 | carry   | perturbs it         | the original (it should anchor) | `regression`      | *didn't break?* |
-| extract | rebuilds it         | the IR only (original dropped)  | `coverage-diff`   | *covered it?*   |
+| extract | rebuilds it         | the spec only (original dropped)  | `coverage-diff`   | *covered it?*   |
 
 **Every edge carries a preservation gate; its form is a function of what the edge did to the
 original.** Coverage-diff is not generic — it is the compensating control specific to the `extract`
@@ -52,15 +52,15 @@ edge, the price of having dropped the original to escape its pull.
 
 A hard seam is never one phase:
 ```
-extract       original IN — inventory / classify / define-interface → produces the IR (no synthesis)
+extract       original IN — inventory / classify / define-interface → produces the spec (no synthesis)
   ── drop the original ──
-synthesize    IR ONLY     — rebuild to the interface, free of the attractor
-coverage-diff both IN     — TWO directions: losslessness (IR covered?) + completeness (spec met?)
+synthesize    spec ONLY     — rebuild to the interface, free of the attractor
+coverage-diff both IN     — TWO directions: losslessness (spec covered?) + completeness (spec met?)
 ```
 Who may hold the original is decided by what the phase emits: **restructures it → no; analyzes it →
-yes; compares it → both.** `plan` is itself an extraction (request → units/edges = the IR), so
+yes; compares it → both.** `plan` is itself an extraction (request → units/edges = the spec), so
 planning and re-architecture are the same move at different altitudes. `coverage-diff` is
-two-input — it consumes *both* `extract`'s IR and `synthesize`'s artifact; the linear single-slot
+two-input — it consumes *both* `extract`'s spec and `synthesize`'s artifact; the linear single-slot
 carry cannot feed it, which is why the runner threads a named-output map (below).
 
 ### Two altitudes
@@ -213,13 +213,13 @@ appear as `mcp__plugin_praxis_px__*`. Two paths:
 
 - **ORCHESTRATOR** — `plan` (`mcp_server.py:93`) → `conduct.run_tasklist_detached` → a **detached**
   cascade (`cascade.launch_detached`) that spawns a **single** worker process which then runs the
-  whole DAG itself (`schedule.run_dag` — a ThreadPoolExecutor over dependency waves) with per-unit
+  whole unit graph itself (`schedule.run_dag` — a ThreadPoolExecutor over dependency waves) with per-unit
   isolation and resumability; returns
   `running`, poll `plan_status`. `dry_run=True` (the default) previews without spawning.
-- **INLINE** — `register_plan` (`:138`, records the DAG, no spawn/gather) → `next_handoff` (`:157`,
+- **INLINE** — `register_plan` (`:138`, records the unit graph, no spawn/gather) → `next_handoff` (`:157`,
   pulls the next ready unit, frames it, opens the edit gate) → `close_unit` / `record_receipt`.
   `close_unit` (`conduct.py:221`) journals `unit.done` (result only) for the open/named unit so an
-  inline DAG advances past its dependencies; `record_receipt(outcome="stall")` (`conduct.py:239`)
+  inline unit graph advances past its dependencies; `record_receipt(outcome="stall")` (`conduct.py:239`)
   journals `unit.stalled` for the abandoned/blocked inline close (dependents stay waiting).
 
 `conduct` (single unit, `mcp_server.py:58`) and `init` (`:50`) round out the surface;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cascade — the DETACHED background worker that runs a plan's DAG independently of the MCP server,
+"""cascade — the DETACHED background worker that runs a plan's unit graph independently of the MCP server,
 so a big tasklist can be handed off and left to run across client/server restarts ("come back
 later").
 
@@ -159,7 +159,7 @@ def _build_executor(root: Path, *, model: str | None, allow_edits: bool):
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="cascade", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    r = sub.add_parser("run", help="run the registered plan's DAG to completion (the worker)")
+    r = sub.add_parser("run", help="run the registered plan's unit graph to completion (the worker)")
     r.add_argument("--root", required=True)
     r.add_argument("--test-cmd", default=None)
     r.add_argument("--model", default=None)

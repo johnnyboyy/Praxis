@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""R1 of the spine: a deterministic, engine-run gate actually BLOCKS a workflow walk.
+"""A deterministic, engine-run gate actually BLOCKS a workflow walk.
 
 Part B drives run_workflow DIRECTLY (no model, no `claude -p`): a CommandVerifier
 bound to a command we control gates the walk on the command's exit code alone.

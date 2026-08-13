@@ -1,7 +1,7 @@
 """End-to-end: the whole conductor vertical composed together.
 
 Each phase's own suite tests its layer in isolation; this exercises the full stack as one system —
-a DAG plan run under an editable policy, through the contributor seam (with gap surfacing) and the
+a unit graph plan run under an editable policy, through the contributor seam (with gap surfacing) and the
 verification gate, then read back as views, then the accreted vocabulary promoted. It doubles as a
 worked example of how the pieces fit.
 """

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Tests for the tasklist intake + planning head (plan.py): deterministic assembly, the recorded
-plan, and the head-to-tail `plan_and_run` that sets a DAG cascading through run_dag."""
+plan, and the head-to-tail `plan_and_run` that sets a unit graph cascading through run_dag."""
 import sys
 import tempfile
 import unittest

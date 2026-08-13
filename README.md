@@ -25,7 +25,7 @@ claude --plugin-dir ./praxis
 ## Entry points
 
 - `/praxis:orchestrate <task>` — drive a whole task autonomously: decompose it
-  into a unit DAG and run it as a detached cascade (spawn per unit, barrier
+  into a unit graph and run it as a detached cascade (spawn per unit, barrier
   full-verify, fix-loop, escalation). For work you want to hand off and walk away
   from.
 - `/praxis:inline <task-or-question>` — do one small thing or answer a question in

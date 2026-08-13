@@ -147,7 +147,7 @@ def run_workflow(root: Path, unit, workflow: Workflow, contributors, executor,
         if edge_in == EdgeType.carry:
             composed["carry"] = carry
         elif edge_in == EdgeType.extract:
-            composed["ir"] = carry
+            composed["spec"] = carry
 
         journal.append(root, "phase.entered", unit=unit.id, phase=phase.name,
                        phase_index=phase_index,
