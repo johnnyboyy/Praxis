@@ -211,3 +211,37 @@ a4cb16b9d5546e212	Bash	sed -n '75,130p' BACKLOG.md
 a4cb16b9d5546e212	Bash	git diff -- plugins/ARCHITECTURE.md skills/orchestrate/SKILL.md .praxis/config.json tests/test_plugin_registry.py; echo "--- motors config diff ---"; cd /Users/johnzdanis/jdev/motors-and-controls && git diff -- .praxis/config.json
 a4cb16b9d5546e212	Bash	cd /Users/johnzdanis/jdev/motors-and-controls && git log --oneline -1 -- .praxis/config.json && git status --short .praxis/config.json
 a4cb16b9d5546e212	Bash	python3 -m pytest -q 2>&1 | tail -10 echo "=== git status praxis repo ===" git status --short
+af90a77d960962f59	Bash	python3 -c "import conduct, json; print(json.dumps(conduct.read_handoff('.', 'forge-workflow-v1'), indent=2))"
+af90a77d960962f59	Read	/Users/johnzdanis/jdev/skills/praxis/docs/workflow-packs.md
+af90a77d960962f59	Read	/Users/johnzdanis/jdev/skills/praxis/workflow.py
+af90a77d960962f59	Read	/Users/johnzdanis/jdev/skills/praxis/registry.py
+af90a77d960962f59	Read	/Users/johnzdanis/jdev/skills/praxis/phase_walk.py
+af90a77d960962f59	Read	/Users/johnzdanis/jdev/skills/praxis/plugins/rebuild/rebuild_plugin.py
+af90a77d960962f59	Read	/Users/johnzdanis/jdev/skills/praxis/plugins/coding-process/coding_process_plugin.py
+af90a77d960962f59	Bash	sed -n '1,200p' run.py | head -250
+af90a77d960962f59	Bash	cat situation.py 2>/dev/null | head -100; echo ---; cat contributors.py | head -150
+af90a77d960962f59	Bash	ls tests | head -30 && echo --- && grep -rl "phase_walk" tests | head -5
+af90a77d960962f59	Read	/Users/johnzdanis/jdev/skills/praxis/skills/orchestrate/SKILL.md
+af90a77d960962f59	Read	/Users/johnzdanis/jdev/skills/corpora/skills/read/SKILL.md
+af90a77d960962f59	Bash	find . -iname "register-plugins*" -o -iname "BACKLOG*" | grep -v node_modules
+af90a77d960962f59	Bash	cat BACKLOG.md; echo ===REGISTER-PLUGINS===; find skills/register-plugins -type f | xargs -I{} sh -c 'echo ---{}---; cat {}'
+af90a77d960962f59	Bash	grep -rn "planner dissolution\|dissolution" /Users/johnzdanis/jdev/skills/praxis /Users/johnzdanis/jdev/skills/corpora 2>/dev/null | grep -v node_modules | head -20 echo --- find skills/register-plugins -type f cat skills/register-plugins/SKILL.md 2>/dev/null
+af90a77d960962f59	Bash	git log --all --oneline | grep -i "planner\|dissol" | head -20; echo ---; git log --all --oneline | grep -i "skill" | head -20
+af90a77d960962f59	Bash	git show --stat 5c626e8 | head -20; echo ---; git show 5c626e8 -s --format="%B"
+af90a77d960962f59	Bash	cat plugins/rebuild/rebuild_verifiers.py 2>/dev/null | head -80; echo ---CONFIG---; cat config.py | head -60; echo ---TESTPHASEWALK---; sed -n '1,80p' tests/test_phase_walk.py
+af90a77d960962f59	Bash	find plugins -maxdepth 2 -type f -name "*.py" | xargs grep -l "EdgeType.fact\|\"fact\"" 2>/dev/null; echo ---; grep -rn "\"fact\"" --include=*.py . | grep -v tests | grep -v __pycache__
+af90a77d960962f59	Bash	find plugins -maxdepth 2; echo ---; cat plugins/writing/*.py 2>/dev/null | head -60
+af90a77d960962f59	Bash	ls /Users/johnzdanis/jdev/skills/praxis/scripts | head -30
+af90a77d960962f59	Read	/Users/johnzdanis/jdev/skills/praxis/scripts/plugin_registry.py
+af90a77d960962f59	Bash	python3 scripts/forge_check.py plugins/coding-process/coding_process_plugin.py; echo "EXIT: $?"
+af90a77d960962f59	Bash	python3 scripts/forge_check.py plugins/rebuild/rebuild_plugin.py; echo "EXIT: $?"
+af90a77d960962f59	Bash	python3 -m pytest tests/test_forge_check.py -q 2>&1 | tail -60
+af90a77d960962f59	Bash	python3 -m pytest tests/test_forge_check.py -q 2>&1 | tail -20
+af90a77d960962f59	Bash	python3 -m pytest -q 2>&1 | tail -30
+af90a77d960962f59	Bash	ls /Users/johnzdanis/jdev/skills/praxis/skills/; echo ---; find /Users/johnzdanis/jdev/skills/praxis/skills -name "SKILL.md" | xargs -I{} sh -c 'echo ==={}===; wc -l {}'
+af90a77d960962f59	Read	/Users/johnzdanis/jdev/skills/praxis/skills/init/SKILL.md
+af90a77d960962f59	Read	/Users/johnzdanis/jdev/skills/praxis/skills/inline/SKILL.md
+af90a77d960962f59	Bash	mkdir -p /Users/johnzdanis/jdev/skills/praxis/skills/forge-workflow
+af90a77d960962f59	Bash	python3 -m pytest -q 2>&1 | tail -15
+af90a77d960962f59	Bash	echo "=== coding-process smoke ===" && python3 scripts/forge_check.py plugins/coding-process/coding_process_plugin.py; echo "exit=$?"; echo; echo "=== rebuild smoke ===" && python3 scripts/forge_check.py plugins/rebuild/rebuild_plugin.py; echo "exit=$?"
+af90a77d960962f59	Bash	python3 -c "import ast,sys src=open('scripts/forge_check.py').read() ast.parse(src) print('syntax ok')" python3 -m py_compile scripts/forge_check.py tests/test_forge_check.py && echo "compile ok"

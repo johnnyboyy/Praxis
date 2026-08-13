@@ -150,3 +150,13 @@ The invariant that makes all of this safe to open: **packs add vocabulary and ga
 they cannot weaken the engine.** Close is only reachable through passed gates, the
 lease only widens by framing a unit, and the journal records every step regardless of
 whose vocabulary the unit walked.
+
+## Forging a pack
+
+`skills/forge-workflow` is how a practice becomes a pack: it mines the process from a lived
+session, an external source, or a freeform idea, renders the honest verdict of whether it's even a
+workflow (≥2 phases with typed transitions and a real gate — otherwise it's a skill, not a
+workflow), and authors the module. `scripts/forge_check.py <module_path>` is the deterministic
+gate before anything is registered — it validates every candidate phase/workflow against the
+engine's own rules and dry-walks each workflow with stub evidence to a terminal, so a pack is
+proven runnable before a real unit ever exercises it.
