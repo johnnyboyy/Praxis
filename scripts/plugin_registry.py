@@ -267,13 +267,23 @@ def apply(root: str | Path, selected_names, discovered: list[dict]) -> dict:
 
     # corpora discovers domains from its own config's `sources` list (it no
     # longer asks praxis) — registration writes the selected plugins' domains/
-    # dirs into corpora's scope so its discovery stays a pure read.
+    # dirs into corpora's scope so its discovery stays a pure read. This is a
+    # MERGE, not an overwrite: entries whose `dir` is plugin-derived (any
+    # discovered plugin's own domains/ dir, not just the selected ones) are
+    # refreshed/replaced; every other entry (e.g. one pointing at the peer
+    # domains bucket) is preserved untouched, so a plugin carrying no domains
+    # doesn't wipe a root's non-plugin sources on re-registration.
     sources = [{"owner": name, "dir": str(Path(by_name[name]["dir"]) / "domains")}
                for name in selected
                if name != "corpora" and (Path(by_name[name]["dir"]) / "domains").is_dir()]
     if "corpora" in selected:
         corpora_scope = dict(scopes.get("corpora", {})) if isinstance(scopes.get("corpora"), dict) else {}
-        corpora_scope["sources"] = sources
+        existing_sources = corpora_scope.get("sources")
+        existing_sources = existing_sources if isinstance(existing_sources, list) else []
+        plugin_derived_dirs = {str(Path(e["dir"]) / "domains") for e in discovered}
+        preserved = [s for s in existing_sources
+                     if not (isinstance(s, dict) and s.get("dir") in plugin_derived_dirs)]
+        corpora_scope["sources"] = sources + preserved
         scopes["corpora"] = corpora_scope
     _dump(root, scopes)
 
@@ -282,7 +292,7 @@ def apply(root: str | Path, selected_names, discovered: list[dict]) -> dict:
         "removed": removed,
         "contributors": new_contributors,
         "plugins_path": plugins_path,
-        "corpora_sources": sources if "corpora" in selected else None,
+        "corpora_sources": scopes["corpora"]["sources"] if "corpora" in selected else None,
     }
 
 def main(argv=None) -> int:

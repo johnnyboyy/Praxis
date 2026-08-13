@@ -17,10 +17,10 @@ the frontier is "open" (any unanswered decision), and advances to barrier once
 it is "clear". barrier -> plan (pass), plan -> close (the seed close phase, as in
 the uiux / writing workflows).
 
-The planner carries JUDGMENT, but the contributor itself injects nothing via
-`contribute()` (it returns `[]`). Its judgment reaches context through the
-corpora composer over this plugin's own `domains_dir` (./domains) — the same
-JUDGMENT-face mechanism the other judgment plugins use.
+The planner is PROCESS-only: `contribute()` injects nothing (it returns `[]`).
+Planning judgment now lives in the peer `domains` bucket (collection
+`planner`), consumed via corpora import/sources — this plugin carries no
+`domains_dir` of its own.
 
 --------------------------------------------------------------------------------
 FRONTIER ARTIFACT FORMAT  (`<root>/.praxis/planner/frontier.md`)
@@ -150,8 +150,6 @@ PLANNER_WORKFLOWS = [INTAKE]
 class PlannerProcess:
 
     source = "planner"
-
-    domains_dir = Path(__file__).resolve().parent / "domains"
 
     def __init__(self, root):
 

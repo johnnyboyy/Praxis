@@ -74,12 +74,11 @@ class DiscoverTest(unittest.TestCase):
     def test_finds_all_known_plugins(self):
         self.assertEqual(
             set(self.by_name),
-            {"general", "coding-stack", "uiux", "writing", "planner", "rebuild", "coding-process"},
+            {"uiux", "writing", "planner", "rebuild", "coding-process"},
         )
 
     def test_specs_and_dirs(self):
-        self.assertEqual(self.by_name["general"]["spec"], "general_plugin:make")
-        self.assertEqual(self.by_name["coding-stack"]["spec"], "coding_stack_plugin:make")
+        self.assertEqual(self.by_name["uiux"]["spec"], "uiux_plugin:make")
         self.assertTrue(self.by_name["uiux"]["dir"].endswith("/uiux"))
 
     def test_all_bundled_are_origin_bundled(self):
@@ -89,7 +88,7 @@ class DiscoverTest(unittest.TestCase):
 
     def test_descriptions_are_first_sentences(self):
         self.assertIn("intake", self.by_name["planner"]["description"])
-        self.assertTrue(self.by_name["general"]["description"].endswith("."))
+        self.assertTrue(self.by_name["uiux"]["description"].endswith("."))
         for e in self.entries:
             self.assertTrue(e["description"], f"{e['name']} has no description")
 
@@ -136,29 +135,29 @@ class ApplyTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_apply_registers_selected_and_writes_plugins_path(self):
-        summary = pr.apply(self.root, ["corpora", "general"], self.discovered)
-        self.assertEqual(set(summary["added"]), {"corpora", "general"})
+        summary = pr.apply(self.root, ["corpora", "writing"], self.discovered)
+        self.assertEqual(set(summary["added"]), {"corpora", "writing"})
         self.assertEqual(summary["removed"], [])
         self.assertEqual(
             config.read(self.root, "contributors"),
-            {"corpora": "corpora.plugin:make", "general": "general_plugin:make"},
+            {"corpora": "corpora.plugin:make", "writing": "writing_plugin:make"},
         )
         pp = config.read(self.root).get("plugins_path")
         self.assertEqual(len(pp), 2)
         self.assertTrue(any(d.endswith("/corpora") for d in pp))
 
     def test_rerun_registers_and_unregisters(self):
-        pr.apply(self.root, ["corpora", "general"], self.discovered)
+        pr.apply(self.root, ["corpora", "writing"], self.discovered)
         summary = pr.apply(self.root, ["corpora", "uiux"], self.discovered)
         self.assertEqual(summary["added"], ["uiux"])
-        self.assertEqual(summary["removed"], ["general"])
+        self.assertEqual(summary["removed"], ["writing"])
         self.assertEqual(
             set(config.read(self.root, "contributors")), {"corpora", "uiux"}
         )
 
     def test_idempotent_to_selection(self):
-        a = pr.apply(self.root, ["corpora", "general"], self.discovered)
-        b = pr.apply(self.root, ["general", "corpora"], self.discovered)
+        a = pr.apply(self.root, ["corpora", "writing"], self.discovered)
+        b = pr.apply(self.root, ["writing", "corpora"], self.discovered)
         self.assertEqual(a["contributors"], b["contributors"])
         self.assertEqual(b["added"], [])
         self.assertEqual(b["removed"], [])
@@ -176,15 +175,28 @@ class ApplyTest(unittest.TestCase):
 
     def test_preserves_other_config_sections(self):
         config.write(self.root, "corpora", {"project_shape": {"language": "python"}})
-        pr.apply(self.root, ["general"], self.discovered)
+        pr.apply(self.root, ["writing"], self.discovered)
         self.assertEqual(
             config.read(self.root, "corpora"), {"project_shape": {"language": "python"}}
         )
 
     def test_current_reflects_registration(self):
         self.assertEqual(pr.current(self.root), {})
-        pr.apply(self.root, ["general"], self.discovered)
-        self.assertEqual(pr.current(self.root), {"general": "general_plugin:make"})
+        pr.apply(self.root, ["writing"], self.discovered)
+        self.assertEqual(pr.current(self.root), {"writing": "writing_plugin:make"})
+
+    def test_preexisting_non_plugin_source_survives_reregistration(self):
+        # A root's corpora scope may point `sources` at entries that are NOT
+        # any bundled plugin's domains/ dir (e.g. the peer domains bucket).
+        # Re-registering plugins with no domains/ of their own must not wipe
+        # those out — only entries whose `dir` matches a discovered plugin's
+        # own domains/ dir are refreshed/replaced.
+        bucket_source = {"owner": "bucket", "dir": "/some/other/root/domains/uiux"}
+        config.write(self.root, "corpora", {"sources": [bucket_source]})
+        summary = pr.apply(self.root, ["corpora", "uiux"], self.discovered)
+        sources = config.read(self.root, "corpora")["sources"]
+        self.assertIn(bucket_source, sources)
+        self.assertEqual(summary["corpora_sources"], sources)
 
 class PluginsPathEnablementTest(unittest.TestCase):
 
@@ -238,7 +250,7 @@ class LayeredDiscoveryTest(unittest.TestCase):
         self.assertIn("projonly", found)
         self.assertEqual(found["projonly"]["origin"], "project")
 
-        self.assertIn("general", found)
+        self.assertIn("uiux", found)
 
     def test_explicit_search_path_discovered(self):
         ext = self.root / "elsewhere"

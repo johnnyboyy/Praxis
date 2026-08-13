@@ -1,27 +1,33 @@
-# Registering corpora + the judgment plugins
+# Registering corpora + a process plugin
 
-A consuming praxis root enables all three by listing them under the
+A consuming praxis root enables plugins by listing them under the
 `contributors` namespace in its `.praxis/config.json`. Each value is a
 `module:make` factory string; praxis calls `factory(root)` to instantiate the
 contributor (`corpora.plugin:make` for the composer, `*_plugin:make` for each
-bare judgment plugin).
+bundled process plugin).
 
 ```json
 {
   "contributors": {
-    "corpora":  "corpora.plugin:make",
-    "uiux":     "uiux_plugin:make",
-    "general":  "general_plugin:make"
+    "corpora": "corpora.plugin:make",
+    "uiux":    "uiux_plugin:make"
   },
   "corpora": {
-    "project_shape": { "language": "python", "framework": "react", "has-ui": true }
+    "project_shape": { "language": "python", "framework": "react", "has-ui": true },
+    "sources": [
+      { "owner": "uiux", "dir": "/path/to/domains/uiux" }
+    ]
   }
 }
 ```
 
-- `corpora` is the only composer — it discovers `uiux` and `general` via
-  `contributors_for(root)`, reads their `domains_dir`, stamps `owner`, and
-  injects. The two judgment plugins ship domains and compose nothing.
+- Every plugin bundled with praxis (`plugins/<name>/`) is process-only now —
+  none exposes a `domains_dir`. Judgment lives in the peer **domains bucket**
+  (`~/jdev/skills/domains`); pull it into a root via `corpora:import` (writes
+  ratified domains into `.praxis/domains`) or by listing a collection dir
+  directly under `corpora.sources`, as above. `corpora` discovers from that
+  `sources` list plus the project-local pool — it no longer asks praxis for
+  plugins carrying `domains_dir`.
 - The `corpora.project_shape` section is optional but gates domains that declare
   `applies-when` (e.g. the uiux domains require `has-ui: true`); omit a key and
   those domains are pruned. An absent section == `{}` == only always-on domains.

@@ -1,5 +1,5 @@
 ---
-description: Opt-in, re-runnable multi-select that registers/unregisters praxis plugins (corpora + the judgment plugins) into this root's .praxis/config.json — pick what to enable, toggle anytime.
+description: Opt-in, re-runnable multi-select that registers/unregisters praxis plugins (process plugins, plus corpora) into this root's .praxis/config.json — pick what to enable, toggle anytime.
 disable-model-invocation: true
 ---
 
@@ -21,8 +21,10 @@ Toggle which praxis plugins are active for a root. Opt-in, re-runnable, non-dest
 
 3. **Ask** with `AskUserQuestion` (`multiSelect: true`), one option per `available` plugin:
    `label` = `name`, `description` = its one-liner. **Pre-check every plugin already in
-   `registered`.** In the `corpora` option's description, note it is the **composer**: the judgment
-   plugins (general, coding-stack, uiux, writing) are inert without it.
+   `registered`.** In the `corpora` option's description, note it is the **composer** — but the
+   plugin list itself no longer includes judgment plugins; after registering corpora, domains come
+   from importing bucket collections (`corpora:import`) or listing collection dirs directly in
+   corpora's `sources` config, not from a bundled judgment plugin.
 
 4. **Set** exactly what the user selected (registers newly-checked, drops unchecked):
 

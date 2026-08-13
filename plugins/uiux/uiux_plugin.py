@@ -1,11 +1,10 @@
-"""uiux — a judgment plugin growing its PROCESS face.
+"""uiux — a PROCESS-face praxis plugin.
 
-Carries hand-authored design-judgment domain files for the corpora composer to
-discover and inject (the JUDGMENT face — unchanged). Corpora finds this plugin via
-`contributors_for(root)`, reads `*.md` from `domains_dir`, and stamps every domain
-`owner = "uiux"`.
+Design judgment now lives in the peer `domains` bucket (collection `uiux`),
+consumed via corpora import/sources — this plugin carries no `domains_dir` of
+its own.
 
-This module also registers the plugin's PROCESS face with praxis: the design
+This module registers the plugin's PROCESS face with praxis: the design
 `phases()` and `workflows()` (real `workflow.Phase` / `workflow.Workflow` objects),
 gated by a deterministic `library-state` phase whose `run` callable is
 `library_state.evaluate`. The runtime behaviors that read that fact —
@@ -211,8 +210,6 @@ def _section(text: str, name: str) -> str | None:
 class UiuxJudgment:
 
     source = "uiux"
-
-    domains_dir = Path(__file__).resolve().parent / "domains"
 
     def __init__(self, root):
 
