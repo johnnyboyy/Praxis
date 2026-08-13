@@ -47,6 +47,6 @@ All are explicit-only (they will not be auto-invoked by the model).
 
 ## Design
 
-See [`docs/design.md`](docs/design.md) for the phase/workflow model, typed edges, and
-the phase-walking runner, and [`docs/plugins.md`](docs/plugins.md) for the Contributor
-contract — how a plugin injects context and reacts at workflow steps.
+See [`docs/design.md`](docs/design.md) for the phase/workflow model and typed edges,
+[`docs/plugins.md`](docs/plugins.md) for the Contributor contract, and
+[`docs/glossary.md`](docs/glossary.md) for the vocabulary.

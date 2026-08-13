@@ -1,67 +1,30 @@
 # Praxis — where things live
 
-A **high-level map** of the praxis core. Deliberately shallow: it names each component, its
-one job, and its entry-point file — the kind of overview that drifts slowly. For mechanism,
-read the code; for the *why*, read `docs/design.md`; for the plugin contract, `docs/plugins.md`.
+A deterministic phase-graph engine that owns process invariants in code, and composes domain
+judgment from fail-soft, per-root Contributors. Nothing composes until a plugin is registered.
 
-Praxis in one line: **a deterministic phase-graph engine that owns process invariants in
-code, and composes all domain judgment from fail-soft, per-root code Contributors.** Nothing
-composes until a plugin is registered; praxis bundles a default set under `plugins/` and a root
-turns on the ones it wants.
-
-## The model (concepts)
-
-- **Unit of work** → walks a **workflow** (a graph of **phases**) instead of a single dispatch.
-- **Phase** — one atomic move (`name`, `stance`, `delivery`, optional `run`). Delivery is
-  `inline` | `spawn` | `deterministic` (a phase can run a script instead of an agent).
-- **Edge** — typed transition between phases: `pass` | `fail` | `always` | `agent-choice` |
-  `fact` (routes on a predicate over the phase's emitted facts). The context/preservation
-  boundary is a property of the **edge**, not the phase (`docs/design.md`).
-- **Contributor** — a plugin object that injects context (`contribute`), reacts at steps
-  (`hooks`: `verify` / `unit-close` / `close`), declares an edit lease (`surface`), and/or
-  provides `phases()` / `workflows()`. Registered per-root; loaded fail-soft.
+For the *why*, read `docs/design.md`; for the plugin contract, `docs/plugins.md`; for names,
+`docs/glossary.md`; for plugin discovery, `plugins/ARCHITECTURE.md`.
 
 ## Components (file → job)
 
 | File | Job |
 |---|---|
-| `contributors.py` | The **Contributor contract**: `contribute`/`hooks`/`surface`/`phases`/`workflows`, `Contribution`/`HookContext`, `contributors_for(root)` (loads `module:factory` specs from config), `gather`, `fire`. The plugin surface. |
-| `workflow.py` | `Phase` / `Workflow` / edge dataclasses; `WHENS`; the seed phase/workflow library. |
-| `workflow_run.py` | `run_workflow` — the phase walker: edge routing (`_choose_edge`), deterministic delivery, the aggregate receipt, `phase_fit`/`phase.route_unmatched` recording. |
-| `registry.py` | `resolve_phases` / `resolve_workflows` — merge seed phases/workflows with contributor-provided ones (seed wins, first-plugin wins; fail-soft). |
-| `run.py` | `run_unit` — the live drive: single-dispatch or resolve+run a named workflow; fires `verify` / `unit-close` / `close` hooks (`_finish`). Home of the coverage/mutation verifiers and the rebuild gates (`adequacy_verifier`, `coverage_diff_verifier`). |
-| `rebuild_ir.py` | The structured spec the rebuild triple's `extract` phase emits (`interface` / `allowed_surface` / `tests.{spec,held_out}`); `validate_ir` is fail-closed and enforces a real held-out split. |
-| `isolation.py` | **Rebuild isolation + copy-detection.** `seed_synth_worktree` (spec-only scratch tree with its own `.praxis` marker), `dep_hygiene_ok` (synth binds to synth, original off the import path), `scan_tripwire` (flag reads outside the worktree), `synthesize_exit_gate` (tripwire ∘ coverage-diff). |
-| `situation.py` | `Situation` — the framing a Contributor sees (`task_kind`, `subject`, `phase`=stance, `phase_name`, `workflow`, `label`, `targets`, `intent`). Project-shape is not a Situation field — corpora detects it and stores it in its own config namespace. |
+| `contributors.py` | The Contributor contract: `contribute`/`hooks`/`surface`/`phases`/`workflows`, `contributors_for(root)`, `gather`, `fire`. |
+| `workflow.py` | `Phase` / `Workflow` / edge dataclasses; the seed phase/workflow library. |
+| `workflow_run.py` | `run_workflow` — the phase walker: edge routing, deterministic delivery, aggregate receipt, `phase_fit` recording. |
+| `registry.py` | `resolve_phases` / `resolve_workflows` — merge seed + contributor objects (seed wins, first-plugin wins, fail-soft). |
+| `run.py` | `run_unit` — single-dispatch or named-workflow drive; the coverage/mutation verifiers and rebuild gates (`adequacy_verifier`, `coverage_diff_verifier`). |
+| `rebuild_spec.py` | The structured spec the `extract` phase emits (`interface` / `allowed_surface` / `tests.{spec,held_out}`); `validate_spec` is fail-closed and enforces a real held-out split. |
+| `isolation.py` | Rebuild isolation + copy-detection: `seed_synth_worktree`, `dep_hygiene_ok`, `scan_tripwire`, `synthesize_exit_gate`. |
+| `situation.py` | `Situation` — the framing a Contributor sees (`task_kind`, `subject`, `phase`=stance, `phase_name`, `workflow`, `targets`, `intent`). |
 | `orchestrate.py` / `cascade.py` | Orchestration altitude: fan-out → barrier full-verify → bounded fix-loop → escalation. |
-| `conduct.py` / `plan.py` / `handoff.py` | The inline drive: `register_plan` → `next_handoff` → `close_unit`; plan's unit graph bookkeeping; handoff assembly. |
-| `scripts/gate.py`, `scripts/units.py`, `hooks/` | The **edit-lease gate**: a PreToolUse hook denies out-of-lease edits via a pure function over the journal (glob `surface_allows`). |
+| `conduct.py` / `plan.py` / `handoff.py` | The inline drive: `register_plan` → `next_handoff` → `close_unit`; unit-graph bookkeeping; handoff assembly. |
+| `scripts/gate.py`, `scripts/units.py`, `hooks/` | The edit-lease gate: a PreToolUse hook denies out-of-lease edits via a pure function over the journal. |
 | `journal.py` | Append-only event log (`.praxis/journal.jsonl`) — the source of truth for plan/unit/phase state. |
-| `config.py` | `.praxis/config.json` — the namespaced per-root store (the `## contributors` registry + each plugin's own scope). |
-| `accretion.py` | Gap-surfacing: recurring `phase.gap` / `conductor.gap` → operator-minted vocabulary (names, not runnable phases). |
-| `mcp_server.py` | The MCP tool surface (see entry points). |
-
-## Plugins & how one is discovered
-
-Plugins live under `plugins/<name>/` (bundled with praxis; see `plugins/ARCHITECTURE.md`).
-A plugin identifies itself with a module-level `PRAXIS_PLUGIN = True` marker in its main
-module — discovery is marker-driven and static (no import, no filename convention).
-`scripts/plugin_registry.py` unions plugins across a layered search path, LOW→HIGH
-precedence (higher wins on a name collision):
-
-1. **bundled** — `plugins/` shipped with praxis (default plugins-root, derived from `__file__`).
-2. **global** — best-effort enumeration of Claude Code's *installed* plugins under `~/.claude`:
-   install paths read from `plugins/installed_plugins.json` (the authoritative v2 registry) plus
-   `skills/` symlink targets (skills-directory plugins Claude Code symlinks in), each scanned for
-   the marker. Plugin *source* does not live under `~/.claude/plugins/`, so that dir is never
-   scanned directly. This makes a praxis plugin shipped inside an installed Claude Code plugin
-   discoverable in every project. Fail-soft if the registry/skills dir is absent or malformed.
-3. **project** — `<root>/.praxis/plugins`.
-4. **explicit** — dirs listed in the root's top-level `plugins_search_paths` config key.
-
-A root enables plugins with the `:register-plugins` skill, which writes the `## contributors`
-map and a top-level `plugins_path` (the union of selected plugin dirs, prepended to `sys.path`
-so the `module:make` specs import without any external `PYTHONPATH`).
+| `config.py` | `.praxis/config.json` — the namespaced per-root store (contributors registry + each plugin's scope). |
+| `accretion.py` | Gap-surfacing: recurring `phase.gap` / `conductor.gap` → operator-minted vocabulary. |
+| `mcp_server.py` | The MCP tool surface. |
 
 ## Entry points
 
@@ -69,48 +32,3 @@ so the `module:make` specs import without any external `PYTHONPATH`).
   `plan`, `plan_status`, `conduct`, `conductor_*`.
 - **Shell hooks** (`hooks/`): the frame-gate + payload stamps, wired via `hooks/hooks.json`.
 - **Skills** (`skills/`): `init`, `inline`, `orchestrate`, `register-plugins`.
-
-## Docs
-
-- `docs/design.md` — the enduring conceptual model (edges, gates, the rebuild triple, the
-  attractor theory). Load-bearing; read this for *why*.
-- `docs/plugins.md` — the current Contributor contract.
-- `docs/history/` — historical build-time specs (superseded by code + tests).
-
-## Rebuild isolation — what it is, and what it is NOT
-
-The rebuild triple exists to enforce one invariant: `synthesize` REBUILDS the interface
-rather than COPYING the original. Behavioral gates (coverage-diff, held-out) cannot tell a
-faithful copy from a real rebuild — both go green. The rebuild-isolation defense (`isolation.py`) is
-three best-effort layers, not a sandbox:
-
-- **Attractor-reduction** — `seed_synth_worktree` builds a scratch tree with ONLY the spec's
-  sanctioned artifacts (spec tests + shared config) and its own `.praxis` marker; the
-  original source is never seeded, so a synth agent that stays in its lane never meets it.
-- **A copy-detection tripwire** — `scan_tripwire` flags any read that resolves outside the
-  worktree; a tripped wire fails the unit at synthesize-exit. It is a DETECTOR, not a preventer.
-  Its input is captured live: the `tripwire_log.sh` PreToolUse hook logs every dispatched
-  subagent's tool call (keyed on the subagent's `agent_id`), and `isolation.read_tool_log`
-  replays the synth subagent's reads — `Read`/`Grep`/`Glob` tool reads plus shell reads
-  (`cat`/`sed`/`head`/`tail`/`less`/`grep`/`find`) visible in `Bash` commands — into the
-  tripwire. **Blind spot:** a raw filesystem syscall (e.g. Python `open()`) bypasses the
-  hook entirely and is NOT captured; only OS-level sandboxing (BACKLOG) closes that. The hook
-  must be installed in settings (`hooks/hooks.json`, matcher `Read|Grep|Glob|Bash`) for capture
-  to be active at all.
-- **Dependency hygiene** — `dep_hygiene_ok` verifies the synth's tests bind to the synth's
-  code with the original off the import path, closing the silent killer where coverage-diff
-  passes against an installed copy of the original.
-
-This is **"isolated + copy-detected," NOT "provably cannot see the original."** A `claude -p`
-subagent can `Read` any absolute path; cwd isolation is attractor-reduction plus a tripwire,
-not a capability boundary. Real OS capability sandboxing (container / mount namespace /
-read-only bind mount) and moving the original aside for the run are on the **BACKLOG**, not
-this lap. The residual risk — a faithful copy made through an absolute-path read — remains open;
-strong held-out adequacy (the preservation gate) is the behavior-preserving backstop.
-
-## Core invariant
-
-Mechanism is owned by the core and enforced in code; **judgment is deferred to the model**
-and composed from plugins. Nothing composes until a plugin is registered — an unregistered
-root injects nothing. Bundling a default plugin set is normal: they still only take effect
-once a root turns them on.
