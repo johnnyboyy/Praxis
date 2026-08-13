@@ -264,6 +264,17 @@ def apply(root: str | Path, selected_names, discovered: list[dict]) -> dict:
     else:
         unnamed.pop(PLUGINS_PATH_KEY, None)
     scopes[""] = unnamed
+
+    # corpora discovers domains from its own config's `sources` list (it no
+    # longer asks praxis) — registration writes the selected plugins' domains/
+    # dirs into corpora's scope so its discovery stays a pure read.
+    sources = [{"owner": name, "dir": str(Path(by_name[name]["dir"]) / "domains")}
+               for name in selected
+               if name != "corpora" and (Path(by_name[name]["dir"]) / "domains").is_dir()]
+    if "corpora" in selected:
+        corpora_scope = dict(scopes.get("corpora", {})) if isinstance(scopes.get("corpora"), dict) else {}
+        corpora_scope["sources"] = sources
+        scopes["corpora"] = corpora_scope
     _dump(root, scopes)
 
     return {
@@ -271,6 +282,7 @@ def apply(root: str | Path, selected_names, discovered: list[dict]) -> dict:
         "removed": removed,
         "contributors": new_contributors,
         "plugins_path": plugins_path,
+        "corpora_sources": sources if "corpora" in selected else None,
     }
 
 def main(argv=None) -> int:

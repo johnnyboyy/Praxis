@@ -15,6 +15,19 @@
     "planner": "planner_plugin:make"
   },
   "corpora": {
-    "project_shape": {}
+    "project_shape": {
+      "has_ui": "no",
+      "language": "python"
+    },
+    "sources": [
+      {
+        "dir": "/Users/johnzdanis/jdev/skills/praxis/plugins/general/domains",
+        "owner": "general"
+      },
+      {
+        "dir": "/Users/johnzdanis/jdev/skills/praxis/plugins/planner/domains",
+        "owner": "planner"
+      }
+    ]
   }
 }

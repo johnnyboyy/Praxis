@@ -33,7 +33,9 @@ Toggle which praxis plugins are active for a root. Opt-in, re-runnable, non-dest
    Use `--set ""` to clear all.
 
 5. **Report** the helper's `added` / `removed`, the final active set, and that `plugins_path` was
-   written. Remind the user this is re-runnable.
+   written. If corpora was selected, also report `corpora_sources` — the domains dirs written into
+   corpora's config scope (corpora discovers from that list, not from praxis). Remind the user this
+   is re-runnable.
 
 ## Background (only if something is ambiguous)
 
