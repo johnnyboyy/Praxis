@@ -10,12 +10,12 @@ bundled process plugin).
 {
   "contributors": {
     "corpora": "corpora.plugin:make",
-    "uiux":    "uiux_plugin:make"
+    "writing": "writing_plugin:make"
   },
   "corpora": {
     "project_shape": { "language": "python", "framework": "react", "has-ui": true },
     "sources": [
-      { "owner": "uiux", "dir": "/path/to/domains/uiux" }
+      { "owner": "writing", "dir": "/path/to/domains/writing" }
     ]
   }
 }
@@ -28,6 +28,11 @@ bundled process plugin).
   directly under `corpora.sources`, as above. `corpora` discovers from that
   `sources` list plus the project-local pool — it no longer asks praxis for
   plugins carrying `domains_dir`.
+- A **peer** plugin (one that lives outside `plugins/<name>/`, e.g. `uiux` at
+  `~/jdev/skills/uiux`) is registered the same way but its dir must be listed
+  under the top-level `plugins_search_paths` key (or arrive via the global
+  Claude Code plugins layer) so discovery and `sys.path` can find it — see
+  "Imports" below.
 - The `corpora.project_shape` section is optional but gates domains that declare
   `applies-when` (e.g. the uiux domains require `has-ui: true`); omit a key and
   those domains are pruned. An absent section == `{}` == only always-on domains.

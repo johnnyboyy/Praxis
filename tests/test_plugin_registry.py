@@ -74,12 +74,12 @@ class DiscoverTest(unittest.TestCase):
     def test_finds_all_known_plugins(self):
         self.assertEqual(
             set(self.by_name),
-            {"uiux", "writing", "planner", "rebuild", "coding-process"},
+            {"writing", "planner", "rebuild", "coding-process"},
         )
 
     def test_specs_and_dirs(self):
-        self.assertEqual(self.by_name["uiux"]["spec"], "uiux_plugin:make")
-        self.assertTrue(self.by_name["uiux"]["dir"].endswith("/uiux"))
+        self.assertEqual(self.by_name["writing"]["spec"], "writing_plugin:make")
+        self.assertTrue(self.by_name["writing"]["dir"].endswith("/writing"))
 
     def test_all_bundled_are_origin_bundled(self):
         for e in self.entries:
@@ -88,7 +88,7 @@ class DiscoverTest(unittest.TestCase):
 
     def test_descriptions_are_first_sentences(self):
         self.assertIn("intake", self.by_name["planner"]["description"])
-        self.assertTrue(self.by_name["uiux"]["description"].endswith("."))
+        self.assertTrue(self.by_name["writing"]["description"].endswith("."))
         for e in self.entries:
             self.assertTrue(e["description"], f"{e['name']} has no description")
 
@@ -148,11 +148,11 @@ class ApplyTest(unittest.TestCase):
 
     def test_rerun_registers_and_unregisters(self):
         pr.apply(self.root, ["corpora", "writing"], self.discovered)
-        summary = pr.apply(self.root, ["corpora", "uiux"], self.discovered)
-        self.assertEqual(summary["added"], ["uiux"])
+        summary = pr.apply(self.root, ["corpora", "planner"], self.discovered)
+        self.assertEqual(summary["added"], ["planner"])
         self.assertEqual(summary["removed"], ["writing"])
         self.assertEqual(
-            set(config.read(self.root, "contributors")), {"corpora", "uiux"}
+            set(config.read(self.root, "contributors")), {"corpora", "planner"}
         )
 
     def test_idempotent_to_selection(self):
@@ -193,7 +193,7 @@ class ApplyTest(unittest.TestCase):
         # own domains/ dir are refreshed/replaced.
         bucket_source = {"owner": "bucket", "dir": "/some/other/root/domains/uiux"}
         config.write(self.root, "corpora", {"sources": [bucket_source]})
-        summary = pr.apply(self.root, ["corpora", "uiux"], self.discovered)
+        summary = pr.apply(self.root, ["corpora", "planner"], self.discovered)
         sources = config.read(self.root, "corpora")["sources"]
         self.assertIn(bucket_source, sources)
         self.assertEqual(summary["corpora_sources"], sources)
@@ -250,7 +250,7 @@ class LayeredDiscoveryTest(unittest.TestCase):
         self.assertIn("projonly", found)
         self.assertEqual(found["projonly"]["origin"], "project")
 
-        self.assertIn("uiux", found)
+        self.assertIn("writing", found)
 
     def test_explicit_search_path_discovered(self):
         ext = self.root / "elsewhere"
