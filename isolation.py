@@ -17,11 +17,10 @@ faithful copy — both go green. Only isolation can, and isolation here is
     filesystem-read log, it flags every path that resolves OUTSIDE the worktree.
     A non-empty result means the agent reached for the original — a copy attempt.
 
-HONEST FRAMING (do not overstate): this is "isolated + copy-detected," NOT
-"provably cannot see the original." A `claude -p` subagent can Read any absolute
-path; cwd isolation is attractor-reduction + a tripwire, not a sandbox. Real OS
-capability sandboxing (container / mount namespace / read-only bind mount) is on
-the BACKLOG, not this lap.
+Framing: this is "isolated + copy-detected," not "provably cannot see the
+original." A `claude -p` subagent can Read any absolute path; cwd isolation is
+attractor-reduction + a tripwire, not a sandbox. Real OS capability sandboxing
+(container / mount namespace / read-only bind mount) is on the BACKLOG.
 """
 from __future__ import annotations
 

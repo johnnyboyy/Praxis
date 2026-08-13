@@ -61,7 +61,7 @@ symlink or a `plugins_search_paths` entry). It is not one of the plugins under `
 - `REGISTER-EXAMPLE.md` — a sample `.praxis/config.json` registration.
 - `<plugin>/history/` — historical build-time specs where present (superseded by code + tests).
 
-## The pattern worth remembering
+## Core pattern
 
 Judgment lives in **domain files owned by plugins** and is composed by **corpora** (many
 owners, one composer). Process lives in **Contributors** that praxis core runs. A "bare"

@@ -82,7 +82,7 @@ so the `module:make` specs import without any external `PYTHONPATH`).
 The rebuild triple exists to enforce one invariant: `synthesize` REBUILDS the interface
 rather than COPYING the original. Behavioral gates (coverage-diff, held-out) cannot tell a
 faithful copy from a real rebuild — both go green. The rebuild-isolation defense (`isolation.py`) is
-therefore three honest, best-effort layers, not a sandbox:
+three best-effort layers, not a sandbox:
 
 - **Attractor-reduction** — `seed_synth_worktree` builds a scratch tree with ONLY the spec's
   sanctioned artifacts (spec tests + shared config) and its own `.praxis` marker; the
@@ -93,7 +93,7 @@ therefore three honest, best-effort layers, not a sandbox:
   subagent's tool call (keyed on the subagent's `agent_id`), and `isolation.read_tool_log`
   replays the synth subagent's reads — `Read`/`Grep`/`Glob` tool reads plus shell reads
   (`cat`/`sed`/`head`/`tail`/`less`/`grep`/`find`) visible in `Bash` commands — into the
-  tripwire. **Honest blind spot:** a raw filesystem syscall (e.g. Python `open()`) bypasses the
+  tripwire. **Blind spot:** a raw filesystem syscall (e.g. Python `open()`) bypasses the
   hook entirely and is NOT captured; only OS-level sandboxing (BACKLOG) closes that. The hook
   must be installed in settings (`hooks/hooks.json`, matcher `Read|Grep|Glob|Bash`) for capture
   to be active at all.
@@ -105,10 +105,10 @@ This is **"isolated + copy-detected," NOT "provably cannot see the original."** 
 subagent can `Read` any absolute path; cwd isolation is attractor-reduction plus a tripwire,
 not a capability boundary. Real OS capability sandboxing (container / mount namespace /
 read-only bind mount) and moving the original aside for the run are on the **BACKLOG**, not
-this lap. The residual risk — a faithful copy made through an absolute-path read — is named,
-not pretended closed; strong held-out adequacy (the preservation gate) is the behavior-preserving backstop.
+this lap. The residual risk — a faithful copy made through an absolute-path read — remains open;
+strong held-out adequacy (the preservation gate) is the behavior-preserving backstop.
 
-## The invariant worth remembering
+## Core invariant
 
 Mechanism is owned by the core and enforced in code; **judgment is deferred to the model**
 and composed from plugins. Nothing composes until a plugin is registered — an unregistered

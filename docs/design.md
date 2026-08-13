@@ -46,7 +46,7 @@ edge type — not the phase — selects the preservation gate:
 
 **Every edge carries a preservation gate; its form is a function of what the edge did to the
 original.** Coverage-diff is not generic — it is the compensating control specific to the `extract`
-edge, the price of having dropped the original to escape its pull.
+edge, for having dropped the original.
 
 ### The rebuild triple (the `extract` edge, expanded)
 
@@ -78,7 +78,7 @@ write-tests → implement → refactor → test-cleanup
 Two verification scopes: **local** (a unit's own new tests, fast, inside the unit workflow) and
 **global** (the full suite, once, at the barrier).
 
-### Discovery over stone
+### Phase-fit discovery: grow the phase set from strain
 
 Every phase exit reports `phase_fit` (clean|loose|none) + `suggested` (what the agent would call
 what it actually did) — the same mechanism as task-kind fit, lifted to process. `loose`/`none`

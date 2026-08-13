@@ -59,7 +59,7 @@ read-only bind mount that excludes the original tree, plus (optionally) moving t
 for the run so a naive absolute-path read fails. That is heavy machinery relative to this lap; the
 critique's pragmatic honest bar is best-effort isolation + a tripwire + strong held-out adequacy
 (the preservation gate), which at least guarantees a copy is behavior-preserving even if it did not escape the
-attractor. So OS sandboxing is deferred, not pretended.
+attractor. So OS sandboxing is deferred.
 
 **Candidate home.** The Agent/subagent dispatch step (where the synth runs), paired with the
 worktree-isolation entry above.
