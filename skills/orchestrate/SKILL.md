@@ -24,7 +24,7 @@ Drive it through praxis with the Agent tool as the executor. praxis owns framing
      Loop a–c until `next_phase` → `complete`.
    The per-unit coverage gate fires here, during the walk — a unit only advances when its acceptance tests pass at threshold; it re-runs after any `test-cleanup` phase so pruning scaffolding cannot drop coverage.
 
-3. FINAL BARRIER — once every unit is done, the engine runs the full suite + the MUTATION signal once (scoped to the plan's changed files) before close. A failing mutation barrier BLOCKS close. On failure, route the defect to a SINGLE fixer subagent with GLOBAL context (the whole diff + the barrier) — not back to the isolated implementers, who each lack the whole picture. Re-run the barrier, bounded to 3 rounds.
+3. FINAL BARRIER — once every unit is done, run the full verification ONCE yourself before close: the full test suite, plus any adequacy signal the root configures (e.g. a mutation run scoped to the plan's changed files). A failing barrier BLOCKS close. On failure, route the defect to a SINGLE fixer subagent with GLOBAL context (the whole diff + the barrier) — not back to the isolated implementers, who each lack the whole picture. Re-run the barrier, bounded to 3 rounds.
 
 4. ESCALATE — an explicit stop surfaced to the user, never a silent stall — when: a fan-out unit stalled, a phase gate stayed red past its fix budget, the final barrier's fix loop exhausted its rounds, or a fix subagent reports the fix is a re-architecture, not a patch.
 

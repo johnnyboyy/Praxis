@@ -50,93 +50,30 @@ def init(search_base: str | None = None) -> str:
     return json.dumps(conduct_engine.init_root(root=search_base), indent=2)
 
 @mcp.tool()
-def conduct(intent: str, brief: str | None = None, task_kind: str = "change",
-            subject: str = "coding", suggested_kind: str | None = None, fit: str = "clean",
-            phase: str = "none", targets: str | None = None, test_cmd: str | None = None,
-            model: str | None = None, allow_edits: bool = False, dry_run: bool = True,
-            search_base: str | None = None) -> str:
-    """Run one unit of work through the conductor: it composes the applicable overlay for
-    this situation, dispatches the work to an ISOLATED claude subprocess under that overlay, gates
-    the result on `test_cmd` (looping back with the failure as feedback if it fails), and records
-    every step to the journal.
-
-    GAP SIGNAL — always fill these two honestly:
-      `task_kind`      — the closest of create | change | explore (the verb work RUNS under).
-      `suggested_kind` — what you would NATURALLY call this task, in your own words (free text).
-      `fit`            — how well `task_kind` matches your suggestion: "clean" (great fit),
-                         "loose" (approximate), or "none" (it really isn't create/change/explore).
-    A loose/none fit surfaces a vocabulary gap for the operator to later mint — do not force a clean
-    rating to avoid it.
-
-    `subject` is coding | design | process | prose. `intent` is what the work is trying to do;
-    `brief` is the concrete instruction handed to the child (defaults to `intent`). `test_cmd` is the
-    verification command (e.g. "python3 -m pytest -q") — its exit code gates the unit. `allow_edits`
-    must be true for the child to actually change files; `dry_run` (default TRUE) previews the
-    composed overlay, the routing, and the child command WITHOUT spawning or writing a unit — call
-    it once to check, then re-call with dry_run=false, allow_edits=true to execute."""
-    if not _managed(search_base):
-        return _NOT_A_ROOT
-    out = conduct_engine.run_task(
-        _root(search_base), intent=intent, brief=brief, task_kind=task_kind, subject=subject,
-        suggested_kind=suggested_kind, fit=fit, phase=phase,
-        targets=[t.strip() for t in (targets or "").split(",") if t.strip()],
-        test_cmd=test_cmd, model=model, allow_edits=allow_edits, dry_run=dry_run)
-    return json.dumps(out, indent=2)
+def plan_status(search_base: str | None = None) -> str:
+    """Progress of the current plan, folded from the journal: per-unit buckets (done / in_flight /
+    stalled / escalated / waiting) and the cost rollup. `no-plan` when nothing has been planned
+    for this root."""
+    return json.dumps(conduct_engine.plan_status(_root(search_base)), indent=2)
 
 @mcp.tool()
-def plan(tasks: str, test_cmd: str | None = None, model: str | None = None,
-         concurrency: int | None = None, allow_edits: bool = False, dry_run: bool = True,
-         search_base: str | None = None) -> str:
-    """Hand the conductor a TASKLIST and let it cascade. `tasks` is a JSON array of task objects; each
-    object is one task:
+def register_plan(tasks: str, search_base: str | None = None) -> str:
+    """Record a tasklist's unit graph to the journal — the entry point for driving units of work.
+    `tasks` is a JSON array of task objects:
       { "intent": <what this task does>,            // required
         "id": <stable id>,                            // optional; how other tasks reference it
         "task_kind": "create|change|explore",         // the seed verb (default change)
         "subject": "coding|design|process|prose",     // default coding
         "suggested_kind": <what you'd freely call it>,// THE gap candidate — fill it honestly
         "fit": "clean|loose|none",                    // how well task_kind fits (default clean)
+        "workflow": <workflow name>,                  // optional; makes the unit phase-walked
         "depends_on": [<id>, ...] }                   // tasks that must finish first (the unit graph edges)
 
-    YOU are the planner: interview the operator, decompose the request into these tasks, and infer
-    the `depends_on` edges before calling this. The conductor plans them into a unit graph and runs each
-    ready wave (dependencies first), composing an overlay per unit and gating on `test_cmd`.
-    `dry_run` (default TRUE) previews the plan + each unit's routing/gap WITHOUT spawning. Re-call
-    with dry_run=false, allow_edits=true to EXECUTE — the cascade then runs in a DETACHED worker
-    process and this call returns immediately with status `running`; poll `plan_status` to watch
-    units complete. The worker survives an MCP-server restart, and re-calling resumes an interrupted
-    run (it does not re-spawn finished units). Fill `suggested_kind`/`fit` honestly per task — a
-    loose/none fit surfaces a vocabulary gap."""
-    if not _managed(search_base):
-        return _NOT_A_ROOT
-    parsed, err = _parse_tasklist(tasks)
-    if err:
-        return err
-    if dry_run:
-        out = conduct_engine.run_tasklist(_root(search_base), parsed, dry_run=True)
-    else:
-        out = conduct_engine.run_tasklist_detached(_root(search_base), parsed, test_cmd=test_cmd,
-                                                   model=model, concurrency=concurrency,
-                                                   allow_edits=allow_edits)
-    return json.dumps(out, indent=2)
-
-@mcp.tool()
-def plan_status(search_base: str | None = None) -> str:
-    """Progress of the current plan, folded from the journal: per-unit buckets (done / in_flight /
-    stalled / waiting), whether the background cascade is still running, and the cost rollup. Poll
-    this after a `plan` with dry_run=false. `no-plan` when nothing has been planned for this root."""
-    return json.dumps(conduct_engine.plan_status(_root(search_base)), indent=2)
-
-@mcp.tool()
-def register_plan(tasks: str, search_base: str | None = None) -> str:
-    """Record a tasklist's unit graph to the journal WITHOUT running it — the entry for implementing units
-    INLINE (yourself), not cascading them to isolated children. `tasks` is the same JSON array of
-    task objects the `plan` tool takes (intent / id / task_kind / subject / suggested_kind / fit /
-    depends_on). This writes one plan event (deterministic, no spawn, no contributor gather); then call
+    YOU are the planner: decompose the request into these tasks and infer the `depends_on` edges
+    before calling this. It writes one plan event (deterministic, no spawn); then call
     `next_handoff` to pull the next ready unit into THIS context — it frames the unit and opens the
-    edit gate, and you do the work here. Repeat next_handoff until it reports `complete`.
-
-    Use `plan` (not this) when you want the conductor to hand each unit to a fresh isolated child;
-    use `register_plan` + `next_handoff` when you want to implement inline with the design in hand."""
+    edit gate — and either do the work here or dispatch it to a subagent. Repeat next_handoff until
+    it reports `complete`. A loose/none `fit` surfaces a vocabulary gap — fill it honestly."""
     if not _managed(search_base):
         return _NOT_A_ROOT
     parsed, err = _parse_tasklist(tasks)

@@ -5,8 +5,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-import journal
-from contributors import HookContext, fire, gather, surface_for
 from situation import Situation
 
 OUTCOMES = ("result", "stall")
@@ -47,51 +45,6 @@ class Unit:
     def __post_init__(self):
         if self.unit_of_work is None:
             self.unit_of_work = self.situation.label or self.situation.task_kind
-
-@dataclass
-class Plan:
-
-    units: list
-
-@runtime_checkable
-class Executor(Protocol):
-
-    def run(self, unit: Unit, composed: dict) -> Receipt: ...
-
-class InlineExecutor:
-
-    def __init__(self, handler):
-        self._handler = handler
-
-    def run(self, unit: Unit, composed: dict) -> Receipt:
-        out = self._handler(unit, composed)
-        return out if isinstance(out, Receipt) else Receipt.from_dict(out)
-
-class SubprocessExecutor:
-
-    def __init__(self, argv_builder, timeout: int = 300, cost_extractor=None):
-        self._argv_builder = argv_builder
-        self._timeout = timeout
-        self._cost_extractor = cost_extractor
-
-    def run(self, unit: Unit, composed: dict) -> Receipt:
-        import json
-        import subprocess
-        argv = self._argv_builder(unit, composed)
-        try:
-            p = subprocess.run(argv, capture_output=True, text=True, timeout=self._timeout)
-        except (subprocess.SubprocessError, OSError) as e:
-            return Receipt(outcome="stall", status="blocked", surfaced=[f"executor failed: {e}"])
-        if p.returncode != 0:
-            reason = p.stderr.strip()[:500] or f"exit {p.returncode}"
-            return Receipt(outcome="stall", status="blocked", surfaced=[reason])
-        try:
-            receipt = Receipt.from_dict(json.loads(p.stdout))
-        except (json.JSONDecodeError, ValueError):
-            receipt = Receipt(outcome="result", status="complete")
-        if receipt.cost is None and self._cost_extractor is not None:
-            receipt.cost = self._cost_extractor(p.stdout, p.stderr)
-        return receipt
 
 @dataclass
 class Verdict:
@@ -544,115 +497,3 @@ def verifiers_for_workflow(root: Path, wf, verifier: "Verifier | None" = None) -
     if wf.name == "rebuild-triple":
         return _rebuild_triple_verifiers(coverage_verifier_from_config(root))
     return _workflow_verifiers(verifier, coverage_verifier_from_config(root))
-
-def run_unit(root: Path, unit: Unit, contributors, executor: Executor,
-             verifier: Verifier | None = None, max_retries: int = 2,
-             verifiers: dict | None = None) -> dict:
-    journal.append(root, "unit.proposed", unit=unit.id, unit_of_work=unit.unit_of_work,
-                   situation=unit.situation.to_dict())
-    composed = gather(contributors, unit.situation, root=root)
-    surface = surface_for(contributors, unit.situation) or (unit.situation.targets or None)
-    journal.append(root, "unit.framed", unit=unit.id, unit_of_work=unit.unit_of_work,
-                   routed_kind=composed.get("routed_kind"), gap_surfaced=composed.get("gap_surfaced"),
-                   sources=composed.get("sources", []), stance=composed.get("stance"),
-                   surface=surface, note=composed.get("note"))
-
-    if unit.situation.workflow:
-        import registry
-        from workflow_run import run_workflow
-        wf = registry.resolve_workflows(root).get(unit.situation.workflow)
-        if wf is not None:
-            wf_verifiers = verifiers if verifiers is not None\
-                else verifiers_for_workflow(root, wf, verifier)
-            return run_workflow(root, unit, wf, contributors, executor,
-                                verifiers=wf_verifiers)
-        journal.append(root, "workflow.unresolved", unit=unit.id,
-                       workflow=unit.situation.workflow)
-
-    def _result(outcome, status, receipt, verified, attempts, defects):
-        return {"unit": unit.id, "unit_of_work": unit.unit_of_work, "outcome": outcome,
-                "status": status, "verified": verified, "attempts": attempts, "defects": defects,
-                "gap_surfaced": composed.get("gap_surfaced"),
-                "routed_kind": composed.get("routed_kind"),
-                "receipt": receipt.to_dict() if receipt else None}
-
-    def _finish(outcome, status, receipt, verified, attempts, defects, verdict=None):
-        fire(contributors, "unit-close", HookContext(
-            root=root, step="unit-close", unit=unit,
-            receipt=receipt.to_dict() if receipt else None,
-            verdict=verdict))
-        return _result(outcome, status, receipt, verified, attempts, defects)
-
-    feedback: list = []
-    receipt = None
-    for attempt in range(max_retries + 1):
-        journal.append(root, "unit.dispatched", unit=unit.id, attempt=attempt)
-        journal.append(root, "unit.running", unit=unit.id, attempt=attempt)
-        attempt_composed = composed if not (feedback or attempt) else\
-            {**composed, "feedback": feedback, "attempt": attempt}
-        receipt = executor.run(unit, attempt_composed)
-        journal.append(root, "unit.receipt", unit=unit.id, attempt=attempt, **receipt.to_dict())
-
-        if receipt.outcome == "stall":
-            journal.append(root, "unit.stalled", unit=unit.id, outcome="stall",
-                           status=receipt.status)
-            return _finish("stall", receipt.status, receipt, None, attempt + 1, [])
-
-        if verifier is None:
-            journal.append(root, "unit.done", unit=unit.id, outcome="result",
-                           status=receipt.status)
-            return _finish("result", receipt.status, receipt, None, attempt + 1, [])
-
-        verdict = verifier.verify(unit, receipt, composed)
-        if verdict.verified:
-            journal.append(root, "unit.verified", unit=unit.id, attempt=attempt,
-                           evidence=verdict.evidence)
-            fire(contributors, "verify", HookContext(
-                root=root, step="verify", unit=unit, receipt=receipt.to_dict(),
-                verdict={"verified": True, "defects": verdict.defects,
-                         "evidence": verdict.evidence}))
-            journal.append(root, "unit.done", unit=unit.id, outcome="result",
-                           status=receipt.status)
-            return _finish("result", receipt.status, receipt, True, attempt + 1, [],
-                           verdict={"verified": True, "defects": verdict.defects,
-                                    "evidence": verdict.evidence})
-
-        feedback = verdict.defects
-        journal.append(root, "unit.note", unit=unit.id, kind="defect", attempt=attempt,
-                       defects=verdict.defects, evidence=verdict.evidence)
-
-    journal.append(root, "unit.stalled", unit=unit.id, outcome="stall", status="blocked",
-                   surfaced=feedback,
-                   note=f"verification failed after {max_retries + 1} attempt(s)")
-    return _finish("stall", "blocked", receipt, False, max_retries + 1, feedback)
-
-def run(plan: Plan, contributors, executor: Executor, root: Path,
-        verifier: Verifier | None = None, max_retries: int | None = None,
-        policy=None, barrier_verifier: Verifier | None = None) -> dict:
-    import views
-    import policy as policy_mod
-    pol = policy or policy_mod.load_policy(root)
-    if pol.verify_required and verifier is None:
-        raise ValueError("policy sets verify_required but no verifier was supplied")
-    retries = pol.max_retries if max_retries is None else max_retries
-    results = [run_unit(root, unit, contributors, executor, verifier, retries)
-               for unit in plan.units]
-
-    barrier = barrier_verifier if barrier_verifier is not None\
-        else mutation_verifier_from_config(root)
-    barrier_info = None
-    if barrier is not None:
-        verdict = barrier.verify(None, None, {})
-        barrier_info = {"verified": verdict.verified, "defects": verdict.defects,
-                        "evidence": verdict.evidence}
-        journal.append(root, "barrier.verified" if verdict.verified else "barrier.blocked",
-                       verified=verdict.verified, defects=verdict.defects,
-                       evidence=verdict.evidence)
-        if not verdict.verified:
-            return {"results": results, "barrier": barrier_info, "closed": False,
-                    "status": "blocked", "summary": journal.fold(root)["summary"],
-                    "cost": views.cost(root)}
-
-    fire(contributors, "close", HookContext(root=root, step="close"))
-    return {"results": results, "barrier": barrier_info, "closed": True,
-            "summary": journal.fold(root)["summary"], "cost": views.cost(root)}

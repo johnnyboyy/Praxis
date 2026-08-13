@@ -10,7 +10,6 @@ import phase_walk  # noqa: E402
 import run as R  # noqa: E402
 import workflow as W  # noqa: E402
 from situation import Situation  # noqa: E402
-from workflow_run import run_workflow  # noqa: E402
 
 def _sit(**over):
     kw = dict(task_kind="change", intent="do the thing", subject="coding")
@@ -98,15 +97,7 @@ class CarryWalkTest(_Base):
         self.assertEqual(c["phase"], "B")
         self.assertEqual(c, d)
 
-class _Capture:
-    def __init__(self):
-        self.seen = []
-
-    def run(self, unit, composed):
-        self.seen.append(dict(composed))
-        return R.Receipt(outcome="result", evidence={"produces": composed.get("phase")})
-
-class EquivalenceTest(_Base):
+class FullWalkTest(_Base):
 
     def _walk_resumable(self, wf, verifiers):
         unit = R.Unit("u1", _sit())
@@ -121,15 +112,9 @@ class EquivalenceTest(_Base):
                                     verifiers=verifiers, workflow=wf)
         raise AssertionError("resumable walk did not terminate")
 
-    def test_tdd_unit_equivalence(self):
-
-        sync_root = Path(tempfile.mkdtemp())
-        (sync_root / ".praxis").mkdir()
-        ref = run_workflow(sync_root, R.Unit("u1", _sit()), W.TDD_UNIT, [], _Capture())
-
+    def test_tdd_unit_walks_all_phases_in_order(self):
         visited, status = self._walk_resumable(W.TDD_UNIT, verifiers={})
         self.assertEqual(status, "complete")
-        self.assertEqual(visited, ref["phases"])
         self.assertEqual(visited,
                          ["write-tests", "implement", "refactor", "test-cleanup"])
 

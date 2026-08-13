@@ -6,10 +6,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import isolation  # noqa: E402
+import phase_walk  # noqa: E402
 import run as R  # noqa: E402
 import workflow as W  # noqa: E402
 from situation import Situation  # noqa: E402
-from workflow_run import run_workflow  # noqa: E402
 
 FAITHFUL_IMPL = "def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n"
 
@@ -256,19 +256,17 @@ class RebuildWalkTripwireTest(unittest.TestCase):
         original.write_text(FAITHFUL_IMPL)
         ir = _ir(["s1", "s2", "s3"], [held])
 
-        def handler(unit, composed):
-            if composed.get("phase") == "extract":
-                return R.Receipt(outcome="result", evidence={"produces": ir})
-            return R.Receipt(outcome="result",
-                             evidence={"produces": str(synth),
-                                       "tool_log": tool_log(original)})
-
         verifiers = {"does-it": R.adequacy_verifier(None),
                      "coverage-diff": isolation.synthesize_exit_gate(
                          R.coverage_diff_verifier())}
-        out = run_workflow(self.root, R.Unit("u1", _sit()), W.REBUILD_TRIPLE,
-                           [], R.InlineExecutor(handler), verifiers=verifiers)
-        return out
+        unit = R.Unit("u1", _sit())
+        wf = W.REBUILD_TRIPLE
+        phase_walk.record_phase(self.root, unit, "extract", {"produces": ir},
+                                verifiers=verifiers, workflow=wf)
+        phase_walk.record_phase(self.root, unit, "synthesize",
+                                {"produces": str(synth),
+                                 "tool_log": tool_log(original)},
+                                verifiers=verifiers, workflow=wf)
 
     def test_copy_read_halts_at_synthesize(self):
         self._walk(lambda orig: [str(orig)])

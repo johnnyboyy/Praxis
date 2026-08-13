@@ -5,61 +5,6 @@ from pathlib import Path
 
 import journal
 
-def _unit_events(root: Path) -> dict[str, list[dict]]:
-    by_unit: dict[str, list[dict]] = {}
-    for e in journal.read(root):
-        uid = e.get("unit")
-        if uid is not None:
-            by_unit.setdefault(uid, []).append(e)
-    return by_unit
-
-def handoff(root: Path, unit: str) -> dict | None:
-    fold = journal.fold(root)
-    u = fold["units"].get(unit)
-    if u is None:
-        return None
-    events = _unit_events(root).get(unit, [])
-    last = u["last"]
-    verified = any(e.get("event") == "unit.verified" for e in events)
-    evidence = next((e.get("evidence") for e in reversed(events)
-                     if e.get("event") == "unit.verified"), None)
-    defects = [e.get("defects") for e in events
-               if e.get("event") == "unit.note" and e.get("kind") == "defect"]
-    attempts = sum(1 for e in events if e.get("event") == "unit.receipt")
-    return {
-        "unit": unit,
-        "unit_of_work": last.get("unit_of_work"),
-        "state": u["state"],
-        "outcome": u.get("outcome"),
-        "status": u.get("status"),
-        "verified": verified,
-        "evidence": evidence,
-        "sources_loaded": last.get("sources", []),
-        "surfaced": u.get("surfaced"),
-        "defects": defects,
-        "attempts": attempts,
-        "gap_surfaced": last.get("gap_surfaced"),
-        "cost": last.get("cost"),
-        "tool_calls": last.get("tool_calls"),
-    }
-
-def ledger(root: Path) -> list[dict]:
-    fold = journal.fold(root)
-    by_unit = _unit_events(root)
-    rows = []
-    for uid, u in fold["units"].items():
-        events = by_unit.get(uid, [])
-        rows.append({
-            "unit": uid,
-            "unit_of_work": u["last"].get("unit_of_work"),
-            "state": u["state"],
-            "outcome": u.get("outcome"),
-            "attempts": sum(1 for e in events if e.get("event") == "unit.receipt"),
-            "verified": any(e.get("event") == "unit.verified" for e in events),
-            "gap_surfaced": u["last"].get("gap_surfaced"),
-        })
-    return rows
-
 def cost(root: Path) -> dict:
     per_unit: dict[str, dict] = {}
     tokens = usd = calls = 0

@@ -7,19 +7,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import conduct as conduct_engine  # noqa: E402
 import journal  # noqa: E402
+import phase_walk  # noqa: E402
 import run as R  # noqa: E402
 import workflow as W  # noqa: E402
 from situation import Situation  # noqa: E402
-from workflow_run import run_workflow  # noqa: E402
 
 def _sit(**over):
     kw = dict(task_kind="change", intent="do the thing", subject="coding")
     kw.update(over)
     return Situation(**kw)
-
-def _pass_handler(unit, composed):
-
-    return R.Receipt(outcome="result", evidence={"produces": composed.get("phase")})
 
 def _carry2():
     a = W.Phase("A", stance="convergent")
@@ -36,7 +32,7 @@ def _carry3():
         ("B", "C", "pass", W.EdgeType.carry),
     ])
 
-class GateBlocksWalkTest(unittest.TestCase):
+class _Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
@@ -48,66 +44,62 @@ class GateBlocksWalkTest(unittest.TestCase):
     def _events(self, event):
         return [e for e in journal.read(self.root) if e.get("event") == event]
 
-    def test_failing_command_halts_walk_before_B(self):
+    def _walk(self, wf, verifiers, max_steps=10):
+        unit = R.Unit("u1", _sit())
+        visited = []
+        for _ in range(max_steps):
+            step = phase_walk.next_phase(self.root, unit, workflow=wf)
+            if step["status"] != "phase":
+                return visited, step["status"]
+            name = step["phase"]
+            rec = phase_walk.record_phase(self.root, unit, name,
+                                          {"produces": name},
+                                          verifiers=verifiers, workflow=wf)
+            visited.append(name)
+            if not rec["advance"]:
+                return visited, "halted"
+        return visited, "loop"
 
+class GateBlocksWalkTest(_Base):
+    def test_failing_command_halts_walk_before_B(self):
         verifiers = R._workflow_verifiers(R.verifier_from_test_cmd("false"))
         self.assertIn("regression", verifiers)
-        out = run_workflow(self.root, R.Unit("u1", _sit()), _carry2(), [],
-                           R.InlineExecutor(_pass_handler), verifiers=verifiers)
+        visited, status = self._walk(_carry2(), verifiers)
 
-        walked = out["phases"]
-        self.assertEqual(walked, ["A"])
+        self.assertEqual(visited, ["A"])
+        self.assertEqual(status, "halted")
 
         exited = self._events("phase.exited")
         self.assertEqual([e["phase"] for e in exited], ["A"])
         self.assertFalse(exited[0]["verified"])
 
-        entered = [e["phase"] for e in self._events("phase.entered")]
-        self.assertNotIn("B", entered)
-
     def test_passing_command_lets_walk_advance(self):
         verifiers = R._workflow_verifiers(R.verifier_from_test_cmd("true"))
-        out = run_workflow(self.root, R.Unit("u1", _sit()), _carry2(), [],
-                           R.InlineExecutor(_pass_handler), verifiers=verifiers)
+        visited, status = self._walk(_carry2(), verifiers)
 
-        walked = out["phases"]
-        self.assertEqual(walked, ["A", "B"])
+        self.assertEqual(visited, ["A", "B"])
+        self.assertEqual(status, "complete")
 
         exited = self._events("phase.exited")
         self.assertTrue(all(e["verified"] for e in exited))
 
     def test_regression_carry_gate_specifically_blocks_advance(self):
-
         fail = R.verifier_from_test_cmd("false")
-        out = run_workflow(self.root, R.Unit("u1", _sit()), _carry3(), [],
-                           R.InlineExecutor(_pass_handler),
-                           verifiers={"regression": fail})
-        self.assertEqual(out["phases"], ["A", "B"])
+        visited, status = self._walk(_carry3(), {"regression": fail})
+        self.assertEqual(visited, ["A", "B"])
+        self.assertEqual(status, "halted")
 
         exited = {e["phase"]: e for e in self._events("phase.exited")}
         self.assertEqual(exited["A"]["gate"], "does-it")
         self.assertTrue(exited["A"]["verified"])
         self.assertEqual(exited["B"]["gate"], "regression")
         self.assertFalse(exited["B"]["verified"])
-        self.assertNotIn("C", [e["phase"] for e in self._events("phase.entered")])
 
-class CloseUnitGatesWorkflowTest(unittest.TestCase):
-
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        (self.root / ".praxis").mkdir()
-
-    def tearDown(self):
-        self.tmp.cleanup()
-
-    def _events(self, event):
-        return [e for e in journal.read(self.root) if e.get("event") == event]
+class CloseUnitGatesWorkflowTest(_Base):
 
     def test_close_rejected_when_walk_halted(self):
         verifiers = R._workflow_verifiers(R.verifier_from_test_cmd("false"))
-        run_workflow(self.root, R.Unit("u1", _sit()), _carry2(), [],
-                     R.InlineExecutor(_pass_handler), verifiers=verifiers)
+        self._walk(_carry2(), verifiers)
 
         out = conduct_engine.close_unit(self.root, unit_id="u1")
         self.assertEqual(out["status"], "blocked")
@@ -116,8 +108,7 @@ class CloseUnitGatesWorkflowTest(unittest.TestCase):
 
     def test_close_allowed_when_walk_completed(self):
         verifiers = R._workflow_verifiers(R.verifier_from_test_cmd("true"))
-        run_workflow(self.root, R.Unit("u1", _sit()), _carry2(), [],
-                     R.InlineExecutor(_pass_handler), verifiers=verifiers)
+        self._walk(_carry2(), verifiers)
         out = conduct_engine.close_unit(self.root, unit_id="u1")
         self.assertEqual(out["status"], "closed")
         self.assertEqual(out["unit"], "u1")

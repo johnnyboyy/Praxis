@@ -9,8 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import rebuild_spec  # noqa: E402
 import run as R  # noqa: E402
 import workflow as W  # noqa: E402
+import phase_walk  # noqa: E402
 from situation import Situation  # noqa: E402
-from workflow_run import run_workflow  # noqa: E402
 
 def _sit(**over):
     kw = dict(task_kind="change", intent="rebuild", subject="coding", workflow="rebuild-triple")
@@ -199,15 +199,16 @@ class RebuildWalkTest(unittest.TestCase):
         held = _held_out_test(self.root / "held")
         ir = _ir(held)
 
-        def handler(unit, composed):
-            if composed.get("phase") == "extract":
-                return R.Receipt(outcome="result", evidence={"produces": ir})
-            return R.Receipt(outcome="result", evidence={"produces": str(synth)})
-
         verifiers = {"does-it": R.adequacy_verifier(None),
                      "coverage-diff": R.coverage_diff_verifier()}
-        return run_workflow(self.root, R.Unit("u1", _sit()), W.REBUILD_TRIPLE,
-                            [], R.InlineExecutor(handler), verifiers=verifiers)
+        unit = R.Unit("u1", _sit())
+        wf = W.REBUILD_TRIPLE
+        phase_walk.record_phase(self.root, unit, "extract", {"produces": ir},
+                                verifiers=verifiers, workflow=wf)
+        phase_walk.record_phase(self.root, unit, "synthesize",
+                                {"produces": str(synth)},
+                                verifiers=verifiers, workflow=wf)
+        return {"phases": ["extract", "synthesize"]}
 
     def test_faithful_synth_advances(self):
         out = self._walk(FAITHFUL_IMPL)

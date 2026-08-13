@@ -5,8 +5,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 import journal
-from run import Plan, Unit
-from schedule import run_dag
+from run import Unit
 from situation import FITS, PHASES, SUBJECTS, TASK_KINDS, Situation
 
 @dataclass
@@ -103,12 +102,3 @@ def reconstruct_units(root: str | Path) -> list | None:
         return None
     specs = [TaskSpec.from_dict(s) for s in latest["specs"]]
     return build_units(specs, root)
-
-def plan_and_run(root: str | Path, specs: list[TaskSpec], contributors, executor, *,
-                 verifier=None, concurrency: int | None = None,
-                 max_retries: int | None = None) -> dict:
-    root = Path(root).resolve()
-    units = plan_tasks(root, specs)
-    result = run_dag(Plan(units=units), contributors, executor, root, verifier=verifier,
-                     concurrency=concurrency, max_retries=max_retries)
-    return {"status": "ran", "plan": {"units": [u.id for u in units]}, **result}

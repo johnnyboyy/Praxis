@@ -5,8 +5,59 @@ from pathlib import Path
 
 import journal
 from run import Receipt, verifiers_for_workflow
-from workflow import EdgeType
-from workflow_run import _incoming, decide_step, gate_for
+from workflow import GATES, EdgeType, Workflow, edge_parts
+
+def _choose_edge(workflow: Workflow, from_phase: str, passed: bool, choice=None,
+                 evidence=None):
+    edges = [(t, when, et, pred)
+             for (f, t, when, et, pred) in map(edge_parts, workflow.edges)
+             if f == from_phase]
+
+    if not passed:
+        for (t, when, et, pred) in edges:
+            if when in ("fail", "always"):
+                return t, et
+        return None
+
+    if evidence is not None:
+        for (t, when, et, pred) in edges:
+            if when == "fact" and pred is not None:
+                try:
+                    if pred(evidence):
+                        return t, et
+                except Exception:
+                    continue
+
+    if choice is not None:
+        for (t, when, et, pred) in edges:
+            if when == "agent-choice" and t == choice:
+                return t, et
+
+    for (t, when, et, pred) in edges:
+        if when in ("pass", "always"):
+            return t, et
+    return None
+
+def incoming(workflow: Workflow, to_phase: str):
+    return [(f, et) for (f, t, _when, et, _pred) in map(edge_parts, workflow.edges)
+            if t == to_phase]
+
+def gate_for(edge_in) -> str:
+    return GATES[edge_in] if edge_in else GATES[EdgeType.create]
+
+def decide_step(workflow: Workflow, unit, name: str, edge_in, receipt,
+                composed: dict, verifiers: dict) -> dict:
+    gate = gate_for(edge_in)
+    verifier = verifiers.get(gate)
+    verdict = verifier.verify(unit, receipt, composed) if verifier else None
+    verified = verdict.verified if verdict is not None else True
+    evidence = receipt.evidence or {}
+    passed = evidence.get("passed", receipt.outcome == "result")
+    advance = passed and verified
+    choice = evidence.get("next") if advance else None
+    nxt = _choose_edge(workflow, name, advance, choice, evidence)
+    return {"gate": gate, "verified": verified, "verdict": verdict, "evidence": evidence,
+            "passed": passed, "advance": advance, "choice": choice, "next": nxt}
 
 def _resolve_workflow(root: Path, unit, workflow=None):
     if workflow is not None:
@@ -84,7 +135,7 @@ def next_phase(root, unit, workflow=None) -> dict:
                 "note": f"cursor phase {name!r} not in workflow {workflow.name!r}"}
 
     produces = _produces_by_phase(_unit_events(root, unit.id))
-    inputs = {f: produces[f] for (f, _et) in _incoming(workflow, name) if f in produces}
+    inputs = {f: produces[f] for (f, _et) in incoming(workflow, name) if f in produces}
 
     out = {
         "status": "phase",
@@ -143,8 +194,8 @@ def record_phase(root, unit, phase, evidence, verifiers: dict | None = None,
     else:
 
         edge_in = None if phase == workflow.first.name else\
-            next((et for (_f, et) in _incoming(workflow, phase)), None)
-        from_phase = next((f for (f, _et) in _incoming(workflow, phase)), None)
+            next((et for (_f, et) in incoming(workflow, phase)), None)
+        from_phase = next((f for (f, _et) in incoming(workflow, phase)), None)
         prev = [e for e in _unit_events(root, unit.id) if e.get("event") == "phase.verdict"]
         phase_index = (int(prev[-1].get("phase_index", -1)) + 1) if prev else 0
 
