@@ -32,7 +32,6 @@ path, LOW→HIGH precedence (higher wins a name collision):
 | Plugin | Role |
 |---|---|
 | **corpora** (peer repo) | The pure composer — ships NO domains. Discovers every registered contributor's `domains_dir` (none of the bundled plugins have one now) + the project pool + the domains bucket's sources, merges, coarse-cuts by subject/applies-when, defers the fine call to the model. Harvests proposals on `unit-close`. |
-| **planner** | Process-only: the `intake` workflow (interview/frontier/barrier/plan). Its former planning-judgment domains live in the bucket's `planner` collection. |
 | **writing** | Process-only: prose draft/revision phases + workflow. |
 | **rebuild** | Process-only: the rebuild triple — extract/synthesize phases, the `rebuild-triple` workflow with its own gate forms (spec adequacy at extract-exit; tripwire ∘ coverage-diff at synthesize-exit), spec validation (`rebuild_spec.py`), and worktree isolation + copy-detection (`isolation.py`, `hooks/tripwire_log.sh`). |
 | **coding-process** | Process-only: TDD vocabulary — write-tests/refactor/test-cleanup phases + the `tdd-unit` workflow. |
@@ -54,6 +53,11 @@ peer domains bucket's `uiux` collection.
 judgment. Its one load-bearing rule (a task spanning roots is one unit per owning root, `root_tree`
 owns traversal, interact at the parent root and delegate into the owning root) is folded into
 `skills/orchestrate/SKILL.md` directly.
+
+**Retired:** `planner` — dissolved: its judgment lives in the peer domains bucket's `planner`
+collection (composed via corpora as before), and its process discipline (`interview -> frontier ->
+barrier -> plan`) is now owned directly by `skills/orchestrate/SKILL.md` rather than claimed as an
+engine-driven workflow.
 
 ## Core pattern
 

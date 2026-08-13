@@ -1,16 +1,14 @@
 {
   "": {
     "plugins_path": [
-      "/Users/johnzdanis/jdev/skills/corpora",
-      "/Users/johnzdanis/jdev/skills/praxis/plugins/planner"
+      "/Users/johnzdanis/jdev/skills/corpora"
     ],
     "plugins_search_paths": [
       "/Users/johnzdanis/jdev/skills/corpora"
     ]
   },
   "contributors": {
-    "corpora": "corpora.plugin:make",
-    "planner": "planner_plugin:make"
+    "corpora": "corpora.plugin:make"
   },
   "corpora": {
     "project_shape": {

@@ -74,7 +74,7 @@ class DiscoverTest(unittest.TestCase):
     def test_finds_all_known_plugins(self):
         self.assertEqual(
             set(self.by_name),
-            {"writing", "planner", "rebuild", "coding-process"},
+            {"writing", "rebuild", "coding-process"},
         )
 
     def test_specs_and_dirs(self):
@@ -87,7 +87,7 @@ class DiscoverTest(unittest.TestCase):
             self.assertEqual(e["layer"], "bundled")
 
     def test_descriptions_are_first_sentences(self):
-        self.assertIn("intake", self.by_name["planner"]["description"])
+        self.assertIn("extract", self.by_name["rebuild"]["description"])
         self.assertTrue(self.by_name["writing"]["description"].endswith("."))
         for e in self.entries:
             self.assertTrue(e["description"], f"{e['name']} has no description")
@@ -148,11 +148,11 @@ class ApplyTest(unittest.TestCase):
 
     def test_rerun_registers_and_unregisters(self):
         pr.apply(self.root, ["corpora", "writing"], self.discovered)
-        summary = pr.apply(self.root, ["corpora", "planner"], self.discovered)
-        self.assertEqual(summary["added"], ["planner"])
+        summary = pr.apply(self.root, ["corpora", "rebuild"], self.discovered)
+        self.assertEqual(summary["added"], ["rebuild"])
         self.assertEqual(summary["removed"], ["writing"])
         self.assertEqual(
-            set(config.read(self.root, "contributors")), {"corpora", "planner"}
+            set(config.read(self.root, "contributors")), {"corpora", "rebuild"}
         )
 
     def test_idempotent_to_selection(self):
@@ -193,7 +193,7 @@ class ApplyTest(unittest.TestCase):
         # own domains/ dir are refreshed/replaced.
         bucket_source = {"owner": "bucket", "dir": "/some/other/root/domains/uiux"}
         config.write(self.root, "corpora", {"sources": [bucket_source]})
-        summary = pr.apply(self.root, ["corpora", "planner"], self.discovered)
+        summary = pr.apply(self.root, ["corpora", "rebuild"], self.discovered)
         sources = config.read(self.root, "corpora")["sources"]
         self.assertIn(bucket_source, sources)
         self.assertEqual(summary["corpora_sources"], sources)
