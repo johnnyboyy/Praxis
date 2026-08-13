@@ -57,14 +57,8 @@ def next_phases(workflow: Workflow, from_phase: str, when: str) -> list:
 
 PLAN = Phase("plan", stance="divergent",
              intent="extract an open request into units/edges", produces="spec")
-WRITE_TESTS = Phase("write-tests", stance="divergent",
-                    intent="author intent as executable tests", produces="tests")
 IMPLEMENT = Phase("implement", stance="convergent",
                   intent="make the tests pass", produces="code")
-REFACTOR = Phase("refactor", stance="convergent",
-                 intent="improve structure with behavior fixed", produces="code")
-TEST_CLEANUP = Phase("test-cleanup", stance="convergent",
-                     intent="prune tests editorially", produces="tests")
 VERIFY = Phase("verify", stance="neutral",
                intent="run the suite", produces="verdict", delivery="deterministic")
 FIX = Phase("fix", stance="convergent",
@@ -72,19 +66,8 @@ FIX = Phase("fix", stance="convergent",
 CLOSE = Phase("close", stance="neutral", intent="finalize the unit", produces="closure")
 
 SEED_PHASES: dict[str, Phase] = {
-    p.name: p for p in (PLAN, WRITE_TESTS, IMPLEMENT, REFACTOR, TEST_CLEANUP,
-                        VERIFY, FIX, CLOSE)
+    p.name: p for p in (PLAN, IMPLEMENT, VERIFY, FIX, CLOSE)
 }
-
-TDD_UNIT = Workflow(
-    name="tdd-unit",
-    phases=[WRITE_TESTS, IMPLEMENT, REFACTOR, TEST_CLEANUP],
-    edges=[
-        ("write-tests", "implement", "pass", EdgeType.carry),
-        ("implement", "refactor", "pass", EdgeType.carry),
-        ("refactor", "test-cleanup", "pass", EdgeType.carry),
-    ],
-)
 
 
 BUILD_VERIFY = Workflow(
@@ -99,5 +82,5 @@ BUILD_VERIFY = Workflow(
 )
 
 SEED_WORKFLOWS: dict[str, Workflow] = {
-    w.name: w for w in (TDD_UNIT, BUILD_VERIFY)
+    w.name: w for w in (BUILD_VERIFY,)
 }

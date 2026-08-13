@@ -74,7 +74,7 @@ class DiscoverTest(unittest.TestCase):
     def test_finds_all_known_plugins(self):
         self.assertEqual(
             set(self.by_name),
-            {"general", "coding-stack", "uiux", "writing", "monorepo", "planner", "rebuild"},
+            {"general", "coding-stack", "uiux", "writing", "monorepo", "planner", "rebuild", "coding-process"},
         )
 
     def test_specs_and_dirs(self):

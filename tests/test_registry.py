@@ -90,7 +90,7 @@ class ResolveWorkflowsTest(unittest.TestCase):
 
     def test_seed_only_returns_seeds(self):
         out = registry.resolve_workflows(self.root, [])
-        self.assertIn("tdd-unit", out)
+        self.assertIn("build-verify", out)
         self.assertIn("build-verify", out)
 
     def test_contributor_workflow_merges(self):
@@ -99,7 +99,7 @@ class ResolveWorkflowsTest(unittest.TestCase):
             workflows=[_design_wf()],
         )
         out = registry.resolve_workflows(self.root, [stub])
-        self.assertIn("tdd-unit", out)
+        self.assertIn("build-verify", out)
         self.assertIn("design-flow", out)
 
     def test_workflow_naming_unknown_phase_is_dropped(self):
@@ -116,9 +116,9 @@ class ResolveWorkflowsTest(unittest.TestCase):
         self.assertNotIn("ghost-flow", out)
 
     def test_seed_vs_plugin_collision_keeps_seed(self):
-        seed = registry.SEED_WORKFLOWS["tdd-unit"]
+        seed = registry.SEED_WORKFLOWS["build-verify"]
         clash = Workflow(
-            name="tdd-unit",
+            name="build-verify",
             phases=[Phase("design", stance="divergent")],
             edges=[],
         )
@@ -127,7 +127,7 @@ class ResolveWorkflowsTest(unittest.TestCase):
             workflows=[clash],
         )
         out = registry.resolve_workflows(self.root, [stub])
-        self.assertIs(out["tdd-unit"], seed)
+        self.assertIs(out["build-verify"], seed)
 
     def test_plugin_vs_plugin_collision_keeps_first(self):
         p = Phase("design", stance="divergent")
@@ -157,7 +157,7 @@ class ResolveWorkflowsTest(unittest.TestCase):
         )
         out = registry.resolve_workflows(self.root, [_Boom(), ok])
         self.assertIn("design-flow", out)
-        self.assertIn("tdd-unit", out)
+        self.assertIn("build-verify", out)
 
 class ValidatePredicateEdgeTest(unittest.TestCase):
     def _phases(self):

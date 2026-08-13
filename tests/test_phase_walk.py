@@ -6,8 +6,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugins" / "rebuild"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugins" / "coding-process"))
 import journal  # noqa: E402
 import phase_walk  # noqa: E402
+import coding_process_plugin  # noqa: E402
 import rebuild_plugin  # noqa: E402
 import run as R  # noqa: E402
 import workflow as W  # noqa: E402
@@ -115,7 +117,7 @@ class FullWalkTest(_Base):
         raise AssertionError("resumable walk did not terminate")
 
     def test_tdd_unit_walks_all_phases_in_order(self):
-        visited, status = self._walk_resumable(W.TDD_UNIT, verifiers={})
+        visited, status = self._walk_resumable(coding_process_plugin.TDD_UNIT, verifiers={})
         self.assertEqual(status, "complete")
         self.assertEqual(visited,
                          ["write-tests", "implement", "refactor", "test-cleanup"])

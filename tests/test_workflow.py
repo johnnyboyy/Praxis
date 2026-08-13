@@ -7,6 +7,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugins" / "rebuild"))
 import journal  # noqa: E402
 import rebuild_plugin  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugins" / "coding-process"))
+import coding_process_plugin  # noqa: E402
 import run as R  # noqa: E402
 import workflow as W  # noqa: E402
 from phase_walk import decide_step, gate_for, incoming  # noqa: E402
@@ -29,8 +31,7 @@ def _decide(wf, name, receipt, edge_in=None, verifiers=None):
 
 class SeedLibraryTest(unittest.TestCase):
     def test_seed_phases_present(self):
-        for name in ("plan", "write-tests", "implement", "refactor", "test-cleanup",
-                     "verify", "fix", "close"):
+        for name in ("plan", "implement", "verify", "fix", "close"):
             self.assertIn(name, W.SEED_PHASES)
             self.assertIn(W.SEED_PHASES[name].stance, W.STANCES)
 
@@ -39,13 +40,18 @@ class SeedLibraryTest(unittest.TestCase):
         self.assertNotIn("synthesize", W.SEED_PHASES)
         self.assertNotIn("rebuild-triple", W.SEED_WORKFLOWS)
 
+    def test_tdd_lives_in_the_plugin_not_the_seed(self):
+        self.assertNotIn("write-tests", W.SEED_PHASES)
+        self.assertNotIn("tdd-unit", W.SEED_WORKFLOWS)
+        self.assertEqual(list(W.SEED_WORKFLOWS), ["build-verify"])
+
     def test_gate_mapping(self):
         self.assertEqual(W.GATES[W.EdgeType.create], "does-it")
         self.assertEqual(W.GATES[W.EdgeType.carry], "regression")
         self.assertEqual(W.GATES[W.EdgeType.extract], "coverage-diff")
 
     def test_tdd_workflow_shape(self):
-        wf = W.TDD_UNIT
+        wf = coding_process_plugin.TDD_UNIT
         self.assertEqual([p.name for p in wf.phases],
                          ["write-tests", "implement", "refactor", "test-cleanup"])
         self.assertEqual([p.name for p in W.next_phases(wf, "write-tests", "pass")],
@@ -70,20 +76,20 @@ class GateSelectionTest(unittest.TestCase):
         self.assertEqual(gate_for(W.EdgeType.extract), "coverage-diff")
 
     def test_failed_preservation_gate_forces_non_advance(self):
-        wf = W.Workflow("gated", [W.PLAN, W.IMPLEMENT, W.REFACTOR], edges=[
+        wf = W.Workflow("gated", [W.PLAN, W.IMPLEMENT, W.FIX], edges=[
             ("plan", "implement", "pass", W.EdgeType.carry),
-            ("plan", "refactor", "fail", W.EdgeType.carry),
+            ("plan", "fix", "fail", W.EdgeType.carry),
         ])
         failing = R.CallableVerifier(
             lambda unit, receipt, composed: R.Verdict(verified=False, defects=["gate"]))
         d = _decide(wf, "plan", _receipt(), verifiers={"does-it": failing})
         self.assertFalse(d["advance"])
-        self.assertEqual(d["next"], ("refactor", W.EdgeType.carry))
+        self.assertEqual(d["next"], ("fix", W.EdgeType.carry))
 
     def test_verified_gate_takes_pass_route(self):
-        wf = W.Workflow("gated", [W.PLAN, W.IMPLEMENT, W.REFACTOR], edges=[
+        wf = W.Workflow("gated", [W.PLAN, W.IMPLEMENT, W.FIX], edges=[
             ("plan", "implement", "pass", W.EdgeType.carry),
-            ("plan", "refactor", "fail", W.EdgeType.carry),
+            ("plan", "fix", "fail", W.EdgeType.carry),
         ])
         passing = R.CallableVerifier(
             lambda unit, receipt, composed: R.Verdict(verified=True, defects=[]))
@@ -92,35 +98,35 @@ class GateSelectionTest(unittest.TestCase):
         self.assertEqual(d["next"], ("implement", W.EdgeType.carry))
 
     def test_no_verifier_defaults_verified(self):
-        d = _decide(W.TDD_UNIT, "write-tests", _receipt())
+        d = _decide(coding_process_plugin.TDD_UNIT, "write-tests", _receipt())
         self.assertTrue(d["verified"])
         self.assertEqual(d["gate"], "does-it")
         self.assertEqual(d["next"], ("implement", W.EdgeType.carry))
 
 class EdgeRoutingTest(unittest.TestCase):
     def _pick_wf(self):
-        return W.Workflow("pick", [W.PLAN, W.IMPLEMENT, W.REFACTOR], edges=[
+        return W.Workflow("pick", [W.PLAN, W.IMPLEMENT, W.FIX], edges=[
             ("plan", "implement", "agent-choice", W.EdgeType.carry),
-            ("plan", "refactor", "agent-choice", W.EdgeType.carry),
+            ("plan", "fix", "agent-choice", W.EdgeType.carry),
         ])
 
     def test_agent_choice_follows_receipt_next(self):
-        d = _decide(self._pick_wf(), "plan", _receipt(next="refactor"))
-        self.assertEqual(d["next"], ("refactor", W.EdgeType.carry))
+        d = _decide(self._pick_wf(), "plan", _receipt(next="fix"))
+        self.assertEqual(d["next"], ("fix", W.EdgeType.carry))
 
     def test_failed_gate_overrides_agent_choice_next(self):
-        wf = W.Workflow("gated-pick", [W.PLAN, W.IMPLEMENT, W.REFACTOR], edges=[
+        wf = W.Workflow("gated-pick", [W.PLAN, W.IMPLEMENT, W.FIX], edges=[
             ("plan", "implement", "agent-choice", W.EdgeType.carry),
-            ("plan", "refactor", "fail", W.EdgeType.carry),
+            ("plan", "fix", "fail", W.EdgeType.carry),
         ])
         failing = R.CallableVerifier(
             lambda unit, receipt, composed: R.Verdict(verified=False, defects=["gate"]))
         d = _decide(wf, "plan", _receipt(next="implement"),
                     verifiers={"does-it": failing})
-        self.assertEqual(d["next"], ("refactor", W.EdgeType.carry))
+        self.assertEqual(d["next"], ("fix", W.EdgeType.carry))
 
     def test_terminal_phase_has_no_next(self):
-        d = _decide(W.TDD_UNIT, "test-cleanup", _receipt(), edge_in=W.EdgeType.carry)
+        d = _decide(coding_process_plugin.TDD_UNIT, "test-cleanup", _receipt(), edge_in=W.EdgeType.carry)
         self.assertIsNone(d["next"])
 
 class PredicateEdgeTest(unittest.TestCase):
