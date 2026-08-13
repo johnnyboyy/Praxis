@@ -41,7 +41,7 @@ class SeedLibraryTest(unittest.TestCase):
 
     def test_rebuild_triple_extract_edge(self):
         wf = W.REBUILD_TRIPLE
-        # R3a: 2-phase, synthesize terminal. The preservation gate is the
+        # rebuild triple: 2-phase, synthesize terminal. The preservation gate is the
         # synthesize-exit edge-verifier keyed `coverage-diff`, not a phase.
         self.assertEqual([p.name for p in wf.phases], ["extract", "synthesize"])
         et = next(et for (f, t, w, et) in wf.edges if f == "extract" and t == "synthesize")
@@ -87,18 +87,18 @@ class WalkTest(unittest.TestCase):
         run_workflow(self.root, R.Unit("u1", _sit()), W.TDD_UNIT, [], cap)
         first, second = cap.seen[0], cap.seen[1]
         self.assertNotIn("carry", first)
-        self.assertNotIn("ir", first)
+        self.assertNotIn("spec", first)
         self.assertEqual(second["carry"], "art-1")
-        self.assertNotIn("ir", second)
+        self.assertNotIn("spec", second)
 
     def test_extract_edge_puts_ir_not_carry(self):
         cap = _Capture()
         run_workflow(self.root, R.Unit("u1", _sit()), W.REBUILD_TRIPLE, [], cap)
         # 2-phase now: extract -> synthesize (terminal). The extract edge threads
-        # the IR into composed["ir"] at synthesize, never as "carry".
+        # the spec into composed["spec"] at synthesize, never as "carry".
         self.assertEqual(len(cap.seen), 2)
         synth = cap.seen[1]
-        self.assertEqual(synth["ir"], "art-1")
+        self.assertEqual(synth["spec"], "art-1")
         self.assertNotIn("carry", synth)
 
     def test_task_kind_gap_surfaces_once_not_per_phase(self):

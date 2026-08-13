@@ -159,7 +159,7 @@ def verifier_from_test_cmd(test_cmd: str | None) -> "Verifier | None":
 
 def coverage_verifier(test_cmd: str | None, threshold, target: str | None = None,
                       timeout: int = 300) -> "Verifier | None":
-    """The fast, per-unit COVERAGE gate — deterministic, exit-code only (R2).
+    """The fast, per-unit COVERAGE gate — deterministic, exit-code only.
 
     Runs the acceptance suite WITH coverage enforcement so the process EXIT CODE
     is the verdict: e.g. `pytest --cov=<target> --cov-fail-under=<threshold>`,
@@ -193,7 +193,7 @@ def _parse_mutation_score(text: str | None) -> float | None:
 
 
 def mutation_verifier(mutation_cmd, threshold, timeout: int = 600) -> "Verifier | None":
-    """The slow, plan-level MUTATION barrier — deterministic (R2).
+    """The slow, plan-level MUTATION barrier — deterministic.
 
     Runs a CONFIGURABLE `mutation_cmd` (argv or a shell string) once and passes
     iff the mutation score >= threshold. Two signalling modes, both exit/score
@@ -319,11 +319,11 @@ def _run_held_out(held: list, synth_path: Path, timeout: int) -> tuple[int, str]
 # interface-presence checks in `coverage_diff_verifier` are identical regardless
 # of language. Nothing here is a hard dependency of the praxis suite: the tsc and
 # held-out/mutation commands are all CONFIGURABLE (defaults below), and fixtures
-# supply controllable fakes — just as R2's mutation barrier does.
+# supply controllable fakes — just as the mutation barrier does.
 
 # Default surface command: emit `.d.ts` for the synth and parse it. `pnpm exec`
 # resolves the project-local `typescript` (degrade gracefully if absent — see
-# `_ToolchainError`). Config/IR may override with any argv (e.g. an `npx` form).
+# `_ToolchainError`). Config/spec may override with any argv (e.g. an `npx` form).
 _DEFAULT_TSC_CMD = ["pnpm", "exec", "tsc"]
 # Default held-out runner: Vitest in the synth worktree. Exit code is the verdict.
 _DEFAULT_TS_HELD_CMD = ["pnpm", "exec", "vitest", "run"]
@@ -384,7 +384,7 @@ def _split_top_level(text: str) -> list:
 def _ts_param_names(params: str) -> list:
     """Extract the parameter NAMES from a TS parameter list (types stripped), so
     a TS function signature canonicalizes to `name(a, b)` — the SAME shape the
-    Python `_fn_signature` produces, letting an IR reuse one signature style."""
+    Python `_fn_signature` produces, letting an spec reuse one signature style."""
     import re
     names = []
     for part in _split_top_level(params):
@@ -493,7 +493,7 @@ def _ts_surface(tree_path: Path, tsc_cmd=None, timeout: int = 300) -> tuple[set,
 
 
 def _run_held_out_ts(held: list, synth_path: Path, timeout: int, held_cmd=None) -> tuple[int, str]:
-    """Run the IR's held-out tests via a CONFIGURABLE command (default Vitest) in
+    """Run the spec's held-out tests via a CONFIGURABLE command (default Vitest) in
     the synth worktree. The process EXIT CODE is the verdict — same shape as
     `_run_held_out`. No model claims consulted."""
     import subprocess
@@ -512,7 +512,7 @@ def ts_mutation_verifier(stryker_cmd=None, threshold=None, timeout: int = 600) -
     A thin wrapper over `mutation_verifier`: the command defaults to
     `pnpm exec stryker run` but is fully CONFIGURABLE — there is NO hard
     `@stryker-mutator` dependency in the praxis suite (fixtures pass a
-    controllable fake command, exactly as R2's mutation fixtures do). Verdict is
+    controllable fake command, exactly as the mutation fixtures do). Verdict is
     the Stryker mutation score >= threshold (or exit code when no score prints)."""
     if threshold is None:
         return None
@@ -521,35 +521,35 @@ def ts_mutation_verifier(stryker_cmd=None, threshold=None, timeout: int = 600) -
 
 def coverage_diff_verifier(timeout: int = 300, language=None,
                            surface_cmd=None, held_out_cmd=None) -> "Verifier":
-    """The rebuild-triple PRESERVATION gate (R3a) — fires at synthesize-exit.
+    """The rebuild-triple PRESERVATION gate — fires at synthesize-exit.
 
-    Reads the IR from `composed["ir"]` (threaded via the extract edge) and the
+    Reads the spec from `composed["spec"]` (threaded via the extract edge) and the
     synth tree path from `receipt.evidence["produces"]`, and returns verified iff
     ALL hold, each derived from DISK (never model evidence):
       (c) every `interface` symbol is present in the synth with a matching
           signature (completeness);
       (b) the synth's public surface ⊆ `allowed_surface` (losslessness — anything
           extra fails);
-      (a) the IR's `held_out` tests PASS against the synth tree (generalization —
+      (a) the spec's `held_out` tests PASS against the synth tree (generalization —
           held-out runner, exit code is the verdict).
-    Fail-closed on a malformed IR or a missing synth path. NOTE: this takes the
-    synth path AS GIVEN — isolation/copy-detection is R3b, not closed here.
+    Fail-closed on a malformed spec or a missing synth path. NOTE: this takes the
+    synth path AS GIVEN — isolation/copy-detection is handled by rebuild isolation, not closed here.
 
     LANGUAGE-AWARE: the surface-extractor and held-out runner are dispatched by a
     `language` signal — `python` (default) or `typescript`. The signal + any TS
-    command overrides come from the IR (`ir["language"]`, `ir["surface_cmd"]`,
-    `ir["held_out_cmd"]`) first, else the factory args, else the defaults. Python
+    command overrides come from the spec (`spec["language"]`, `spec["surface_cmd"]`,
+    `spec["held_out_cmd"]`) first, else the factory args, else the defaults. Python
     walks `ast` + pytest; TypeScript emits `.d.ts` via tsc + runs Vitest. Both
     return the SAME (surface, signatures) shape, so the set-diff + interface
     checks below are IDENTICAL across languages."""
-    import rebuild_ir
+    import rebuild_spec
 
     def _handler(unit, receipt, composed):
         try:
-            ir = rebuild_ir.validate_ir(composed.get("ir"))
+            spec = rebuild_spec.validate_spec(composed.get("spec"))
         except Exception as e:
-            return Verdict(verified=False, defects=[f"malformed IR: {e}"],
-                           evidence={"check": "ir"})
+            return Verdict(verified=False, defects=[f"malformed spec: {e}"],
+                           evidence={"check": "spec"})
         ev = (receipt.evidence if receipt else None) or {}
         synth = ev.get("produces")
         if not synth:
@@ -561,13 +561,13 @@ def coverage_diff_verifier(timeout: int = 300, language=None,
             return Verdict(verified=False, defects=[f"synth tree missing: {synth}"],
                            evidence={"check": "synth-path"})
 
-        # Language dispatch: IR wins over factory args over defaults.
-        lang_signal = ir.get("language")
+        # Language dispatch: spec wins over factory args over defaults.
+        lang_signal = spec.get("language")
         if lang_signal is None:
             lang_signal = language
         lang = _normalize_language(lang_signal)
-        ts_surface_cmd = ir.get("surface_cmd", surface_cmd)
-        ts_held_cmd = ir.get("held_out_cmd", held_out_cmd)
+        ts_surface_cmd = spec.get("surface_cmd", surface_cmd)
+        ts_held_cmd = spec.get("held_out_cmd", held_out_cmd)
 
         if lang == "typescript":
             try:
@@ -580,13 +580,13 @@ def coverage_diff_verifier(timeout: int = 300, language=None,
             surface, sigs = _ast_surface(synth_path)
 
         # (c) completeness: every interface symbol present with matching signature.
-        missing = [s["symbol"] for s in ir["interface"] if s["symbol"] not in surface]
+        missing = [s["symbol"] for s in spec["interface"] if s["symbol"] not in surface]
         if missing:
             return Verdict(verified=False,
                            defects=[f"missing interface symbols: {missing}"],
                            evidence={"check": "interface", "missing": missing})
         mism = []
-        for s in ir["interface"]:
+        for s in spec["interface"]:
             want = _norm_sig(s.get("signature"))
             if want and _norm_sig(sigs.get(s["symbol"])) != want:
                 mism.append({"symbol": s["symbol"], "expected": s["signature"],
@@ -597,7 +597,7 @@ def coverage_diff_verifier(timeout: int = 300, language=None,
                            evidence={"check": "interface", "mismatch": mism})
 
         # (b) losslessness: nothing exported outside the allowed surface.
-        extra = sorted(surface - set(ir["allowed_surface"]))
+        extra = sorted(surface - set(spec["allowed_surface"]))
         if extra:
             return Verdict(verified=False,
                            defects=[f"surface exceeds allowed_surface: {extra}"],
@@ -605,10 +605,10 @@ def coverage_diff_verifier(timeout: int = 300, language=None,
 
         # (a) generalization: held-out tests pass against the synth (exit code).
         if lang == "typescript":
-            code, detail = _run_held_out_ts(ir["tests"]["held_out"], synth_path,
+            code, detail = _run_held_out_ts(spec["tests"]["held_out"], synth_path,
                                             timeout, ts_held_cmd)
         else:
-            code, detail = _run_held_out(ir["tests"]["held_out"], synth_path, timeout)
+            code, detail = _run_held_out(spec["tests"]["held_out"], synth_path, timeout)
         if code != 0:
             return Verdict(verified=False,
                            defects=[f"held-out tests failed (exit {code})"],
@@ -622,28 +622,28 @@ def coverage_diff_verifier(timeout: int = 300, language=None,
 
 
 def adequacy_verifier(coverage: "Verifier | None" = None) -> "Verifier":
-    """The rebuild-triple ADEQUACY gate (R3a) — the does-it gate at extract-exit.
+    """The rebuild-triple ADEQUACY gate — the does-it gate at extract-exit.
 
-    Reads the IR from `receipt.evidence["produces"]` (the extract phase's output;
-    the extract edge only threads it into composed["ir"] at synthesize-entry) and
+    Reads the spec from `receipt.evidence["produces"]` (the extract phase's output;
+    the extract edge only threads it into composed["spec"] at synthesize-entry) and
     passes iff BOTH hold:
-      * the IR is well-formed AND its held-out split is real (fail-closed via
-        `rebuild_ir.validate_ir`);
-      * the wrapped R2 `coverage` verifier (pointed at the ORIGINAL) passes — the
+      * the spec is well-formed AND its held-out split is real (fail-closed via
+        `rebuild_spec.validate_spec`);
+      * the wrapped `coverage` verifier (pointed at the ORIGINAL) passes — the
         extracted tests clear the adequacy threshold. When no coverage verifier is
         configured, only the split-enforcement applies."""
-    import rebuild_ir
+    import rebuild_spec
 
     def _handler(unit, receipt, composed):
-        ir_raw = (receipt.evidence if receipt else None) or {}
-        ir_raw = ir_raw.get("produces")
-        if ir_raw is None:
-            ir_raw = composed.get("ir")
+        spec_raw = (receipt.evidence if receipt else None) or {}
+        spec_raw = spec_raw.get("produces")
+        if spec_raw is None:
+            spec_raw = composed.get("spec")
         try:
-            rebuild_ir.validate_ir(ir_raw)
+            rebuild_spec.validate_spec(spec_raw)
         except Exception as e:
-            return Verdict(verified=False, defects=[f"inadequate IR: {e}"],
-                           evidence={"check": "ir-split"})
+            return Verdict(verified=False, defects=[f"inadequate spec: {e}"],
+                           evidence={"check": "spec-split"})
         if coverage is not None:
             v = coverage.verify(unit, receipt, composed)
             if not v.verified:
@@ -659,9 +659,9 @@ def _rebuild_triple_verifiers(coverage: "Verifier | None" = None) -> dict:
     """Gate map for a rebuild-triple walk: does-it -> adequacy (extract-exit),
     coverage-diff -> preservation (synthesize-exit). Both read from disk only.
 
-    The synthesize-exit gate is COMPOSED (R3b): the copy-detection tripwire runs
+    The synthesize-exit gate is COMPOSED (the rebuild-isolation layer): the copy-detection tripwire runs
     FIRST (a read outside the synth worktree = a copy attempt = fail, regardless
-    of behavior), then the R3a `coverage_diff_verifier` preservation gate. This
+    of behavior), then the `coverage_diff_verifier` preservation gate. This
     keeps the walk's single `coverage-diff` gate at that edge (routing unchanged)
     while making a silent absolute-path copy un-passable. The read-log SOURCE is
     an input for now (composed/receipt); wiring it to a real dispatched subagent's
@@ -703,7 +703,7 @@ def _workflow_verifiers(verifier: "Verifier | None",
     """Map workflow gate names to real Verifiers.
 
     The `create`→does-it and `carry`→regression gates run the per-unit adequacy
-    gate. When a COVERAGE gate is configured for the root it IS that gate (R2):
+    gate. When a COVERAGE gate is configured for the root it IS that gate:
     the walk only advances when the suite passes AT the coverage threshold, not
     on a bare test run. Otherwise the gate is the project's test command (the
     `verifier`, built by `verifier_from_test_cmd`). When neither is configured
@@ -721,7 +721,7 @@ def verifiers_for_workflow(root: Path, wf, verifier: "Verifier | None" = None) -
 
     Used by BOTH the synchronous `run_unit` path and the resumable phase-walk
     surface so the two never gate on a different verifier set. `rebuild-triple`
-    gets the R3a/R3b triple gates; every other workflow gets the per-unit
+    gets the rebuild-triple gates; every other workflow gets the per-unit
     coverage/regression gate (coverage if configured, else the `verifier`)."""
     if wf.name == "rebuild-triple":
         return _rebuild_triple_verifiers(coverage_verifier_from_config(root))
@@ -823,7 +823,7 @@ def run(plan: Plan, contributors, executor: Executor, root: Path,
     results = [run_unit(root, unit, contributors, executor, verifier, retries)
                for unit in plan.units]
 
-    # Plan-level FINAL BARRIER (R2): the slow mutation signal, run ONCE after all
+    # Plan-level FINAL BARRIER: the slow mutation signal, run ONCE after all
     # units, BEFORE close. A failing barrier BLOCKS close (the hook never fires).
     # Deterministic, exit-code/score based — never model evidence. Absent config
     # => no barrier is built and close proceeds exactly as before.

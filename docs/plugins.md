@@ -56,7 +56,7 @@ Praxis fires three named steps through `hooks()`:
 - `verify` — after a unit is verified as passing (once per verified pass). Context
   carries `unit`, `receipt`, and the `verdict`.
 - `unit-close` — **once per unit**, as that unit finishes (whatever its outcome), on
-  every dispatch path (single-dispatch, DAG, orchestrate/cascade, and workflow-driven).
+  every dispatch path (single-dispatch, unit graph, orchestrate/cascade, and workflow-driven).
   Context carries the `unit` and its **final `receipt`** (for a workflow-driven unit, an
   aggregate whose `receipt["evidence"]` merges every phase's evidence). This is the
   general per-unit seam any contributor can ride — e.g. a **uiux** staleness/drift

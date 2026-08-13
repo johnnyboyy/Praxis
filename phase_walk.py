@@ -2,7 +2,7 @@
 """phase_walk — the RESUMABLE, model-driven phase-walk surface (Spine B1).
 
 `next_phase`/`record_phase` step a unit through its gated workflow ONE PHASE at a
-time, exactly as `next_handoff`/`record_receipt` step the unit DAG one level up.
+time, exactly as `next_handoff`/`record_receipt` step the unit graph one level up.
 The cursor lives in the JOURNAL, never in the caller: `next_phase` is a PURE READ
 that folds this unit's `phase.verdict`/`phase.recorded` events to decide the phase
 to execute now; `record_phase` appends the phase result, runs the incoming edge's
@@ -58,7 +58,7 @@ def _unit_events(root: Path, unit_id: str) -> list[dict]:
 
 
 def _produces_by_phase(events: list[dict]) -> dict:
-    """phase name -> its last-recorded produced artifact (for input/carry/ir threading)."""
+    """phase name -> its last-recorded produced artifact (for input/carry/spec threading)."""
     out: dict = {}
     for e in events:
         if e.get("event") == "phase.recorded":
@@ -109,7 +109,7 @@ def next_phase(root, unit, workflow=None) -> dict:
     the same phase (idempotent). `no-workflow` when the unit has no workflow;
     `complete` when the walk has reached a terminal. Otherwise returns the phase
     directive: {phase, delivery, stance, gate (the incoming edge's GATES entry),
-    inputs/carry/ir to inject, isolation (the extract->synthesize seam)}."""
+    inputs/carry/spec to inject, isolation (the extract->synthesize seam)}."""
     root = Path(root).resolve()
     workflow = _resolve_workflow(root, unit, workflow)
     if workflow is None:
@@ -148,16 +148,16 @@ def next_phase(root, unit, workflow=None) -> dict:
     if edge_in == EdgeType.carry:
         out["carry"] = produces.get(from_phase)
     elif edge_in == EdgeType.extract:
-        ir = produces.get(from_phase)
-        out["ir"] = ir
+        spec = produces.get(from_phase)
+        out["spec"] = spec
         # The isolation seam: entering synthesize via the extract edge must run in
-        # an IR-only worktree, seeded with the IR (isolation.seed_synth_worktree).
+        # an spec-only worktree, seeded with the spec (isolation.seed_synth_worktree).
         out["isolation"] = {
             "seed_worktree": True,
             "seam": f"{from_phase}->{name}",
             "seeder": "isolation.seed_synth_worktree",
-            "ir": ir,
-            "reason": "seed an IR-only synth worktree; the original is withheld",
+            "spec": spec,
+            "reason": "seed an spec-only synth worktree; the original is withheld",
         }
     return out
 
@@ -165,10 +165,10 @@ def next_phase(root, unit, workflow=None) -> dict:
 # --- record_phase: append the result, gate from disk, advance the cursor ----
 
 def _compose_for_gate(edge_in, produces_by_phase, from_phase, evidence) -> dict:
-    """Build the `composed` the gate verifier reads (ir threaded on the extract edge)."""
+    """Build the `composed` the gate verifier reads (spec threaded on the extract edge)."""
     composed: dict = {}
     if edge_in == EdgeType.extract:
-        composed["ir"] = produces_by_phase.get(from_phase)
+        composed["spec"] = produces_by_phase.get(from_phase)
     elif edge_in == EdgeType.carry:
         composed["carry"] = produces_by_phase.get(from_phase)
     # tool_log surfaces to the copy tripwire (composed first, then receipt.evidence).
@@ -182,7 +182,7 @@ def record_phase(root, unit, phase, evidence, verifiers: dict | None = None,
     """Record `phase`'s result, gate it FROM DISK, and advance the journal cursor.
 
     Appends the phase result (`produces`/`facts`/`tool_log`), runs the incoming
-    edge's gate verifier against the evidence on disk (the R1–R3b verifiers; for a
+    edge's gate verifier against the evidence on disk (the create/preservation/adequacy verifiers; for a
     rebuild unit the synthesize-exit gate is the tripwire+coverage_diff gate, fed
     `produces`/`tool_log`), journals the verdict, and computes the next edge via
     `_choose_edge` — all through the SAME `decide_step` the synchronous loop uses.

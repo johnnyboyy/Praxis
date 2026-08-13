@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""isolation — R3b: isolation + copy-detection for the rebuild seam.
+"""isolation — rebuild isolation + copy-detection for the rebuild seam.
 
 The rebuild triple's one invariant is that `synthesize` REBUILDS the interface
 rather than COPYING the original. Behavioral gates cannot tell a rebuild from a
 faithful copy — both go green. Only isolation can, and isolation here is
 **best-effort**, not a capability boundary:
 
-  * `seed_synth_worktree` builds a scratch tree containing ONLY the IR's
+  * `seed_synth_worktree` builds a scratch tree containing ONLY the spec's
     sanctioned artifacts (spec tests + explicitly-passed shared config), never
     the original source — attractor-reduction, so a synth agent that stays in
     its lane never encounters the original.
@@ -30,10 +30,10 @@ import shlex
 import shutil
 from pathlib import Path
 
-import rebuild_ir
+import rebuild_spec
 
 
-# --- 1. seed the synth worktree, IR-only -----------------------------------
+# --- 1. seed the synth worktree, spec-only -----------------------------------
 
 def _copy_into(src: Path, dest_root: Path) -> Path | None:
     """Copy a single sanctioned file into `dest_root`.
@@ -52,10 +52,10 @@ def _copy_into(src: Path, dest_root: Path) -> Path | None:
     return target
 
 
-def seed_synth_worktree(ir, dest, extra=None) -> Path:
-    """Build a fresh scratch tree at `dest` holding ONLY the IR's artifacts.
+def seed_synth_worktree(spec, dest, extra=None) -> Path:
+    """Build a fresh scratch tree at `dest` holding ONLY the spec's artifacts.
 
-    Contents: the IR's `tests.spec` files (the tests synthesize is allowed to
+    Contents: the spec's `tests.spec` files (the tests synthesize is allowed to
     see) plus any explicitly-passed `extra` shared build/test config. The
     original source is NEVER copied, and `tests.held_out` is withheld (it proves
     generalization at the preservation gate, so synth must not see it). We do NOT
@@ -65,15 +65,15 @@ def seed_synth_worktree(ir, dest, extra=None) -> Path:
     gate (`root_tree.resolve_root`) resolves it as its own root, NOT the parent
     unit's root+surface lease (the worktree↔lease collision fix from the barrier).
 
-    Fail-closed on a malformed IR. Returns the worktree Path.
+    Fail-closed on a malformed spec. Returns the worktree Path.
     """
-    ir = rebuild_ir.validate_ir(ir)
+    spec = rebuild_spec.validate_spec(spec)
     dest = Path(dest)
     dest.mkdir(parents=True, exist_ok=True)
 
     seeded: list[str] = []
-    for spec in ir["tests"]["spec"]:
-        t = _copy_into(spec, dest)
+    for spec_test in spec["tests"]["spec"]:
+        t = _copy_into(spec_test, dest)
         if t is not None:
             seeded.append(str(t))
     for item in (extra or []):
@@ -296,7 +296,7 @@ def scan_tripwire(tool_log, worktree) -> list:
 def _tool_log_from(receipt, composed) -> list:
     """Locate the synth agent's read-log. Input SOURCE for now (B wires it to a
     real dispatched subagent's log): accept it from composed, then the receipt's
-    evidence, then None. Absent ⇒ empty log ⇒ no violations (R3a path unaffected)."""
+    evidence, then None. Absent ⇒ empty log ⇒ no violations (preservation-gate path unaffected)."""
     composed = composed or {}
     for key in ("synth_tool_log", "tool_log"):
         if key in composed and composed[key] is not None:
@@ -337,7 +337,7 @@ def tripwire_verifier():
 
 def synthesize_exit_gate(coverage_diff):
     """Compose the synthesize-exit gate: the copy TRIPWIRE first (a tripped wire
-    is a copy — fail regardless of behavior), then the R3a `coverage_diff`
+    is a copy — fail regardless of behavior), then the `coverage_diff`
     preservation gate. Keeps the walk's single `coverage-diff` gate at that edge
     (routing unchanged) while making a silent copy un-passable."""
     from run import CallableVerifier

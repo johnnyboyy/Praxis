@@ -59,7 +59,7 @@ symlink or a `plugins_search_paths` entry). It is not one of the plugins under `
 - `JUDGMENT-PLUGIN.md` — how to build a plugin + the old→new domain transform rules.
 - the peer corpora repo (`~/jdev/skills/corpora`) — the domain-file schema and the composer's design (discovery, precedence, graduated disclosure) now live with the peer package.
 - `REGISTER-EXAMPLE.md` — a sample `.praxis/config.json` registration.
-- `<plugin>/history/` — historical build-time IRs where present (superseded by code + tests).
+- `<plugin>/history/` — historical build-time specs where present (superseded by code + tests).
 
 ## The pattern worth remembering
 

@@ -102,10 +102,10 @@ def plan(tasks: str, test_cmd: str | None = None, model: str | None = None,
         "subject": "coding|design|process|prose",     // default coding
         "suggested_kind": <what you'd freely call it>,// THE gap candidate — fill it honestly
         "fit": "clean|loose|none",                    // how well task_kind fits (default clean)
-        "depends_on": [<id>, ...] }                   // tasks that must finish first (the DAG edges)
+        "depends_on": [<id>, ...] }                   // tasks that must finish first (the unit graph edges)
 
     YOU are the planner: interview the operator, decompose the request into these tasks, and infer
-    the `depends_on` edges before calling this. The conductor plans them into a DAG and runs each
+    the `depends_on` edges before calling this. The conductor plans them into a unit graph and runs each
     ready wave (dependencies first), composing an overlay per unit and gating on `test_cmd`.
     `dry_run` (default TRUE) previews the plan + each unit's routing/gap WITHOUT spawning. Re-call
     with dry_run=false, allow_edits=true to EXECUTE — the cascade then runs in a DETACHED worker
@@ -137,7 +137,7 @@ def plan_status(search_base: str | None = None) -> str:
 
 @mcp.tool()
 def register_plan(tasks: str, search_base: str | None = None) -> str:
-    """Record a tasklist's DAG to the journal WITHOUT running it — the entry for implementing units
+    """Record a tasklist's unit graph to the journal WITHOUT running it — the entry for implementing units
     INLINE (yourself), not cascading them to isolated children. `tasks` is the same JSON array of
     task objects the `plan` tool takes (intent / id / task_kind / subject / suggested_kind / fit /
     depends_on). This writes one plan event (deterministic, no spawn, no contributor gather); then call
@@ -168,7 +168,7 @@ def next_phase(unit_id: str, search_base: str | None = None) -> str:
     """PULL the next PHASE of a workflow-driven unit's gated walk into this context — the
     phase-level twin of `next_handoff`. Folds the unit's phase events in the journal (a pure read,
     no mutation) and returns the phase to execute now: its `delivery`/`stance`, the incoming edge's
-    `gate`, the `inputs`/`carry`/`ir` to inject, and an `isolation` directive when the phase must run
+    `gate`, the `inputs`/`carry`/`spec` to inject, and an `isolation` directive when the phase must run
     in a seeded worktree (the extract->synthesize seam). Returns `complete` when the walk has reached
     a terminal, `no-workflow` when the unit isn't workflow-driven, or `no-plan`/`unknown-unit`. Idempotent:
     calling it again without `record_phase` re-hands the same phase."""

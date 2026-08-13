@@ -48,7 +48,7 @@ converged (the pin held, but it was luck-adjacent).
 
 ## OS-level capability sandboxing for the rebuild seam (queued 2026-08-12)
 
-**What.** R3b (`isolation.py`) makes rebuild isolation best-effort: an IR-only seeded worktree
+**What.** Rebuild isolation (`isolation.py`) is best-effort: a spec-only seeded worktree
 (attractor-reduction), a copy-detection tripwire (`scan_tripwire`, a detector), and dependency
 hygiene (`dep_hygiene_ok`). What it explicitly does NOT do is make the original *unreadable*: a
 `claude -p` synth subagent can still `Read` the original by absolute path. The residual risk — a
@@ -58,7 +58,7 @@ faithful copy through an absolute-path read — is named, not closed.
 read-only bind mount that excludes the original tree, plus (optionally) moving the original aside
 for the run so a naive absolute-path read fails. That is heavy machinery relative to this lap; the
 critique's pragmatic honest bar is best-effort isolation + a tripwire + strong held-out adequacy
-(R3a), which at least guarantees a copy is behavior-preserving even if it did not escape the
+(the preservation gate), which at least guarantees a copy is behavior-preserving even if it did not escape the
 attractor. So OS sandboxing is deferred, not pretended.
 
 **Candidate home.** The Agent/subagent dispatch step (where the synth runs), paired with the
@@ -99,8 +99,8 @@ The mutation adequacy signal's THRESHOLD is an absolute policy constant, but its
 the files the plan/units actually changed (the blast radius), not the whole repo. Mutation is
 expensive (re-runs the suite once per injected mutant), so scoping it to changed code keeps the
 final barrier tractable on a large codebase. Wire: the mutation barrier verifier targets only the
-plan's touched paths (from the journal/plan), not the entire tree. Applies to R2's mutation barrier
-and R3's extract-seam adequacy. (Surfaced from the "would an architecture shift be blocked?"
+plan's touched paths (from the journal/plan), not the entire tree. Applies to the mutation barrier
+and the extract-seam adequacy gate. (Surfaced from the "would an architecture shift be blocked?"
 question — answer: no, mutation measures TEST strength, not churn; but scope it to the blast radius.)
 
 ## Refinements from an independent design review (2026-08-12)
@@ -126,7 +126,7 @@ the details decide whether it works in practice.
 4. **Explicit escalation-to-human terminal on fix-loop exhaustion** (lands in: B / engine). Today
    the bounded fix loop's exhaustion is prose (orchestrate ESCALATE), not an engine state — make it
    a real terminal so the workflow can't stall silently.
-5. **Per-unit mutation SMOKE on the diff** (lands in: R2 extension + the mutation-scope note).
+5. **Per-unit mutation SMOKE on the diff** (lands in: the mutation barrier + the mutation-scope note).
    Coverage invites Goodharting — agents write line-touching, assertion-free tests to clear the
    gate. Mutation is the defense but runs once at the end, so gamed coverage survives all of fan-out
    before being caught. A coarse, diff-scoped per-unit mutation smoke check catches hollow tests

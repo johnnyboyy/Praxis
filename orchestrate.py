@@ -11,7 +11,7 @@ from situation import Situation
 
 
 # On escalation, replan splices a caller-supplied replacement into the failing
-# sub-DAG and re-runs it; the replacement is the caller's judgment, not the engine's.
+# sub-graph and re-runs it; the replacement is the caller's judgment, not the engine's.
 
 
 def _default_owner(defect: str) -> dict:

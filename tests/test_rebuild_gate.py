@@ -1,9 +1,9 @@
-"""R3a — the rebuild-triple gate mechanics, proven on synthetic fixtures.
+"""The rebuild-triple gate mechanics, proven on synthetic fixtures.
 
-No model, no worktree, no isolation (R3b): synthetic IRs + synth trees in
+No model, no worktree, no isolation: synthetic specs + synth trees in
 tmp_path, verdicts derived purely from disk (ast surface set-diff + held-out
 pytest exit code). Isolation is explicitly NOT exercised here — the synth path
-is taken as given; R3b closes the absolute-path copy hole."""
+is taken as given; rebuild isolation closes the absolute-path copy hole."""
 import shutil
 import sys
 import tempfile
@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import rebuild_ir  # noqa: E402
+import rebuild_spec  # noqa: E402
 import run as R  # noqa: E402
 import workflow as W  # noqa: E402
 from situation import Situation  # noqa: E402
@@ -77,31 +77,31 @@ class RebuildIRValidationTest(unittest.TestCase):
         return _ir("some/test_held.py")
 
     def test_valid_ir_round_trips(self):
-        self.assertIsInstance(rebuild_ir.validate_ir(self._base()), dict)
+        self.assertIsInstance(rebuild_spec.validate_spec(self._base()), dict)
 
     def test_empty_held_out_rejected(self):
         ir = self._base()
         ir["tests"]["held_out"] = []
-        with self.assertRaises(rebuild_ir.IRError):
-            rebuild_ir.validate_ir(ir)
+        with self.assertRaises(rebuild_spec.SpecError):
+            rebuild_spec.validate_spec(ir)
 
     def test_trivial_held_out_fraction_rejected(self):
         # 1 held-out of 10 total = 10% < 25% threshold.
         ir = self._base()
         ir["tests"]["spec"] = [f"t{i}" for i in range(9)]
         ir["tests"]["held_out"] = ["test_one"]
-        with self.assertRaises(rebuild_ir.IRError):
-            rebuild_ir.validate_ir(ir)
+        with self.assertRaises(rebuild_spec.SpecError):
+            rebuild_spec.validate_spec(ir)
 
     def test_malformed_ir_fails_closed(self):
         for bad in (None, [], "not-json", {"interface": "x"},
                     {"interface": [], "allowed_surface": [], "tests": {}}):
-            with self.assertRaises(rebuild_ir.IRError):
-                rebuild_ir.validate_ir(bad)
+            with self.assertRaises(rebuild_spec.SpecError):
+                rebuild_spec.validate_spec(bad)
 
-    def test_parse_ir_accepts_json_string(self):
+    def test_parse_spec_accepts_json_string(self):
         import json
-        self.assertIsInstance(rebuild_ir.parse_ir(json.dumps(self._base())), dict)
+        self.assertIsInstance(rebuild_spec.parse_spec(json.dumps(self._base())), dict)
 
 
 class CoverageDiffVerifierTest(unittest.TestCase):
@@ -118,7 +118,7 @@ class CoverageDiffVerifierTest(unittest.TestCase):
         held = _held_out_test(self.dir / "held")
         ir = _ir(held, **(ir_over or {}))
         receipt = R.Receipt(outcome="result", evidence={"produces": str(synth)})
-        return self.verifier.verify(None, receipt, {"ir": ir})
+        return self.verifier.verify(None, receipt, {"spec": ir})
 
     def test_faithful_synth_passes(self):
         v = self._run(FAITHFUL_IMPL)
@@ -156,24 +156,24 @@ class CoverageDiffVerifierTest(unittest.TestCase):
     def test_malformed_ir_fails_closed(self):
         synth = _write_synth(self.dir / "synth", FAITHFUL_IMPL)
         receipt = R.Receipt(outcome="result", evidence={"produces": str(synth)})
-        v = self.verifier.verify(None, receipt, {"ir": {"interface": "bad"}})
+        v = self.verifier.verify(None, receipt, {"spec": {"interface": "bad"}})
         self.assertFalse(v.verified)
-        self.assertEqual(v.evidence["check"], "ir")
+        self.assertEqual(v.evidence["check"], "spec")
 
     def test_missing_synth_path_fails_closed(self):
         held = _held_out_test(self.dir / "held")
         receipt = R.Receipt(outcome="result", evidence={})
-        v = self.verifier.verify(None, receipt, {"ir": _ir(held)})
+        v = self.verifier.verify(None, receipt, {"spec": _ir(held)})
         self.assertFalse(v.verified)
         self.assertEqual(v.evidence["check"], "synth-path")
 
 
 class AdequacyVerifierTest(unittest.TestCase):
-    """The does-it gate at extract-exit: IR split-enforcement + the R2 coverage
+    """The does-it gate at extract-exit: spec split-enforcement + the coverage
     verifier pointed at the ORIGINAL (reused, exit-code only)."""
 
     def _extract_receipt(self, ir):
-        # extract phase emits the IR as its produced artifact.
+        # extract phase emits the spec as its produced artifact.
         return R.Receipt(outcome="result", evidence={"produces": ir})
 
     def test_adequate_ir_passes_when_coverage_passes(self):
@@ -196,7 +196,7 @@ class AdequacyVerifierTest(unittest.TestCase):
         bad["tests"]["held_out"] = []
         out = v.verify(None, self._extract_receipt(bad), {})
         self.assertFalse(out.verified)
-        self.assertEqual(out.evidence["check"], "ir-split")
+        self.assertEqual(out.evidence["check"], "spec-split")
 
 
 class RebuildWalkTest(unittest.TestCase):
@@ -324,7 +324,7 @@ class TsCoverageDiffVerifierTest(unittest.TestCase):
 
     def _verify(self, synth, ir):
         receipt = R.Receipt(outcome="result", evidence={"produces": str(synth)})
-        return self.verifier.verify(None, receipt, {"ir": ir})
+        return self.verifier.verify(None, receipt, {"spec": ir})
 
     def test_faithful_ts_synth_passes(self):
         synth = self._synth("good", self.FAITHFUL)
@@ -371,7 +371,7 @@ class TsCoverageDiffVerifierTest(unittest.TestCase):
 class TsMutationAdapterTest(unittest.TestCase):
     """The Stryker-based TS mutation adequacy adapter — fake-proven, NO hard
     @stryker-mutator dependency (the command is a controllable fake, as with
-    R2's mutation barrier). Verdict = mutation score >= threshold, else exit code."""
+    the mutation barrier). Verdict = mutation score >= threshold, else exit code."""
 
     def test_unwired_without_threshold(self):
         self.assertIsNone(R.ts_mutation_verifier("pnpm exec stryker run", None))
@@ -400,7 +400,7 @@ def test_held_out_runs_from_synth_tree_with_relative_paths(tmp_path):
     pytest inherited the caller's cwd and exit-4'd (usage error) on a faithful
     rebuild instead of actually running the generalization check."""
     from run import coverage_diff_verifier, Receipt
-    IR = {"interface": [{"symbol": "add", "signature": "add(a, b)"}],
+    spec = {"interface": [{"symbol": "add", "signature": "add(a, b)"}],
           "allowed_surface": ["add"],
           "tests": {"spec": ["test_spec.py"], "held_out": ["test_held.py"]}}
 
@@ -415,9 +415,9 @@ def test_held_out_runs_from_synth_tree_with_relative_paths(tmp_path):
     v = coverage_diff_verifier()
     ok = v.verify(None, Receipt(outcome="result", status="complete",
                   evidence={"produces": synth("good", "def add(a, b):\n    return a + b\n")}),
-                  {"ir": IR})
+                  {"spec": spec})
     assert ok.verified, ok.defects
     bad = v.verify(None, Receipt(outcome="result", status="complete",
                    evidence={"produces": synth("bad", "def add(a, b):\n    return a * b\n")}),
-                   {"ir": IR})
+                   {"spec": spec})
     assert not bad.verified and bad.evidence.get("check") == "held_out"

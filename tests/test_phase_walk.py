@@ -193,7 +193,7 @@ class RebuildWalkTest(_Base):
         synth = _faithful_synth(self.root / "synth")
         held = _held_out(self.root / "held")
         ir = _ir(held)
-        # extract passes (valid IR); rebuild verifiers are built from config (none).
+        # extract passes (valid spec); rebuild verifiers are built from config (none).
         phase_walk.next_phase(self.root, unit, workflow=wf)
         phase_walk.record_phase(self.root, unit, "extract", {"produces": ir}, workflow=wf)
         return synth, ir
@@ -207,12 +207,12 @@ class RebuildWalkTest(_Base):
         self.assertEqual(step["phase"], "synthesize")
         self.assertEqual(step["edge_in"], "extract")
         self.assertEqual(step["gate"], "coverage-diff")
-        self.assertEqual(step["ir"], ir)                    # IR threaded on the extract edge
+        self.assertEqual(step["spec"], ir)                    # spec threaded on the extract edge
         iso = step["isolation"]
         self.assertIsNotNone(iso)
         self.assertTrue(iso["seed_worktree"])
         self.assertEqual(iso["seam"], "extract->synthesize")
-        self.assertEqual(iso["ir"], ir)
+        self.assertEqual(iso["spec"], ir)
 
     def test_out_of_worktree_read_trips_wire_and_does_not_advance(self):
         unit = R.Unit("u1", _sit(workflow="rebuild-triple"))

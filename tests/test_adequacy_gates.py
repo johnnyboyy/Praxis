@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""R2 of the spine: the two adequacy gates at their altitudes, fixture-proven.
+"""The two adequacy gates at their altitudes, fixture-proven.
 
 Both gates are deterministic and engine-run — the verdict is a command's exit
 code / score, never model evidence. No model, no `claude -p`, and NO hard
 mutmut/cosmic-ray dependency: every command here is a CONTROLLABLE fake
-(`sh -c 'exit N'` / `sh -c 'echo <score>'`), exactly like R1 used true/false.
+(`sh -c 'exit N'` / `sh -c 'echo <score>'`), exactly like the block gate used true/false.
 
   * COVERAGE (fast, per-unit): wired as the does-it/regression gate; the unit's
     walk advances only when the coverage command exits 0 (passes threshold), and

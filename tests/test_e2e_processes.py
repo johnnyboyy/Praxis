@@ -44,7 +44,7 @@ def _wait_worker_done(root, timeout=20):
 
 
 class InlinePullProcessTest(unittest.TestCase):
-    """The 'implement it yourself' process: register a DAG, pull each ready unit into context (the
+    """The 'implement it yourself' process: register a unit graph, pull each ready unit into context (the
     pull opens the edit gate for it), advance as each is finished, until the plan is complete."""
 
     def test_register_pull_advance_to_complete(self):
@@ -80,7 +80,7 @@ class InlinePullProcessTest(unittest.TestCase):
 
 
 class CascadeProcessTest(unittest.TestCase):
-    """The cascade process (worker core, in-process): a DAG runs in dependency order to completion; a
+    """The cascade process (worker core, in-process): a unit graph runs in dependency order to completion; a
     unit that stalls blocks its dependents, and the whole run is recoverable from the journal."""
 
     def test_cascade_with_stall_cascade(self):

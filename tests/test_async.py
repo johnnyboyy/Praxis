@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the resumable DAG and the detached cascade worker: `schedule.run_dag(resume=True)`
+"""Tests for the resumable unit graph and the detached cascade worker: `schedule.run_dag(resume=True)`
 (skip already-done units), `cascade.run_cascade` (the worker core, in-process), the pidfile/flock
 liveness + idempotency guard, and `conduct.plan_status` folded from the journal + pidfile."""
 import json

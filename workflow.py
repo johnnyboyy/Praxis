@@ -66,7 +66,7 @@ def next_phases(workflow: Workflow, from_phase: str, when: str) -> list:
 
 
 PLAN = Phase("plan", stance="divergent",
-             intent="extract an open request into units/edges", produces="ir")
+             intent="extract an open request into units/edges", produces="spec")
 WRITE_TESTS = Phase("write-tests", stance="divergent",
                     intent="author intent as executable tests", produces="tests")
 IMPLEMENT = Phase("implement", stance="convergent",
@@ -81,7 +81,7 @@ FIX = Phase("fix", stance="convergent",
             intent="repair a failed verification", produces="code")
 CLOSE = Phase("close", stance="neutral", intent="finalize the unit", produces="closure")
 EXTRACT = Phase("extract", stance="divergent",
-                intent="inventory/classify the original into an IR", produces="ir")
+                intent="inventory/classify the original into a spec", produces="spec")
 SYNTHESIZE = Phase("synthesize", stance="convergent",
                    intent="rebuild to the interface, free of the attractor", produces="code")
 
@@ -104,10 +104,10 @@ TDD_UNIT = Workflow(
 REBUILD_TRIPLE = Workflow(
     name="rebuild-triple",
     # SYNTHESIZE is terminal. The preservation gate is the edge-verifier keyed
-    # `coverage-diff` (GATES[extract]) that fires at synthesize-exit — the IR is
-    # already threaded into composed["ir"] via the extract edge, so no separate
+    # `coverage-diff` (GATES[extract]) that fires at synthesize-exit — the spec is
+    # already threaded into composed["spec"] via the extract edge, so no separate
     # coverage-diff phase is needed. The does-it gate at extract-exit is the
-    # adequacy gate (extracted tests vs the ORIGINAL + IR split-enforcement).
+    # adequacy gate (extracted tests vs the ORIGINAL + spec split-enforcement).
     phases=[EXTRACT, SYNTHESIZE],
     edges=[
         ("extract", "synthesize", "pass", EdgeType.extract),
