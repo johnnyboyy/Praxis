@@ -22,7 +22,7 @@ Toggle which praxis plugins are active for a root. Opt-in, re-runnable, non-dest
 3. **Ask** with `AskUserQuestion` (`multiSelect: true`), one option per `available` plugin:
    `label` = `name`, `description` = its one-liner. **Pre-check every plugin already in
    `registered`.** In the `corpora` option's description, note it is the **composer**: the judgment
-   plugins (general, coding-stack, uiux, writing, monorepo) are inert without it.
+   plugins (general, coding-stack, uiux, writing) are inert without it.
 
 4. **Set** exactly what the user selected (registers newly-checked, drops unchecked):
 
