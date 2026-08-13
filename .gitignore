@@ -12,3 +12,4 @@ __pycache__/
 .praxis/handoffs/
 .praxis/.last-frame-at
 .praxis/.frame-payload.md
+.praxis/tripwire.log
