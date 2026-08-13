@@ -93,7 +93,15 @@ case "$VERDICT" in
     deny "$REASON"
     ;;
   no_unit)
-    deny "No open unit of work in the journal for this root ($ROOT_PATH) — drive this work through the conductor first (the plan / next_handoff tools, or conduct for a single unit) so a unit is framed before editing."
+    # Relaxed 2026-08-12: a marked root with NO open unit is not the threat model
+    # (a fresh checkout / worktree / ad-hoc author edit). The route-level "must use
+    # the machinery" guarantee now lives in the praxis:orchestrate entrance, so this
+    # verdict allows-with-a-nudge instead of blocking. The `deny` verdict below
+    # (framed unit, edit outside its lease) still blocks — that lane-keeping guarantee
+    # is the one the entrance does not provide. See docs/review-2026-08-12.md (F6).
+    jq -n --arg reason "No open unit of work for this root ($ROOT_PATH) — editing outside the conductor. Drive real changes through praxis:orchestrate so the gates apply." \
+      '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow", "permissionDecisionReason": $reason}}'
+    exit 0
     ;;
   *)
     # Unrecognized verdict ⇒ fail open, never the reason a legit edit is blocked.
