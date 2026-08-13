@@ -49,3 +49,22 @@ commits and history docs.
   descriptive metadata on phase definitions.)
 - **`agent-choice` edges** — routing by `evidence["next"]`; deleted. Routing is gates + `fact`
   predicates + `pass`/`fail`/`always` defaults.
+
+## Vocabulary policy (decided 2026-08-13)
+
+Two grains, two rules:
+
+- **Unit verbs (`task_kind`) are CLOSED** — create / change / explore, a coarse lens with
+  cross-repo consumers (corpora's framing headers, every domain's `task-kinds:` affinity).
+  Packs cannot extend them, deliberately: a minted unit verb would silently break the
+  composition contract everywhere. Reopen only on evidence that the lens itself *misframes*
+  a kind of work — not that a name feels generic.
+- **Phase verbs are OPEN** — a pack's phase names are its minted vocabulary (`extract`,
+  `audit`, `library-state`), added via `phases()`/`workflows()`, branched on by
+  `phase_name`, ranked by domain affinity. This is where vocabulary grows.
+
+Gap suggestions route by kind, never to verb minting: a recurring *process* gap → the
+forge (`skills/forge-workflow`); a recurring *judgment* gap → harvest/ratify or a reading
+queue entry; a phase fitting loose inside a walk (`phase.gap`, surfaced by
+`report gaps`) → revise the pack. Precedent: `breakout ×2` (2026-08-13) was declined as a
+verb and became the audit-cut pack + harvested principles instead.

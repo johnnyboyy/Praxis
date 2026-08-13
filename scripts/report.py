@@ -94,9 +94,11 @@ def cmd_gaps(args) -> int:
         return 0
     candidates = journal.gap_candidates(root)
     raw = journal.gaps(root)
+    phase_raw = journal.phase_gaps(root)
 
     if args.json:
-        print(json.dumps({"candidates": candidates, "recent_gaps": raw[-10:]}, indent=2))
+        print(json.dumps({"candidates": candidates, "recent_gaps": raw[-10:],
+                          "phase_gaps": phase_raw[-10:]}, indent=2))
         return 0
 
     if not candidates:
@@ -114,6 +116,16 @@ def cmd_gaps(args) -> int:
             chosen = e.get("chosen") or "-"
             print(f"  [{fmt_ts(e.get('ts'))}] {e.get('vocabulary', 'task_kind')}: "
                   f"{sug} -> {chosen}")
+
+    # phase gaps — the WORKFLOW channel: a phase that fit loose/none inside a
+    # walk. Recurrence here means a pack's vocabulary strains; the response is
+    # pack revision (or forging a sibling), never verb minting.
+    if phase_raw:
+        print(f"\nphase gaps — pack-revision signal ({min(len(phase_raw), 5)} of {len(phase_raw)}):")
+        for e in phase_raw[-5:]:
+            sug = e.get("suggested") or "?"
+            print(f"  [{fmt_ts(e.get('ts'))}] unit={e.get('unit', '-')} "
+                  f"phase={e.get('phase', '?')} fit={e.get('fit', '?')} -> {sug}")
     return 0
 
 def _metrics_rows(by: dict) -> list[list[str]]:
