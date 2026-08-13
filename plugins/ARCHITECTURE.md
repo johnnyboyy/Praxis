@@ -29,6 +29,8 @@ path, LOW→HIGH precedence (higher wins a name collision):
 | **coding-stack** | Stack-specific judgment gated by `applies-when` (ts/react/nextjs/expo, css, …). |
 | **uiux** | Design-decision judgment + the full process example: `contribute`/`hooks`/`surface`/`phases`/`workflows`, backed by `library_state.py`, `deferred_queue.py`. |
 | **writing** | Process-only: prose draft/revision phases + workflow. |
+| **rebuild** | Process-only: the rebuild triple — extract/synthesize phases, the `rebuild-triple` workflow with its own gate forms (spec adequacy at extract-exit; tripwire ∘ coverage-diff at synthesize-exit), spec validation (`rebuild_spec.py`), and worktree isolation + copy-detection (`isolation.py`, `hooks/tripwire_log.sh`). |
+| **coding-process** | Process-only: TDD vocabulary — write-tests/refactor/test-cleanup phases + the `tdd-unit` workflow. |
 | **monorepo** | Coordination judgment + cross-root framing (defers traversal to core `root_tree`). |
 
 ## Core pattern

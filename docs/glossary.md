@@ -10,8 +10,8 @@ commits and history docs.
 | name | what it provides |
 |---|---|
 | **spec** (the rebuild blueprint) | the structured contract the `extract` phase emits — `interface` + `allowed_surface` + a `tests.{spec,held_out}` split (`rebuild_spec.py`). Threaded to `synthesize` as `composed["spec"]`. |
-| **unit graph** | the plan's units + their `depends_on` edges; what the scheduler walks in dependency waves. |
-| **adequacy barrier** | the test-strength signal: the fast per-unit **coverage gate** + the slow plan-level **mutation barrier** run once at close. |
+| **unit graph** | the plan's units + their `depends_on` edges; what the drive walks in dependency order. |
+| **adequacy barrier** | the test-strength signal at close. Its FORM is plugin/root content (the core owns only "close is reachable through passed gates"); the rebuild plugin ships a coverage form. |
 | **preservation gate** | the rebuild-seam check — coverage-diff / held-out — answering "did the rebuild preserve behavior?" (`coverage_diff_verifier`). |
 | **rebuild isolation** | the synth-seam defense: a spec-only seeded worktree + a copy-detection **tripwire** + dependency hygiene (`isolation.py`). Best-effort, not a capability boundary. |
 | **barrier** | the contract the work must satisfy, authored up front; close is reachable only through it. |
@@ -37,15 +37,15 @@ commits and history docs.
 | `R3a` | the **preservation gate** (+ the extract-exit **adequacy gate**) |
 | `R3b` | **rebuild isolation** |
 
-## Deliberately not renamed
+## Retired with the 2026-08-12 cut (see `cut-plan-2026-08-12.md`)
 
-- **`run_dag` / `failing_subdag`** — the function identifiers keep `dag`. Prose says "unit graph,"
-  but renaming these identifiers exceeded the confirmed scope of the naming pass (it touches ~10
-  test files with no contract benefit). A candidate for a later mechanical rename.
-
-## Open naming questions
-
-- **`cascade`** — the detached background worker. If review F2 deprecates the detached path, this
-  name retires with it; otherwise rename to something that says "detached unit-graph worker."
-- **`accretion`** — gap-surfacing that promotes recurring gaps into minted vocabulary. Functional
-  but obscure; candidate: **vocabulary minting**.
+- **`cascade` / `run_dag`** — the detached in-process execution engine; deleted (F2 resolved by
+  deprecation). The model drives; the journal is the cursor.
+- **`accretion` / minting** — the promotion machinery; deleted. The gap SIGNAL remains
+  (`fit`/`suggested`, `conductor.gap`/`phase.gap` events, `/praxis:report gaps`); promoting a
+  gap is an operator act: add the phase to a plugin.
+- **stance** (`Situation.phase`, divergent/convergent) — the second per-phase channel; deleted.
+  `phase_name` is the only channel `contribute` branches on. (`Phase.stance` remains as
+  descriptive metadata on phase definitions.)
+- **`agent-choice` edges** — routing by `evidence["next"]`; deleted. Routing is gates + `fact`
+  predicates + `pass`/`fail`/`always` defaults.

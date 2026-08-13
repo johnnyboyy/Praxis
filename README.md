@@ -1,9 +1,10 @@
 # praxis
 
-A process/orchestration engine, packaged as a Claude Code plugin. Praxis frames a
-unit of work, composes context per phase, drives it through typed-edge workflows
-(or spawns it isolated), verifies at a barrier, and gates edits until a unit is
-framed.
+A process engine, packaged as a Claude Code plugin. Praxis frames a unit of work,
+composes context per phase, walks it through typed-edge workflows one gated step
+at a time (the model executes; the journal is the cursor), and gates edits until
+a unit is framed. Process vocabulary beyond the minimal seed — TDD, the rebuild
+triple — ships as plugins a root opts into.
 
 ## Install
 
@@ -24,10 +25,9 @@ claude --plugin-dir ./praxis
 
 ## Entry points
 
-- `/praxis:orchestrate <task>` — drive a whole task autonomously: decompose it
-  into a unit graph and run it as a detached cascade (spawn per unit, barrier
-  full-verify, fix-loop, escalation). For work you want to hand off and walk away
-  from.
+- `/praxis:orchestrate <task>` — drive a whole task: decompose it into a unit
+  graph, dispatch units to subagents through the gated walk, verify at a single
+  barrier, fix or escalate. For complex multi-unit work.
 - `/praxis:inline <task-or-question>` — do one small thing or answer a question in
   the current conversation: frame a single unit, work in-context, close it.
 - `/praxis:report [subcommand] [flags]` — view this repo's praxis journal, gap

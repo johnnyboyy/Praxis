@@ -13,7 +13,6 @@ wired today, read the code.
 **Phase** — one atomic move an agent (or a deterministic step) makes.
 ```
 Phase = { name, stance, intent, produces, delivery, run }
-  stance   : divergent | convergent | neutral   # secondary to the edge for context decisions
   produces : the result contract — what "done" looks like
   delivery : inline | spawn | deterministic
   run      : a Callable, used only when delivery == "deterministic"
@@ -21,13 +20,14 @@ Phase = { name, stance, intent, produces, delivery, run }
 
 **Workflow** — a graph of phases with typed, possibly-conditional edges.
 ```
-Workflow = { name, phases[], edges[(from,to,when,edge_type[,predicate])], expand }
-  when : pass | fail | always | agent-choice | feeds | fact
+Workflow = { name, phases[], edges[(from,to,when,edge_type[,predicate])], verifiers }
+  when      : pass | fail | always | feeds | fact
+  verifiers : optional factory (root) -> {gate-name: Verifier} — the gate's form
+              travels with the workflow that needs it
 ```
 
 There is deliberately **no phase-intrinsic `gate` field** — the preservation gate is a property of
-the incoming edge, not the phase (see below). The `expand` slot (phase → sub-workflow) exists on the
-dataclass but is not yet driven.
+the incoming edge, not the phase (see below).
 
 ### The context boundary is a property of the EDGE, not the phase
 
@@ -62,7 +62,9 @@ carry cannot feed it, which is why the runner threads a named-output map (below)
 
 ### Two altitudes
 
-**Orchestration** (across units) — verification is DEFERRED to a single barrier:
+**Orchestration** (across units) — verification is DEFERRED to a single barrier. The engine does
+not run this loop; the orchestrator (the model, via the orchestrate skill) does, over the
+register_plan / next_handoff / record_receipt surface:
 ```
 plan → fan-out (units run isolated, in parallel) → ┃BARRIER┃ → verify(full suite, once)
                                                               ├ fail → fix units → re-verify
@@ -79,5 +81,6 @@ Two verification scopes: **local** (a unit's own new tests, fast, inside the uni
 
 Every phase exit reports `phase_fit` (clean|loose|none) + `suggested` (what the agent would call
 what it actually did) — the same mechanism as task-kind fit, lifted to process. `loose`/`none`
-writes a `phase.gap`; recurring gaps promote (via `accretion`) into new vocabulary. Seed the phase
-set small; grow it from where real work strains.
+writes a `phase.gap`; `/praxis:report gaps` surfaces the recurring ones, and promoting one is an
+operator act: add the phase to a plugin. Seed the phase set small; grow it from where real work
+strains.
