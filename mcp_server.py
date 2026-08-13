@@ -89,6 +89,17 @@ def next_handoff(brief: str | None = None, search_base: str | None = None) -> st
     return json.dumps(conduct_engine.next_handoff(_root(search_base), brief=brief), indent=2)
 
 @mcp.tool()
+def read_handoff(unit_id: str, search_base: str | None = None) -> str:
+    """READ a unit's handoff (brief + composed overlay) without advancing anything — the
+    executor-side twin of `next_handoff`. In the pull model the orchestrator calls `next_handoff`
+    to frame a unit and open its edit gate, then dispatches an executor whose only instruction is
+    the unit id; the executor calls this to receive its brief + overlay directly from code, so no
+    orchestrator paraphrase can color the payload. Pure read: idempotent, works whether or not the
+    unit has been pulled/framed yet, and never advances state. Treat the returned `brief` + `overlay`
+    as your complete instructions and work only within `surface`."""
+    return json.dumps(conduct_engine.read_handoff(_root(search_base), unit_id), indent=2)
+
+@mcp.tool()
 def next_phase(unit_id: str, search_base: str | None = None) -> str:
     """PULL the next PHASE of a workflow-driven unit's gated walk into this context — the
     phase-level twin of `next_handoff`. Folds the unit's phase events in the journal (a pure read,

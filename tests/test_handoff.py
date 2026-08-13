@@ -7,10 +7,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import conduct  # noqa: E402
 import handoff as handoff_mod  # noqa: E402
 import journal  # noqa: E402
 from contributors import Contribution  # noqa: E402
-from plan import build_units, TaskSpec  # noqa: E402
+from plan import build_units, plan_tasks, TaskSpec  # noqa: E402
 from run import Unit  # noqa: E402
 from situation import Situation  # noqa: E402
 
@@ -150,6 +151,72 @@ class LeaseSurfaceTest(unittest.TestCase):
             self.assertEqual(verdict, "allow")
             verdict, _ = gate.gate_decision(rroot, str(rroot / "docs" / "guide.md"))
             self.assertEqual(verdict, "deny")
+
+class ReadHandoffTest(unittest.TestCase):
+    def _specs(self):
+        return [TaskSpec(intent="schema", id="s"),
+                TaskSpec(intent="api", id="api", depends_on=["s"])]
+
+    def test_no_plan(self):
+        with TempRoot() as root:
+            out = conduct.read_handoff(root, "s")
+            self.assertEqual(out["status"], "no-plan")
+
+    def test_unknown_unit(self):
+        with TempRoot() as root:
+            plan_tasks(root, self._specs())
+            out = conduct.read_handoff(root, "nope")
+            self.assertEqual(out["status"], "unknown-unit")
+            self.assertEqual(out["unit"], "nope")
+
+    def test_read_before_pull_returns_brief_and_surface(self):
+        with TempRoot() as root:
+            plan_tasks(root, self._specs())
+            out = conduct.read_handoff(root, "s")
+            self.assertEqual(out["status"], "handoff")
+            self.assertEqual(out["unit"], "s")
+            self.assertIn("schema", out["brief"])
+            self.assertIn("surface", out)
+
+    def test_read_after_pull_matches_pull_brief_and_is_idempotent(self):
+        with TempRoot() as root:
+            units = plan_tasks(root, self._specs())
+            pulled = handoff_mod.pull(root, units, [])
+            self.assertEqual(pulled["unit"], "s")
+            first = conduct.read_handoff(root, "s")
+            second = conduct.read_handoff(root, "s")
+            self.assertEqual(first["brief"], pulled["brief"])
+            self.assertEqual(first["overlay"], pulled["overlay"])
+            self.assertEqual(first["brief"], second["brief"])
+            self.assertEqual(first["overlay"], second["overlay"])
+            self.assertEqual(first["sources"], second["sources"])
+            self.assertEqual(first["surface"], second["surface"])
+
+    def test_read_does_not_advance_state_or_change_next_ready(self):
+        with TempRoot() as root:
+            units = plan_tasks(root, self._specs())
+            # "api" waits on "s"; reading it should not journal anything that
+            # would make it look ready/framed and should not change what's next.
+            def _state():
+                u = journal.fold(root)["units"].get("api")
+                return u["state"] if u else None
+            before_state = _state()
+            conduct.read_handoff(root, "api")
+            after_state = _state()
+            self.assertEqual(before_state, after_state)
+            self.assertIsNone(after_state)
+            nxt = handoff_mod.next_ready(root, units)
+            self.assertEqual(nxt.id, "s")
+
+    def test_payload_read_note_is_journaled(self):
+        with TempRoot() as root:
+            plan_tasks(root, self._specs())
+            conduct.read_handoff(root, "s")
+            notes = [e for e in journal.read(root)
+                    if e.get("event") == "unit.note" and e.get("unit") == "s"
+                    and e.get("payload_read")]
+            self.assertEqual(len(notes), 1)
+            self.assertEqual(notes[0]["reader"], "read_handoff")
 
 if __name__ == "__main__":
     unittest.main()

@@ -50,8 +50,8 @@ class ShadowGuardTest(unittest.TestCase):
     def test_the_known_tools_are_present(self):
         tools, _ = _tools_and_imports(MCP_SERVER_PY.read_text())
         for expected in ("init", "plan_status", "register_plan", "next_handoff",
-                         "next_phase", "record_phase", "close_unit", "record_receipt",
-                         "escalate_unit", "conductor_status"):
+                         "read_handoff", "next_phase", "record_phase", "close_unit",
+                         "record_receipt", "escalate_unit", "conductor_status"):
             self.assertIn(expected, tools)
 
     def test_the_engine_tools_are_gone(self):

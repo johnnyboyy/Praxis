@@ -71,6 +71,25 @@ def next_handoff(root: str | Path, brief: str | None = None) -> dict:
         return {"status": "no-plan", "note": "no tasklist has been planned for this root yet"}
     return handoff_mod.pull(root, units, contributors_mod.contributors_for(root), brief=brief)
 
+def read_handoff(root: str | Path, unit_id: str) -> dict:
+    import handoff as handoff_mod
+    root = Path(root).resolve()
+    unit = _find_unit(root, unit_id)
+    if unit is None:
+        import plan as plan_mod
+        if plan_mod.reconstruct_units(root) is None:
+            return {"status": "no-plan", "note": "no tasklist has been planned for this root yet"}
+        return {"status": "unknown-unit", "unit": unit_id}
+    contributors = contributors_mod.contributors_for(root)
+    composed = contributors_mod.gather(contributors, unit.situation, root=None)
+    ho = handoff_mod.assemble(unit.situation.intent, composed)
+    surface = (contributors_mod.surface_for(contributors, unit.situation)
+               or (unit.situation.targets or None))
+    journal.append(root, "unit.note", unit=unit.id, payload_read=True, reader="read_handoff")
+    return {"status": "handoff", "unit": unit.id, "unit_of_work": unit.unit_of_work,
+            "brief": ho["brief"], "overlay": ho["overlay"], "sources": ho["sources"],
+            "surface": surface}
+
 def _find_unit(root: Path, unit_id: str):
     import plan as plan_mod
     units = plan_mod.reconstruct_units(root)
